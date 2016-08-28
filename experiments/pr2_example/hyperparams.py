@@ -119,6 +119,7 @@ algorithm = {
     'type': AlgorithmTrajOpt,
     'conditions': common['conditions'],
     'iterations': 10,
+    'agent_params': agent
 }
 
 algorithm['init_traj_distr'] = {

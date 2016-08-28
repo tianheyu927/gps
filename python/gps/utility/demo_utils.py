@@ -3,6 +3,10 @@ import numpy as np
 import copy
 import numpy.matlib
 
+from gps.utility.data_logger import DataLogger
+from gps.sample.sample import Sample
+
+
 def generate_pos_body_offset(conditions):
 	""" Generate position body offset for all conditions. """
 	pos_body_offset = []
@@ -27,6 +31,22 @@ def generate_x0(x0, conditions):
 def generate_pos_idx(conditions):
 	""" Generate the indices of states. """
 	return [np.array([1]) for i in xrange(conditions)]
+
+
+def eval_demos(agent, demo_file, costfn):
+	demos = DataLogger.unpickle(demo_file)
+	demoX = demos['demoX']
+	demoU = demos['demoU']
+	num_demos = demoX.shape[0]
+
+	losses = []
+	for demo_idx in range(num_demos):
+		sample = Sample(agent)
+		sample.set_XU(demoX[demo_idx], demoU[demo_idx])
+		l, _, _, _, _, _ = costfn.eval(sample)
+		losses.append(l)
+	return losses
+
 
 
 	

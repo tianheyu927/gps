@@ -7,15 +7,10 @@ mpl.use('Qt4Agg')
 import sys
 import os
 import os.path
-import logging
 import copy
-import argparse
-import time
-import threading
 import numpy as np
 import scipy as sp
-import scipy.io
-import numpy.matlib
+import pickle
 import random
 from random import shuffle
 
@@ -30,6 +25,7 @@ from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
 		END_EFFECTOR_POINT_JACOBIANS, ACTION, RGB_IMAGE, RGB_IMAGE_SIZE, \
 		CONTEXT_IMAGE, CONTEXT_IMAGE_SIZE
 from gps.algorithm.policy.lin_gauss_policy import LinearGaussianPolicy  # Maybe useful if we unpickle the file as controllers
+
 
 class GenDemo(object):
 	""" Generator of demos. """
@@ -56,78 +52,66 @@ class GenDemo(object):
 		 Generate demos and save them in a file for experiment.
 		 Returns: None.
 		"""
-		# Load the algorithm
-		import pickle
+		M = self._hyperparams['demo_agent']['conditions']
+		N = self._hyperparams['algorithm']['num_demos']
 
-		# algorithm_file = self._algorithm_files_dir # This should give us the optimal controller. Maybe set to 'controller_itr_%02d.pkl' % itr_load will be better?
-		# algorithm_file = self._exp_dir
 		algorithm_files = self._algorithm_files_dir
-		self.algorithms = [] # A list of neural nets.
-		for i in range(self._conditions):
-			algorithm = pickle.load(open(algorithm_files[i]))
-			self.algorithms.append(algorithm)
-		# self.algorithm = pickle.load(open(algorithm_file))
-		# if self.algorithm is None:
-		# 	print("Error: cannot find '%s.'" % algorithm_file)
-		# 	os._exit(1) # called instead of sys.exit(), since t
+		self.algorithms = []
+		for alg_idx in range(self._conditions):  #TODO: Is algorithm a loop over conditions?
+			algorithm = pickle.load(open(algorithm_files[alg_idx]))
 			if algorithm is None:
-				print("Error: cannot find '%s.'" % algorithm_files[i])
-				os._exit(1) # called instead of sys.exit(), since t
+				print("Error: cannot find '%s.'" % algorithm_files[alg_idx])
+				os._exit(1)
+			else:
+				self.algorithms.append(algorithm)
 
 		# Keep the initial states of the agent the sames as the demonstrations.
 		if 'learning_from_prior' in self._hyperparams['algorithm']:
 			self._learning = self._hyperparams['algorithm']['learning_from_prior'] # if the experiment is learning from prior experience
 		else:
 			self._learning = False
-		agent_config = self._hyperparams['demo_agent']
-		if agent_config['type']==AgentMuJoCo and agent_config['filename'] == './mjc_models/pr2_arm3d.xml' and not self._learning:
-			agent_config['x0'] = self.algorithms[0]._hyperparams['agent_x0']
-			agent_config['pos_body_idx'] = self.algorithms[0]._hyperparams['agent_pos_body_idx']
-			agent_config['pos_body_offset'] = self.algorithms[0]._hyperparams['agent_pos_body_offset']
-		self.agent = agent_config['type'](agent_config)
 
 		# Roll out the demonstrations from controllers
 		var_mult = self._hyperparams['algorithm']['demo_var_mult']
-		# T = self.algorithm.T
-		T = self.algorithms[0].T
 		demos = []
 
-		M = agent_config['conditions']
-		N = self._hyperparams['algorithm']['num_demos']
-		sampled_demo_conds = [random.randint(0, M-1) for i in xrange(M)]
-		sampled_demos = []
 		if not self._learning:
-			controllers = {}
-			self.algorithm = self.algorithms[0]
-
 			# Store each controller under M conditions into controllers.
-			for i in xrange(M):
-				controllers[i] = self.algorithm.cur[i].traj_distr
-			controllers_var = copy.copy(controllers)
-			for i in xrange(M):
+			for cond in xrange(M):
+				algorithm = self.algorithms[cond] # TODO: Is this correct? to index into algorithms with condition
+
+				agent_config = self._hyperparams['demo_agent']
+				agent_config.update(algorithm._hyperparams['agent_params'])
+				agent = agent_config['type'](agent_config)
+
+				controller = copy.copy(algorithm.cur[cond].traj_distr)
 
 				# Increase controller variance.
-				controllers_var[i].chol_pol_covar *= var_mult
+				controller.chol_pol_covar *= var_mult
 				# Gather demos.
 				for j in xrange(N):
-					demo = self.agent.sample(
-						controllers_var[i], i,
-						verbose=(i < self.algorithm._hyperparams['demo_verbose']),
+					demo = agent.sample(
+						controller, cond,
+						verbose=(cond < algorithm._hyperparams['demo_verbose']),
 						save = True
 					)
 					demos.append(demo)
 		else:
 			# Extract the neural network policy.
-			for j in xrange(self._conditions):
-				pol = self.algorithms[j].policy_opt.policy
+			for alg_idx in xrange(self._conditions):
+				agent_config = self._hyperparams['demo_agent']
+				agent_config.update(self.algorithms[alg_idx]._hyperparams['agent_params'])
+				agent = agent_config['type'](agent_config)
+
+				pol = self.algorithms[alg_idx].policy_opt.policy
 				pol.chol_pol_covar *= var_mult
 
-				for i in range(j*M/4, (j+1)*M/4):
+				for i in range(alg_idx*M/4, (alg_idx+1)*M/4):
 					# Gather demos.
 					samples = []
 					dists = []
 					for _ in xrange(5):
-						sample = self.agent.sample(
+						sample = agent.sample(
 							pol, i,
 							verbose=(i < self._hyperparams['verbose_trials'])
 							)
@@ -138,9 +122,9 @@ class GenDemo(object):
 						target_position = agent_config['target_end_effector'][:3]
 						dists.append(np.sqrt(np.sum((sample_end_effector[:, :3] - target_position.reshape(1, -1))**2, axis = 1))[-1])
 					if sum(dists) / len(dists) <= 0.3:
-						controller = self.linearize_policy(SampleList(samples), j)
+						controller = self.linearize_policy(SampleList(samples), alg_idx)
 						for k in xrange(N):
-							demo = self.agent.sample(
+							demo = agent.sample(
 									controller, i, # Should be changed back to controller if using linearization
 									verbose=(i < self._hyperparams['verbose_trials']), noisy=True
 									) # Add noise seems not working. TODO: figure out why

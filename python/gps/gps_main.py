@@ -98,6 +98,9 @@ class GPSMain(object):
             if 'demo_conditions' in demos.keys() and 'failed_conditions' in demos.keys():
                 self.algorithm.demo_conditions = demos['demo_conditions']
                 self.algorithm.failed_conditions = demos['failed_conditions']
+
+            #JUSTIN Test
+
         else:
             self.algorithm = config['algorithm']['type'](config['algorithm'])
 
