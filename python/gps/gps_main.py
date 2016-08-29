@@ -119,6 +119,13 @@ class GPSMain(object):
 
         itr_start = self._initialize(itr_load)
         for itr in range(itr_start, self._hyperparams['iterations']):
+            if self.agent._hyperparams['randomly_sample_x0']:
+                    for cond in self._train_idx:
+                        self.agent.reset_initial_x0(cond)
+
+            if self.agent._hyperparams['randomly_sample_bodypos']:
+                for cond in self._train_idx:
+                    self.agent.reset_initial_body_offset(cond)
             for cond in self._train_idx:
                 if itr == 0:
                     for i in range(self.algorithm._hyperparams['init_samples']):
@@ -327,12 +334,15 @@ class GPSMain(object):
         Returns: None
         """
         if 'verbose_policy_trials' not in self._hyperparams:
+            # AlgorithmTrajOpt
             return None
-        if not N:
-            N = self._hyperparams['verbose_policy_trials']
+        verbose = self._hyperparams['verbose_policy_trials']
         if self.gui:
             self.gui.set_status_text('Taking policy samples.')
-        pol_samples = [[None for _ in range(N)] for _ in range(self._conditions)]
+        pol_samples = [[None] for _ in range(len(self._test_idx))]
+        # Since this isn't noisy, just take one sample.
+        # TODO: Make this noisy? Add hyperparam?
+        # TODO: Take at all conditions for GUI?
         for cond in range(len(self._test_idx)):
             for i in range(N):
                 if not self.algorithm._hyperparams['multiple_policy']:
@@ -684,14 +694,14 @@ def main():
             gps_global = GPSMain(hyperparams.config)
             pol_iter = gps_global.algorithm._hyperparams['iterations']
             # for i in xrange(pol_iter):
-            if hyperparams.config['gui_on']:
-                gps_global.run()
-                # gps_global.test_policy(itr=i, N=compare_costs)
-                plt.close()
-            else:
-                gps_global.run()
-                # gps_global.test_policy(itr=i, N=compare_costs)
-                plt.close()
+            # if hyperparams.config['gui_on']:
+            #     gps_global.run()
+            #     # gps_global.test_policy(itr=i, N=compare_costs)
+            #     plt.close()
+            # else:
+            #     gps_global.run()
+            #     # gps_global.test_policy(itr=i, N=compare_costs)
+            #     plt.close()
             mean_dists_global_dict[itr], success_rates_global_dict[itr] = gps_global.measure_distance_and_success()
             # Plot the distribution of demos.
             # from matplotlib.patches import Rectangle
@@ -723,9 +733,12 @@ def main():
             hyperparams.config['algorithm']['init_demo_policy'] = False
             hyperparams.config['algorithm']['policy_eval'] = False
             hyperparams.config['algorithm']['ioc'] = 'MPF'
-            hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_nn_multiple_MPF_%d' % itr + '/'
-            if not os.path.exists(exp_dir + 'data_files_nn_multiple_MPF_%d' % itr + '/'):
-                os.makedirs(exp_dir + 'data_files_nn_multiple_MPF_%d' % itr + '/')
+            # hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_nn_multiple_MPF_%d' % itr + '/'
+            # if not os.path.exists(exp_dir + 'data_files_nn_multiple_MPF_%d' % itr + '/'):
+            #     os.makedirs(exp_dir + 'data_files_nn_multiple_MPF_%d' % itr + '/')
+            hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_nn_MPF_random_cond_%d' % itr + '/'
+            if not os.path.exists(exp_dir + 'data_files_nn_MPF_random_cond_%d' % itr + '/'):
+                os.makedirs(exp_dir + 'data_files_nn_MPF_random_cond_%d' % itr + '/')
             hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
             # hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_LG_MPF_%d' % itr + '/'
             # if not os.path.exists(exp_dir + 'data_files_LG_MPF_%d' % itr + '/'):
@@ -736,14 +749,14 @@ def main():
             gps_classic = GPSMain(hyperparams.config)
             pol_iter = gps_classic.algorithm._hyperparams['iterations']
             # for i in xrange(pol_iter):
-            # if hyperparams.config['gui_on']:
-            #     gps_classic.run()
-            #     # gps_global.test_policy(itr=i, N=compare_costs)
-            #     plt.close()
-            # else:
-            #     gps_classic.run()
-            #     # gps_global.test_policy(itr=i, N=compare_costs)
-            #     plt.close()
+            if hyperparams.config['gui_on']:
+                gps_classic.run()
+                # gps_global.test_policy(itr=i, N=compare_costs)
+                plt.close()
+            else:
+                gps_classic.run()
+                # gps_global.test_policy(itr=i, N=compare_costs)
+                plt.close()
             mean_dists_classic_dict[itr], success_rates_classic_dict[itr] = gps_classic.measure_distance_and_success()
             plt.close()
 

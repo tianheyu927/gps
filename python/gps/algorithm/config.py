@@ -17,7 +17,7 @@ ALG = {
     # Use maximum entropy term in trajectory optimization.
     'max_ent_traj': 0.0,
     # Flag if we estimate the demo distribution empirically.
-    'demo_distr_empest': False,
+    'demo_distr_empest': True,
     # Flag if the algorithm is using IOC
     'ioc': None,  # ICML, MPF, IOCGAN, XENTGAN
     # Flag if the algorithm is learning from prior experience
@@ -37,7 +37,7 @@ ALG = {
     # initial policy variance multiplier.
     'init_var_mult': 1.0,
     # verbose when generating demos.
-    "demo_verbose": False,
+    "demo_verbose": True,
     # Demo condition during training.
     'demo_M': 1,
     # Number of synthetic samples used to estimate the cost.
@@ -56,6 +56,8 @@ ALG = {
     'bootstrap': False,
     # Use 3 policies.
     'multiple_policy': False,
+    # number of nn policies.
+    'num_policies': 1,
 }
 
 # Good indices.
@@ -73,7 +75,6 @@ ALG_BADMM = {
     'ent_reg_schedule': 0.0,
     'init_pol_wt': 0.01,
     'policy_sample_mode': 'add',
-    'max_policy_samples': 20,
     'exp_step_increase': 2.0,
     'exp_step_decrease': 0.5,
     'exp_step_upper': 0.5,
@@ -85,6 +86,6 @@ ALG_MDGPS = {
     # TODO: remove need for init_pol_wt in MDGPS
     'init_pol_wt': 0.01,
     'policy_sample_mode': 'add',
-    'max_policy_samples': 20,
-    'step_rule': 'classic',
+    # Whether to use 'laplace' or 'mc' cost in step adjusment
+    'step_rule': 'laplace',
 }
