@@ -17,11 +17,12 @@ import scipy.io
 
 # Add gps/python to path so that imports work.
 sys.path.append('/'.join(str.split(__file__, '/')[:-2]))
-from gps.gui.gps_training_gui import GPSTrainingGUI
+from gps.gui.gps_training_gui import GPSTrainingGUI, NUM_DEMO_PLOTS
 from gps.utility.data_logger import DataLogger
 from gps.sample.sample_list import SampleList
 from gps.utility.generate_demo import GenDemo
 from gps.utility.general_utils import disable_caffe_logs
+from gps.utility.demo_utils import eval_demos_xu
 
 
 class GPSMain(object):
@@ -53,7 +54,7 @@ class GPSMain(object):
 
         config['algorithm']['agent'] = self.agent
 
-        if 'ioc' in config['algorithm'] and config['algorithm']['ioc']:
+        if self.using_ioc():
             # demo_file = self._data_files_dir + 'demos.pkl'
             if not config['common']['nn_demo']:
                 demo_file = self._hyperparams['common']['experiment_dir'] + 'data_files/' + 'demos_LG.pkl' # for mdgps experiment
@@ -100,6 +101,7 @@ class GPSMain(object):
             if 'demo_conditions' in demos.keys() and 'failed_conditions' in demos.keys():
                 self.algorithm.demo_conditions = demos['demo_conditions']
                 self.algorithm.failed_conditions = demos['failed_conditions']
+
         else:
             self.algorithm = config['algorithm']['type'](config['algorithm'])
 
@@ -145,6 +147,7 @@ class GPSMain(object):
                 self._log_data(itr, traj_sample_lists, pol_sample_lists)
             else:
                 self._log_data(itr, traj_sample_lists)
+
         self._end()
         return None
 
@@ -362,10 +365,21 @@ class GPSMain(object):
             pol_sample_lists: policy samples as SampleList object
         Returns: None
         """
+
+        if self.using_ioc():
+            demo_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.cost, n=NUM_DEMO_PLOTS)
+            sample_losses = self.algorithm.cur[0].cs
+            if sample_losses is None:
+                sample_losses = self.algorithm.prev[0].cs
+            assert sample_losses.shape[0] >= NUM_DEMO_PLOTS
+        else:
+            demo_losses = None
+            sample_losses = None
+
         if self.gui:
             self.gui.set_status_text('Logging data and updating GUI.')
             self.gui.update(itr, self.algorithm, self.agent,
-                traj_sample_lists, pol_sample_lists)
+                traj_sample_lists, pol_sample_lists, ioc_demo_losses=demo_losses, ioc_sample_losses=sample_losses)
             self.gui.save_figure(
                 self._data_files_dir + ('figure_itr_%02d.png' % itr)
             )
@@ -395,6 +409,9 @@ class GPSMain(object):
             if self._quit_on_end:
                 # Quit automatically (for running sequential expts)
                 os._exit(1)
+
+    def using_ioc(self):
+        return 'ioc' in self._hyperparams['algorithm'] and self._hyperparams['algorithm']['ioc']
 
     def compare_samples(self, N, agent_config, itr):
         from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
