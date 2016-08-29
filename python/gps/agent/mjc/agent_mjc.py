@@ -15,7 +15,7 @@ from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
         END_EFFECTOR_POINT_VELOCITIES_NO_TARGET
 
 from gps.sample.sample import Sample
-#from gps.utility.general_utils import sample_params
+from gps.utility.general_utils import sample_params
 
 class AgentMuJoCo(Agent):
     """
@@ -137,7 +137,6 @@ class AgentMuJoCo(Agent):
         """
         # Create new sample, populate first time step.
         new_sample = self._init_sample(condition)
-
         mj_X = self._hyperparams['x0'][condition]
         U = np.zeros([self.T, self.dU])
         if self._hyperparams['record_reward']:
