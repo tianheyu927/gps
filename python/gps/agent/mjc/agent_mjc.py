@@ -136,6 +136,7 @@ class AgentMuJoCo(Agent):
             noisy: Whether or not to use noise during sampling.
         """
         # Create new sample, populate first time step.
+        new_sample = self._init_sample(condition)
         mj_X = self._hyperparams['x0'][condition]
         U = np.zeros([self.T, self.dU])
         if noisy:

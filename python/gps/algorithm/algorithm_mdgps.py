@@ -33,13 +33,12 @@ class AlgorithmMDGPS(Algorithm):
             self.cur[m].pol_info = PolicyInfo(self._hyperparams)
             self.cur[m].pol_info.policy_prior = \
                     policy_prior['type'](policy_prior)
-
+        self.num_policies = self._hyperparams['num_policies']
         if not self._hyperparams['multiple_policy']:
             self.policy_opt = self._hyperparams['policy_opt']['type'](
                 self._hyperparams['policy_opt'], self.dO, self.dU
             )
         else:
-            self.num_policies = self._hyperparams['num_policies']
             self.policy_opts = [self._hyperparams['policy_opt'][i]['type'](
                 self._hyperparams['policy_opt'][i], self.dO, self.dU
             ) for i in xrange(self.num_policies)]
@@ -58,7 +57,6 @@ class AlgorithmMDGPS(Algorithm):
         if not self._hyperparams['learning_from_prior']:
             for m in range(self.M):
                 self.cur[m].sample_list = sample_lists[m]
-                self._eval_cost(m)
                 prev_samples = self.sample_list[m].get_samples()
                 prev_samples.extend(sample_lists[m].get_samples())
                 self.sample_list[m] = SampleList(prev_samples)
@@ -74,7 +72,6 @@ class AlgorithmMDGPS(Algorithm):
                 self.dists_to_target[itr].append(sum(dists) / len(cur_samples))
                 if not self._hyperparams['bootstrap']:
                     self.cur[m].sample_list = sample_lists[m]
-                    self._eval_cost(m)
                     prev_samples = self.sample_list[m].get_samples()
                     prev_samples.extend(sample_lists[m].get_samples())
                     self.sample_list[m] = SampleList(prev_samples)
@@ -89,7 +86,6 @@ class AlgorithmMDGPS(Algorithm):
                         else:
                             failed_samples.append(cur_samples[j])
                     self.cur[m].sample_list = SampleList(failed_samples)
-                    self._eval_cost(m)
                     prev_samples = self.sample_list[m].get_samples()
                     prev_samples.extend(SampleList(failed_samples))
                     self.sample_list[m] = SampleList(prev_samples)
@@ -126,6 +122,7 @@ class AlgorithmMDGPS(Algorithm):
         # Update policy linearizations.
         for m in range(self.M):
             self._update_policy_fit(m)
+            self._eval_cost(m)
 
         # C-step
         if self.iteration_count > 0:
@@ -231,7 +228,7 @@ class AlgorithmMDGPS(Algorithm):
         # Fit linearization and store in pol_info.
         pol_info.pol_K, pol_info.pol_k, pol_info.pol_S = \
                 policy_prior.fit(X, pol_mu, pol_sig)
-        if self._hyperparams['multiple_policy']:
+        if not self._hyperparams['multiple_policy']:
             pol_mu, pol_sig = self.policy_opt.prob(obs)[:2]
         else:
             pol_mu, pol_sig = self.policy_opts[pol_idx].prob(obs)[:2]
@@ -298,11 +295,16 @@ class AlgorithmMDGPS(Algorithm):
         cur_laplace = np.arange(self.M)
         cur_mc = np.arange(self.M)
         for m in range(self.M):
+            if self.hyperparams['ioc']:
+                self._eval_cost(m, prev_cost=True)
+                traj_info = self.cur[m].prevcost_traj_info
+            else:
+                traj_info = self.cur[m].traj_info
             cur_nn = self.cur[m].pol_info.traj_distr()
             # This is the actual cost we have under the current trajectory
             # based on the latest samples.
             cur_laplace[m] = self.traj_opt.estimate_cost(
-                    cur_nn, self.cur[m].traj_info
+                    cur_nn, traj_info
             ).sum()
             cur_mc[m] = self.cur[m].cs.mean(axis=0).sum()
 
