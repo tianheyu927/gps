@@ -12,6 +12,7 @@ class IterationData(BundleType):
             'sample_list': None,  # List of samples for the current iteration.
             'syn_sample_list': None,  # List of synthetic samples
             'traj_info': None,  # Current TrajectoryInfo object.
+            'prevcost_traj_info': None, # Current TrajectoryInfo object using previous IOC cost.
             'pol_info': None,  # Current PolicyInfo object.
             'traj_distr': None,  # Initial trajectory distribution.
             'new_traj_distr': None, # Updated trajectory distribution.
