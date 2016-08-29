@@ -7,10 +7,15 @@ mpl.use('Qt4Agg')
 import sys
 import os
 import os.path
+import logging
 import copy
+import argparse
+import time
+import threading
 import numpy as np
 import scipy as sp
-import pickle
+import scipy.io
+import numpy.matlib
 import random
 from random import shuffle
 
@@ -25,7 +30,6 @@ from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
 		END_EFFECTOR_POINT_JACOBIANS, ACTION, RGB_IMAGE, RGB_IMAGE_SIZE, \
 		CONTEXT_IMAGE, CONTEXT_IMAGE_SIZE
 from gps.algorithm.policy.lin_gauss_policy import LinearGaussianPolicy  # Maybe useful if we unpickle the file as controllers
-
 
 class GenDemo(object):
 	""" Generator of demos. """
@@ -52,9 +56,8 @@ class GenDemo(object):
 		 Generate demos and save them in a file for experiment.
 		 Returns: None.
 		"""
-		return
-		M = self._hyperparams['demo_agent']['conditions']
-		N = self._hyperparams['algorithm']['num_demos']
+		# Load the algorithm
+		import pickle
 
 		algorithm_file = self._algorithm_files_dir # This should give us the optimal controller. Maybe set to 'controller_itr_%02d.pkl' % itr_load will be better?
 		# algorithm_file = self._exp_dir
@@ -76,7 +79,6 @@ class GenDemo(object):
 			self._learning = self._hyperparams['algorithm']['learning_from_prior'] # if the experiment is learning from prior experience
 		else:
 			self._learning = False
-
 		agent_config = self._hyperparams['demo_agent']
 		if agent_config['type']==AgentMuJoCo and agent_config['filename'] == './mjc_models/pr2_arm3d.xml' and not self._learning:
 			agent_config['x0'] = self.algorithm._hyperparams['agent_x0']
@@ -90,23 +92,26 @@ class GenDemo(object):
 		# T = self.algorithms[0].T
 		demos = []
 
+		M = agent_config['conditions']
+		N = self._hyperparams['algorithm']['num_demos']
+		sampled_demo_conds = [random.randint(0, M-1) for i in xrange(M)]
+		sampled_demos = []
 		if not self._learning:
+			controllers = {}
+
 			# Store each controller under M conditions into controllers.
-			for cond in xrange(M):
-
-				agent_config = self._hyperparams['demo_agent']
-				agent_config.update(self.algorithm._hyperparams['agent_params'])
-				agent = agent_config['type'](agent_config)
-
-				controller = copy.copy(self.algorithm.cur[cond].traj_distr)
+			for i in xrange(M):
+				controllers[i] = self.algorithm.cur[i].traj_distr
+			controllers_var = copy.copy(controllers)
+			for i in xrange(M):
 
 				# Increase controller variance.
-				controller.chol_pol_covar *= var_mult
+				controllers_var[i].chol_pol_covar *= var_mult
 				# Gather demos.
 				for j in xrange(N):
-					demo = agent.sample(
-						controller, cond,
-						verbose=(cond < self.algorithm._hyperparams['demo_verbose']),
+					demo = self.agent.sample(
+						controllers_var[i], i,
+						verbose=(i < self.algorithm._hyperparams['demo_verbose']),
 						save = True
 					)
 					demos.append(demo)
