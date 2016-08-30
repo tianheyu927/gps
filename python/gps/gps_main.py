@@ -119,11 +119,11 @@ class GPSMain(object):
 
         itr_start = self._initialize(itr_load)
         for itr in range(itr_start, self._hyperparams['iterations']):
-            if self.agent._hyperparams['randomly_sample_x0']:
+            if 'randomly_sample_x0' in self.agent._hyperparams and self.agent._hyperparams['randomly_sample_x0']:
                     for cond in self._train_idx:
                         self.agent.reset_initial_x0(cond)
 
-            if self.agent._hyperparams['randomly_sample_bodypos']:
+            if 'randomly_sample_bodypos' in self.agent._hyperparams and self.agent._hyperparams['randomly_sample_bodypos']:
                 for cond in self._train_idx:
                     self.agent.reset_initial_body_offset(cond)
             for cond in self._train_idx:
@@ -372,6 +372,7 @@ class GPSMain(object):
             if sample_losses is None:
                 sample_losses = self.algorithm.prev[0].cs
             assert sample_losses.shape[0] >= NUM_DEMO_PLOTS
+            sample_losses = sample_losses[:NUM_DEMO_PLOTS]
         else:
             demo_losses = None
             sample_losses = None

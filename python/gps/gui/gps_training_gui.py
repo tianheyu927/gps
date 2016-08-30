@@ -91,7 +91,7 @@ class GPSTrainingGUI(object):
         self._gs_status_output          = self._gs[2:3,  0:4]
         self._gs_cost_plotter           = self._gs[1:3,  4:8]
         self._gs_gt_cost_plotter        = self._gs[4:6,  4:8]
-        self._gs_demo_cost_plotter      = self._gs[6:8,  4:8]
+        self._gs_demo_cost_plotter      = self._gs[7:9,  4:8]
         self._gs_algthm_output          = self._gs[3:9,  0:4]
         if config['image_on']:
             self._gs_traj_visualizer    = self._gs[9:16, 0:4]

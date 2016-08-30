@@ -52,7 +52,7 @@ common = {
     'data_files_dir': EXP_DIR + 'data_files/',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
-    'conditions': 3,
+    'conditions': 1,
 }
 
 # TODO(chelsea/zoe) : Move this code to a utility function
@@ -118,7 +118,7 @@ agent = {
 algorithm = {
     'type': AlgorithmTrajOpt,
     'conditions': common['conditions'],
-    'iterations': 10,
+    'iterations': 15,
 }
 
 algorithm['init_traj_distr'] = {
