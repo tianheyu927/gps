@@ -16,6 +16,8 @@ from gps.algorithm.algorithm_mdgps import AlgorithmMDGPS
 
 LOGGER = logging.getLogger(__name__)
 
+MAX_ETA = 1e16
+
 class TrajOptLQRPython(TrajOpt):
     """ LQR trajectory optimization, Python implementation. """
     def __init__(self, hyperparams):
@@ -44,13 +46,13 @@ class TrajOptLQRPython(TrajOpt):
 
         # We assume at min_eta, kl_div > kl_step, opposite for max_eta.
         min_eta = self._hyperparams['min_eta']
-
-        max_eta = self._hyperparams['max_eta']
+        max_eta = MAX_ETA
+        #import pdb; pdb.set_trace()
 
         LOGGER.debug("Running DGD for trajectory %d, eta: %f", m, eta)
         for itr in range(DGD_MAX_ITER):
-            LOGGER.debug("Iteration %i, bracket: (%.2e , %.2e , %.2e)",
-                    itr, min_eta, eta, max_eta)
+            LOGGER.debug("Iteration %i, bracket: (%f %f)",
+                    itr, min_eta, max_eta)
 
             # Run fwd/bwd pass, note that eta may be updated.
             # NOTE: we can just ignore case when the new eta is larger.
@@ -65,25 +67,19 @@ class TrajOptLQRPython(TrajOpt):
 
             # Convergence check - constraint satisfaction.
             if (abs(con) < 0.1*kl_step):
-                LOGGER.debug("KL: %f / %f, converged iteration %i",
-                        kl_div, kl_step, itr)
+                LOGGER.debug("Iteration %i, KL: %f / %f, eta: %f",
+                        itr, kl_div, kl_step, eta)
                 break
 
-            # Choose new eta (bisect bracket or multiply by constant)
-            if con < 0: # Eta was too big.
-                max_eta = eta
-                geom = np.sqrt(min_eta*max_eta)  # Geometric mean.
-                new_eta = max(geom, 0.1*max_eta)
-                LOGGER.debug("KL: %f / %f, eta too big, new eta: %f",
-                        kl_div, kl_step, new_eta)
-            else: # Eta was too small.
+            # Otherwise bisect with geometric mean.
+            if con > 0: # Eta was too small
                 min_eta = eta
-                geom = np.sqrt(min_eta*max_eta)  # Geometric mean.
-                new_eta = min(geom, 10.0*min_eta)
-                LOGGER.debug("KL: %f / %f, eta too small, new eta: %f",
-                        kl_div, kl_step, new_eta)
+            else: # Eta was too big
+                max_eta = eta
+            new_eta = np.sqrt(min_eta*max_eta)
 
-            # Logarithmic mean: log_mean(x,y) = (y - x)/(log(y) - log(x))
+            LOGGER.debug("Iteration %i, KL: %f / %f, eta: %f -> %f",
+                    itr, kl_div, kl_step, eta, new_eta)
             eta = new_eta
 
         if kl_div > kl_step and abs(kl_div - kl_step) > 0.1*kl_step:

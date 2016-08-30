@@ -73,7 +73,7 @@ algorithm = {
     'conditions': common['conditions'],
     'iterations': 12,
     'kl_step': 1.0,
-    'min_step_mult': 0.5,
+    'min_step_mult': 0.05,
     'max_step_mult': 3.0,
     'policy_sample_mode': 'replace',
 }

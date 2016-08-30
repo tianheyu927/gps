@@ -21,8 +21,10 @@ class DynamicsLR(Dynamics):
         """ Return the dynamics prior, or None if constant prior. """
         return None
 
-    def fit(self, X, U):
+    def fit(self, sample_list):
         """ Fit dynamics. """
+        X = sample_list.get_X()  # Use all samples to fit dynamics.
+        U = sample_list.get_U()
         N, T, dX = X.shape
         dU = U.shape[2]
 
@@ -39,11 +41,11 @@ class DynamicsLR(Dynamics):
         for t in range(T - 1):
             xux = np.c_[X[:, t, :], U[:, t, :], X[:, t+1, :]]
             xux_mean = np.mean(xux, axis=0)
-            empsig = (xux - xux_mean).T.dot(xux - xux_mean) / N
+            empsig = (xux - xux_mean).T.dot(xux - xux_mean) / (N)
             sigma = 0.5 * (empsig + empsig.T)
-            sigma[it, it] += self._hyperparams['regularization']
+            sigma[it, it] += self._hyperparams['regularization'] * np.eye(dX+dU)
 
-            Fm = np.linalg.solve(sigma[it, it], sigma[it, ip]).T
+            Fm = np.linalg.pinv(sigma[it, it]).dot(sigma[it, ip]).T
             fv = xux_mean[ip] - Fm.dot(xux_mean[it])
 
             self.Fm[t, :, :] = Fm
@@ -51,4 +53,3 @@ class DynamicsLR(Dynamics):
 
             dyn_covar = sigma[ip, ip] - Fm.dot(sigma[it, it]).dot(Fm.T)
             self.dyn_covar[t, :, :] = 0.5 * (dyn_covar + dyn_covar.T)
-        return self.Fm, self.fv, self.dyn_covar
