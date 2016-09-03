@@ -34,13 +34,12 @@ class AlgorithmMDGPS(Algorithm):
             policy_prior = self._hyperparams['policy_prior']
             self.cur[m].pol_info.policy_prior = \
                     policy_prior['type'](policy_prior)
-
+        self.num_policies = self._hyperparams['num_policies']
         if not self._hyperparams['multiple_policy']:
             self.policy_opt = self._hyperparams['policy_opt']['type'](
                 self._hyperparams['policy_opt'], self.dO, self.dU
             )
         else:
-            self.num_policies = self._hyperparams['num_policies']
             self.policy_opts = [self._hyperparams['policy_opt'][i]['type'](
                 self._hyperparams['policy_opt'][i], self.dO, self.dU
             ) for i in xrange(self.num_policies)]

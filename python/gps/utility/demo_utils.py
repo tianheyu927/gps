@@ -3,12 +3,12 @@ import numpy as np
 import copy
 import numpy.matlib
 import random
-from gps.sample.sample import Sample
 
 from gps.sample.sample import Sample
 from gps.sample.sample_list import SampleList
 from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
 from gps.utility.general_utils import flatten_lists
+from gps.utility.data_logger import DataLogger
 
 
 def generate_pos_body_offset(conditions):
@@ -45,6 +45,7 @@ def xu_to_sample_list(agent, X, U):
 		sample.set_XU(X[demo_idx], U[demo_idx])
 		samples.append(sample)
 	return SampleList(samples)
+
 
 def eval_demos(agent, demo_file, costfn, n=10):
 	demos = DataLogger.unpickle(demo_file)
@@ -88,3 +89,4 @@ def compute_distance_cost_plot_xu(algorithm, agent, X, U):
     dists = compute_distance(algorithm, sample_list)
     costs = eval_demos_xu(agent, sample_list.get_X(), sample_list.get_U(), algorithm.cost)
     return flatten_lists(dists), flatten_lists(costs)
+

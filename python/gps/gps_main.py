@@ -101,6 +101,7 @@ class GPSMain(object):
             if 'demo_conditions' in demos.keys() and 'failed_conditions' in demos.keys():
                 self.algorithm.demo_conditions = demos['demo_conditions']
                 self.algorithm.failed_conditions = demos['failed_conditions']
+
         else:
             self.algorithm = config['algorithm']['type'](config['algorithm'])
 
@@ -363,8 +364,6 @@ class GPSMain(object):
         """
 
         if self.using_ioc():
-            demo_sample_list = None  # TODO
-
             # Produce time vs cost plots
             demo_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.cost, n=NUM_DEMO_PLOTS)
             sample_losses = self.algorithm.cur[0].cs
@@ -382,6 +381,8 @@ class GPSMain(object):
             sample_losses = None
             dists_vs_costs = None
             demo_dists_vs_costs = None
+            demo_losses = None
+            sample_losses = None
 
         if self.gui:
             self.gui.set_status_text('Logging data and updating GUI.')
