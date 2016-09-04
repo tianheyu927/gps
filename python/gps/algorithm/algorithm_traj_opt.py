@@ -121,7 +121,9 @@ class AlgorithmTrajOpt(Algorithm):
         # Compute actual objective values based on the samples.
         previous_mc_obj = np.mean(np.sum(self.prev[m].cs, axis=1), axis=0)
         if(self._hyperparams['ioc']):
+            cur_mc_obj = np.mean(np.sum(self.cur[m].cs, axis=1), axis=0)
             new_mc_obj = np.mean(np.sum(self.cur[m].prevcost_cs, axis=1), axis=0)
+            LOGGER.debug("IOC: Prev cost: %f, Cur cost: %f" % (cur_mc_obj, new_mc_obj))
         else:
             new_mc_obj = np.mean(np.sum(self.cur[m].cs, axis=1), axis=0)
 

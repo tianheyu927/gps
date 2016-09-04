@@ -12,6 +12,7 @@ from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.cost.cost_sum import CostSum
 from gps.algorithm.cost.cost_ioc_nn import CostIOCNN
+from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, evall1l2term
 from gps.algorithm.dynamics.dynamics_lr_prior import DynamicsLRPrior
 from gps.algorithm.dynamics.dynamics_prior_gmm import DynamicsPriorGMM
 from gps.algorithm.traj_opt.traj_opt_lqr_python import TrajOptLQRPython
@@ -47,7 +48,7 @@ common = {
     #'demo_controller_file': [DEMO_DIR + '%d/' % i + 'data_files/algorithm_itr_11.pkl' for i in xrange(4)],
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
-    'conditions': 1,
+    'conditions': 10,
     'nn_demo': False,
 }
 
@@ -57,15 +58,15 @@ if not os.path.exists(common['data_files_dir']):
 agent = {
     'type': AgentMuJoCo,
     'filename': './mjc_models/pr2_arm3d.xml',
-    'x0': np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
-                          np.zeros(7)]),
+    'x0': generate_x0(np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
+                      np.zeros(7)]), common['conditions']),
     'dt': 0.05,
     'substeps': 5,
     'conditions': common['conditions'],
-    'pos_body_idx': np.array([1]),
+    'pos_body_idx': generate_pos_idx(common['conditions']),
     # 'pos_body_offset': [np.array([0, 0.2, 0]), np.array([0, 0.1, 0]),
     #                     np.array([0, -0.1, 0]), np.array([0, -0.2, 0])],
-    'pos_body_offset': [np.array([0.0, 0.02, 0])],
+    'pos_body_offset': generate_pos_body_offset(common['conditions']),
     #'pos_body_offset': [np.array([-0.08, -0.08, 0]), np.array([-0.08, 0.08, 0]),
     #                    np.array([0.08, 0.08, 0]), np.array([0.08, -0.08, 0])],
     'T': 100,
@@ -81,14 +82,14 @@ demo_agent = {
     'type': AgentMuJoCo,
     'filename': './mjc_models/pr2_arm3d.xml',
     'x0': generate_x0(np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
-                      np.zeros(7)]), 40),
+                      np.zeros(7)]), common['conditions']),
     'dt': 0.05,
     'substeps': 5,
-    'conditions': 40,
-    'pos_body_idx': generate_pos_idx(40),
+    'conditions': common['conditions'],
+    'pos_body_idx': generate_pos_idx(common['conditions']),
     # 'pos_body_offset': [np.array([0, 0.2, 0]), np.array([0, 0.1, 0]),
     #                     np.array([0, -0.1, 0]), np.array([0, -0.2, 0])],
-    'pos_body_offset': generate_pos_body_offset(40),
+    'pos_body_offset': generate_pos_body_offset(common['conditions']),
     'T': 100,
     'sensor_dims': SENSOR_DIMS,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
@@ -106,16 +107,16 @@ algorithm = {
     'type': AlgorithmTrajOpt,
     'ioc' : 'ICML',
     'conditions': common['conditions'],
-    'learning_from_prior': True,
+    #'learning_from_prior': True,
     'demo_var_mult': 5.0,
     'kl_step': 0.5,
     'max_step_mult': 2.0,
     'min_step_mult': 0.01,
-    'max_ent_traj': 1.0,
+    #'max_ent_traj': 1.0,
     'demo_distr_empest': True,
     # 'demo_cond': 15,
     # 'demo_cond': 25,
-    'num_demos': 1,
+    'num_demos': 20,
     'iterations': 20,
     'synthetic_cost_samples': 100,
     'target_end_effector': np.array([0.0, 0.3, -0.5, 0.0, 0.3, -0.2]),
@@ -146,6 +147,7 @@ fk_cost = {
     'l1': 0.1,
     'l2': 10.0,
     'alpha': 1e-5,
+    'evalnorm': evall1l2term
 }
 
 algorithm['gt_cost'] = {

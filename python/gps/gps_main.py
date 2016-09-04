@@ -68,7 +68,6 @@ class GPSMain(object):
             if demos is None:
               self.demo_gen = GenDemo(config)
               self.demo_gen.generate()
-              demo_file = self._data_files_dir + 'demos.pkl'
               demos = self.data_logger.unpickle(demo_file)
             config['algorithm']['init_traj_distr']['init_demo_x'] = np.mean(demos['demoX'], 0)
             config['algorithm']['init_traj_distr']['init_demo_u'] = np.mean(demos['demoU'], 0)
