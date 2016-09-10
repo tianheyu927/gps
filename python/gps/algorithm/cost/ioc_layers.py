@@ -88,7 +88,7 @@ class GaussianProcessPriors(caffe.Layer):
 
         # Normalize self._Y (costs)
         self._Y -= np.mean(self._Y)
-        self._cost_std = np.std(self._Y)
+        self._cost_std = 1.0 #np.std(self._Y)
         self._Y /= self._cost_std
 
         # Compute the kernel matrix

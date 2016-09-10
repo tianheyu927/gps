@@ -54,13 +54,20 @@ PR2_GAINS = np.array([1.0, 1.0])
 
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
-DEMO_DIR = BASE_DIR + '/../experiments/reacher_'
+DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
 
 CONDITIONS = 1
+DEMO_CONDITIONS = 20
+
 np.random.seed(13)
 pos_body_offset = []
-for _ in range(CONDITIONS):
-    pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1, 0]))
+pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+#for _ in range(CONDITIONS):
+#    pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1, 0]))
+
+demo_pos_body_offset = []
+for _ in range(DEMO_CONDITIONS):
+    demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -70,8 +77,7 @@ common = {
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
-    'demo_controller_file': [DEMO_DIR + 'data_files/algorithm_itr_9.pkl'],
-    'demo_conditions': 9,
+    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_14.pkl',
     'conditions': CONDITIONS,
     'nn_demo': False,
 }
@@ -107,10 +113,10 @@ demo_agent = {
     'x0': np.zeros(4),
     'dt': 0.05,
     'substeps': 5,
-    'pos_body_offset': pos_body_offset,
+    'pos_body_offset': demo_pos_body_offset,
     'pos_body_idx': np.array([4]),
-    'conditions': common['demo_conditions'],
-    'T': 50,
+    'conditions': DEMO_CONDITIONS,
+    'T': agent['T'],
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
                       END_EFFECTOR_POINT_VELOCITIES],
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
@@ -125,15 +131,17 @@ demo_agent = {
 
 algorithm = {
     'type': AlgorithmTrajOpt,
-    'ioc' : 'MPF',
+    'ioc' : 'ICML',
     'max_ent_traj': 1.0,
     'conditions': common['conditions'],
-    'iterations': 12,
     'kl_step': 0.5,
     'min_step_mult': 0.05,
-    'max_step_mult': 4.0,
-    'demo_cond': 9,
+    'max_step_mult': 2.0,
+    'num_demos': 20,
+    'demo_var_mult': 1.0,
+    'synthetic_cost_samples': 100,
     'policy_sample_mode': 'replace',
+    'iterations': 25,
     'plot_dir': EXP_DIR,
 }
 
@@ -162,20 +170,31 @@ algorithm = {
 #    'iterations': 100,
 #    'weights_file_prefix': EXP_DIR + 'policy',
 #}
-
-
 algorithm['init_traj_distr'] = {
-    'type': init_demo,
-    'init_gains':  1.0 / PR2_GAINS,
+    'type': init_lqr,
+    'init_gains':  100.0 * np.ones(SENSOR_DIMS[ACTION]),
     'init_acc': np.zeros(SENSOR_DIMS[ACTION]),
     'init_var': 5.0,
-    'stiffness': 1.0,
+    'stiffness': 0.5,
     'stiffness_vel': 0.5,
-    'final_weight': 50.0,
+    'final_weight': 0.5,
     'dt': agent['dt'],
     'T': agent['T'],
 }
 
+#algorithm['init_traj_distr'] = {
+##    'type': init_demo,
+#    'init_gains':  1.0 / PR2_GAINS,
+#    'init_acc': np.zeros(SENSOR_DIMS[ACTION]),
+#    'init_var': 5.0,
+#    'stiffness': 1.0,
+#    'stiffness_vel': 0.5,
+#    'final_weight': 50.0,
+#    'dt': agent['dt'],
+#    'T': agent['T'],
+#}
+
+PR2_GAINS = np.array([1.0, 1.0])
 torque_cost_1 = [{
     'type': CostAction,
     'wu': 1 / PR2_GAINS,
@@ -185,27 +204,29 @@ fk_cost_1 = [{
     'type': CostFK,
     'target_end_effector': np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])]),
     'wp': np.array([1, 1, 1, 0, 0, 0]),
-    'l1': 1.0,
-    'l2': 0.0,
-    'alpha': 0,
+    'l1': 0.1,
+    'l2': 10.0,
+    'alpha': 1e-5,
     'evalnorm': evall1l2term,
 } for i in range(common['conditions'])]
 
 algorithm['gt_cost'] = [{
     'type': CostSum,
     'costs': [torque_cost_1[i], fk_cost_1[i]],
-    'weights': [2.0, 1.0],
-}  for i in range(common['conditions'])]
+    'weights': [200.0, 100.0],
+}  for i in range(common['conditions'])][0]
 
 algorithm['cost'] = {  # TODO - make vision cost and emp. est derivatives
     'type': CostIOCNN,
-    'wu': 2 / PR2_GAINS,
-    'T': 100,
-    'dO': 26,
+    'wu': 200 / PR2_GAINS,
+    'T': agent['T'],
+    'dO': 16,
     'iterations': 5000,
     'demo_batch_size': 5,
     'sample_batch_size': 5,
     'ioc_loss': algorithm['ioc'],
+    'smooth_reg_weight': 1.0,
+    'mono_reg_weight': 0.0,
 }
 
 algorithm['dynamics'] = {
@@ -221,6 +242,8 @@ algorithm['dynamics'] = {
 
 algorithm['traj_opt'] = {
     'type': TrajOptLQRPython,
+    'min_eta': 1e-4,
+    'max_eta': 1.0,
 }
 
 
@@ -230,13 +253,14 @@ config = {
     'iterations': algorithm['iterations'],
     'num_samples': NUM_SAMPLES,
     'verbose_trials': NUM_SAMPLES,
-    'verbose_policy_trials': 1,
+    'verbose_policy_trials': 0,
     'common': common,
     'agent': agent,
     'demo_agent': demo_agent,
     'gui_on': True,
     'algorithm': algorithm,
     'conditions': common['conditions'],
+    'random_seed': 1,
 }
 
 common['info'] = generate_experiment_info(config)

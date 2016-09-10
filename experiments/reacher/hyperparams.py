@@ -117,7 +117,7 @@ fk_cost_1 = [{
     'target_end_effector': np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])]),
     'wp': np.array([1, 1, 1, 0, 0, 0]),
     'l1': 0.1,
-    'l2': 10.0,
+    'l2': 10.0,  # set this to 0 for huber los
     'alpha': 1e-5,
     'evalnorm': evall1l2term,
 } for i in range(common['conditions'])]

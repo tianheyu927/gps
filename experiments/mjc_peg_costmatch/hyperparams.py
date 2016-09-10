@@ -17,7 +17,6 @@ from gps.algorithm.dynamics.dynamics_prior_gmm import DynamicsPriorGMM
 from gps.algorithm.traj_opt.traj_opt_lqr_python import TrajOptLQRPython
 from gps.algorithm.policy.lin_gauss_init import init_demo, init_lqr
 from gps.utility.demo_utils import generate_pos_body_offset, generate_x0, generate_pos_idx
-from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
         END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, ACTION
 from gps.gui.config import generate_experiment_info
@@ -30,12 +29,10 @@ SENSOR_DIMS = {
     ACTION: 7,
 }
 
-DEMO_CONDITIONS = 25
-
 PR2_GAINS = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 
 BASE_DIR = '/'.join(str.split(gps_filepath, '/')[:-2])
-EXP_DIR = BASE_DIR + '/../experiments/mjc_peg_ioc_example/'
+EXP_DIR = BASE_DIR + '/../experiments/mjc_peg_costmatch/'
 DEMO_DIR = BASE_DIR + '/../experiments/mjc_peg_example/'
 #DEMO_DIR = BASE_DIR + '/../experiments/mjc_badmm_example_'
 
@@ -47,6 +44,7 @@ common = {
     'data_files_dir': EXP_DIR + 'data_files/',
     #'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_09.pkl',
     'demo_controller_file': DEMO_DIR + 'data_files_nn_ICML_random_cond_0/algorithm_itr_09.pkl',
+    'gt_cost_samples': DEMO_DIR + 'data_files/traj*samp*.pkl',
     'demo_exp_dir': DEMO_DIR,
     #'demo_controller_file': [DEMO_DIR + '%d/' % i + 'data_files/algorithm_itr_11.pkl' for i in xrange(4)],
     'target_filename': EXP_DIR + 'target.npz',
@@ -60,7 +58,7 @@ if not os.path.exists(common['data_files_dir']):
 
 agent = {
     'type': AgentMuJoCo,
-    'filename': './mjc_models/pr2_arm3d.xml',
+    'filename': './mjc_models/pr2_arm3d_no_table.xml',
     'x0': np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
                           np.zeros(7)]),
     'dt': 0.05,
@@ -85,14 +83,14 @@ demo_agent = {
     'type': AgentMuJoCo,
     'filename': './mjc_models/pr2_arm3d.xml',
     'x0': generate_x0(np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
-                      np.zeros(7)]), DEMO_CONDITIONS),
+                      np.zeros(7)]), 25),
     'dt': 0.05,
     'substeps': 5,
-    'conditions': DEMO_CONDITIONS,
-    'pos_body_idx': generate_pos_idx(DEMO_CONDITIONS),
+    'conditions': 25,
+    'pos_body_idx': generate_pos_idx(25),
     # 'pos_body_offset': [np.array([0, 0.2, 0]), np.array([0, 0.1, 0]),
     #                     np.array([0, -0.1, 0]), np.array([0, -0.2, 0])],
-    'pos_body_offset': generate_pos_body_offset(DEMO_CONDITIONS),
+    'pos_body_offset': generate_pos_body_offset(25),
     'T': 100,
     'sensor_dims': SENSOR_DIMS,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
@@ -108,7 +106,7 @@ demo_agent = {
 
 algorithm = {
     'type': AlgorithmTrajOpt,
-    'ioc' : 'ICML',
+    'ioc' : 'SUPERVISED',
     'conditions': common['conditions'],
     'learning_from_prior': False,
     'demo_var_mult': 1.0, #5.0,
@@ -161,7 +159,6 @@ fk_cost = {
     'l1': 0.1,
     'l2': 10.0,
     'alpha': 1e-5,
-    'evalnorm': evall1l2term,
 }
 
 algorithm['gt_cost'] = {
@@ -179,10 +176,9 @@ algorithm['cost'] = {
     'demo_batch_size': 5,
     'sample_batch_size': 5,
     'ioc_loss': algorithm['ioc'],
-    'learn_wu': False,  # set to true to learn torque penalty
-    'smooth_reg_weight': 1.0,
-    'mono_reg_weight': 0.0,
-    'gp_reg_weight': 0.0,
+    'learn_wu': False,
+    'smooth_reg_weight': 0.1,
+    'mono_reg_weight': 100.0,
 }
 
 # algorithm['gt_cost'] = {

@@ -660,7 +660,8 @@ def construct_fp_cost_net(num_hidden=1, dim_hidden=None, dim_input=27, T=100,
         ### END compute normalization factor of slowness cost (std of c) ###
 
 
-        n.smooth_reg = L.EuclideanLoss(n.slope_next_normed, n.slope_prev_normed, loss_weight=smooth_reg_weight)
+        #n.smooth_reg = L.EuclideanLoss(n.slope_next_normed, n.slope_prev_normed, loss_weight=smooth_reg_weight)
+        n.smooth_reg = L.EuclideanLoss(n.slope_next, n.slope_prev, loss_weight=smooth_reg_weight)
 
         n.demo_slope, _ = L.Slice(n.slope_next, axis=0, slice_point=demo_batch_size, ntop=2)
         n.demo_slope_reshape = L.Reshape(n.demo_slope, shape=dict(dim=[-1,1]))
