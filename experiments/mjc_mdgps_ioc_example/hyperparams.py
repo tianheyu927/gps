@@ -40,10 +40,10 @@ PR2_GAINS = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 BASE_DIR = '/'.join(str.split(gps_filepath, '/')[:-2])
 EXP_DIR = BASE_DIR + '/../experiments/mjc_mdgps_ioc_example/'
 # DEMO_DIR = BASE_DIR + '/../experiments/mjc_mdgps_multiple_example/on_classic/'
-DEMO_DIR = BASE_DIR + '/../experiments/mjc_mdgps_example/on_classic/'
+DEMO_DIR = BASE_DIR + '/../experiments/mjc_mdgps_example/on_policy/'
 # DEMO_DIR = BASE_DIR + '/../experiments/mjc_badmm_example_'
 LG_DIR = BASE_DIR + '/../experiments/mjc_peg_example/'
-DEMO_CONDITIONS = 70
+DEMO_CONDITIONS = 9 #70
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -53,8 +53,9 @@ common = {
     # 'demo_controller_file': [DEMO_DIR + '%d/' % i + 'data_files/algorithm_itr_11.pkl' for i in xrange(4)],
     # 'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_11.pkl',
     # 'demo_controller_file': DEMO_DIR + 'data_files_maxent_9cond_z_0.05_0/algorithm_itr_11.pkl',
-    'demo_controller_file': DEMO_DIR + 'data_files_maxent_4cond_0.05_z_0/algorithm_itr_11.pkl',
-    'LG_controller_file': LG_DIR + 'data_files/algorithm_itr_09.pkl',
+    # Chelsea experiments
+    #'demo_controller_file': DEMO_DIR + 'data_files_maxent_9cond_z_0.05_0/algorithm_itr_09.pkl',
+    'demo_controller_file': DEMO_DIR + 'data_files_maxent_9cond_z_0.05_1/algorithm_itr_08.pkl',
     'conditions': 9,
     # 'dense': True # For dense/sparse demos experiment only
     'nn_demo': True, # Use neural network demonstrations. For experiment only
@@ -68,13 +69,43 @@ agent = {
     'dt': 0.05,
     'substeps': 5,
     'conditions': common['conditions'],
-    'randomly_sample_bodypos': False,
+    'randomly_sample_bodypos': True,
     'randomly_sample_x0': False,
-    'sampling_range_bodypos': [np.array([-0.1,-0.1, 0.0]), np.array([0.1, 0.1, 0.0])], # Format is [lower_lim, upper_lim]
+    'sampling_range_bodypos': [np.array([-0.1,-0.1, -0.1]), np.array([0.1, 0.1, 0.1])], # Format is [lower_lim, upper_lim]
     'prohibited_ranges_bodypos':[[None, None, None, None]],
     'pos_body_idx': np.array([1]),
     # 'pos_body_offset': [np.array([-0.1, -0.1, 0]), np.array([-0.1, 0.1, 0]),
     #                     np.array([0.1, 0.1, 0]), np.array([0.1, -0.1, 0])],
+    #'pos_body_offset': generate_pos_body_offset(9),
+    'pos_body_offset': [np.array([-0.1, -0.1, -0.1]), np.array([-0.1, -0.1, 0.1]), np.array([-0.1, 0.1, -0.1]),
+                np.array([-0.1, 0.1, 0.1]), np.array([0, 0, 0]), np.array([0.1, -0.1, -0.1]),
+                np.array([0.1, -0.1, 0.1]), np.array([0.1, 0.1, -0.1]), np.array([0.1, 0.1, 0.1])],
+    'T': 100,
+    'sensor_dims': SENSOR_DIMS,
+    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
+                      END_EFFECTOR_POINT_VELOCITIES],
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
+                    END_EFFECTOR_POINT_VELOCITIES],
+    'camera_pos': np.array([0., 0., 2., 0., 0.2, 0.5]),
+    'target_end_effector': np.array([0.0, 0.3, -0.5, 0.0, 0.3, -0.2]),
+    'render': True,
+}
+
+demo_agent = {
+    'type': AgentMuJoCo,
+    'filename': './mjc_models/pr2_arm3d.xml',
+    #'x0': generate_x0(np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
+    #                  np.zeros(7)]), DEMO_CONDITIONS),
+    'x0': np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
+                          np.zeros(7)]),
+    'dt': 0.05,
+    'substeps': 5,
+    'conditions': DEMO_CONDITIONS,
+    #'pos_body_idx': generate_pos_idx(DEMO_CONDITIONS),
+    'pos_body_idx': np.array([1]),
+    # 'pos_body_offset': [np.array([0, 0.2, 0]), np.array([0, 0.1, 0]),
+    #                     np.array([0, -0.1, 0]), np.array([0, -0.2, 0])],
+    #'pos_body_offset': generate_pos_body_offset(DEMO_CONDITIONS),
     'pos_body_offset': [np.array([-0.05, -0.05, -0.05]), np.array([-0.05, -0.05, 0.05]), np.array([-0.05, 0.05, -0.05]),
                 np.array([-0.05, 0.05, 0.05]), np.array([0, 0, 0]), np.array([0.05, -0.05, -0.05]),
                 np.array([0.05, -0.05, 0.05]), np.array([0.05, 0.05, -0.05]), np.array([0.05, 0.05, 0.05])],
@@ -86,31 +117,10 @@ agent = {
                     END_EFFECTOR_POINT_VELOCITIES],
     'camera_pos': np.array([0., 0., 2., 0., 0.2, 0.5]),
     'target_end_effector': np.array([0.0, 0.3, -0.5, 0.0, 0.3, -0.2]),
-}
-
-demo_agent = {
-    'type': AgentMuJoCo,
-    'filename': './mjc_models/pr2_arm3d.xml',
-    'x0': generate_x0(np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
-                      np.zeros(7)]), DEMO_CONDITIONS),
-    'dt': 0.05,
-    'substeps': 5,
-    'conditions': DEMO_CONDITIONS,
-    'pos_body_idx': generate_pos_idx(DEMO_CONDITIONS),
-    # 'pos_body_offset': [np.array([0, 0.2, 0]), np.array([0, 0.1, 0]),
-    #                     np.array([0, -0.1, 0]), np.array([0, -0.2, 0])],
-    'pos_body_offset': generate_pos_body_offset(DEMO_CONDITIONS),
-    'T': 100,
-    'sensor_dims': SENSOR_DIMS,
-    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
-                      END_EFFECTOR_POINT_VELOCITIES],
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
-                    END_EFFECTOR_POINT_VELOCITIES],
-    'camera_pos': np.array([0., 0., 2., 0., 0.2, 0.5]),
-    'target_end_effector': np.array([0.0, 0.3, -0.5, 0.0, 0.3, -0.2]),
     'peg_height': 0.1,
-    'success_upper_bound': 0.01,
-    'failure_lower_bound': 0.15,
+    'success_upper_bound': 0.1, #1,
+    #'failure_lower_bound': 0.15,
+    'render': False,
 }
 
 real_demo_agent = {
@@ -144,12 +154,13 @@ real_demo_agent = {
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
                     END_EFFECTOR_POINT_VELOCITIES],
     'camera_pos': np.array([0., 0., 2., 0., 0.2, 0.5]),
+    'render': False,
 }
 
 algorithm = {
     'type': AlgorithmMDGPS,
     'conditions': common['conditions'],
-    'learning_from_prior': True,
+    'learning_from_prior': False,
     'ioc' : 'ICML',
     'iterations': 20,
     'kl_step': 0.5,
@@ -164,7 +175,7 @@ algorithm = {
     'init_var_mult': 1.0,
     # 'demo_cond': 15,
     # 'num_demos': 3,
-    'num_demos': 1,
+    'num_demos': 3,
     'init_samples': 5,
     'synthetic_cost_samples': 100,
     # 'synthetic_cost_samples': 0, # Remember to change back to 100 when done with the 50 samples exp
@@ -246,6 +257,7 @@ algorithm['cost'] = {
     'dO': 26,
     'learn_wu': False,
     'iterations': 5000,
+    'smooth_reg_weight': 0.0,
 }
 
 algorithm['dynamics'] = {

@@ -104,7 +104,7 @@ agent = {
     'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ pos_body_offset[i], np.array([0., 0., 0.])])
                             for i in xrange(TOTAL_CONDITIONS)],
-    'render': True,
+    'render': False,
 }
 
 demo_agent = {
@@ -127,7 +127,7 @@ demo_agent = {
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i], np.array([0., 0., 0.])])
                             for i in xrange(DEMO_CONDITIONS)],
     'success_upper_bound': 0.01,
-    'render': True,
+    'render': False,
 }
 
 
@@ -277,7 +277,7 @@ config = {
     'common': common,
     'agent': agent,
     'demo_agent': demo_agent,
-    'gui_on': True,
+    'gui_on': False,
     'algorithm': algorithm,
     'conditions': common['conditions'],
     'random_seed': 1,
