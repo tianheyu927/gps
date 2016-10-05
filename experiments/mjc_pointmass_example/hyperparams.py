@@ -53,11 +53,11 @@ if not os.path.exists(common['data_files_dir']):
 
 agent = {
     'type': AgentMuJoCo,
-    'models': [obstacle_pointmass(target_pos, wall_center=0.0, hole_height=0.3, control_limit=50),
-               obstacle_pointmass(target_pos, wall_center=0.2, hole_height=0.3, control_limit=50),
-               obstacle_pointmass(target_pos, wall_center=-0.2, hole_height=0.3, control_limit=50),
-               obstacle_pointmass(target_pos, wall_center=0.3, hole_height=0.3, control_limit=50),
-               obstacle_pointmass(target_pos, wall_center=-0.3, hole_height=0.3, control_limit=50),
+    'models': [obstacle_pointmass(target_pos, wall_center=0.2, hole_height=0.3, control_limit=50),
+               obstacle_pointmass(target_pos, wall_center=0.4, hole_height=0.3, control_limit=50),
+               obstacle_pointmass(target_pos, wall_center=-0.4, hole_height=0.3, control_limit=50),
+               obstacle_pointmass(target_pos, wall_center=0.5, hole_height=0.3, control_limit=50),
+               obstacle_pointmass(target_pos, wall_center=-0.5, hole_height=0.3, control_limit=50),
                ],
     #'filename': './mjc_models/particle2d.xml',
     'x0': np.array([-1., 0., 0., 0.]),
@@ -80,7 +80,7 @@ algorithm = {
     'iterations': 15,
     'kl_step': 1.0,
     'min_step_mult': 0.01,
-    'max_step_mult': 4.0,
+    'max_step_mult': 10.0,
     'max_ent_traj': 1.0,
 }
 

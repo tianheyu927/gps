@@ -13,7 +13,10 @@ from gps.algorithm.algorithm_badmm import AlgorithmBADMM
 from gps.algorithm.algorithm_traj_opt import AlgorithmTrajOpt
 from gps.algorithm.cost.cost_ioc_quad import CostIOCQuadratic
 from gps.algorithm.cost.cost_ioc_tf import CostIOCTF
+from gps.algorithm.cost.cost_ioc_supervised_tf import CostIOCSupervised
 from gps.algorithm.cost.cost_state import CostState
+from gps.algorithm.cost.cost_sum import CostSum
+from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.dynamics.dynamics_lr_prior import DynamicsLRPrior
 from gps.algorithm.dynamics.dynamics_prior_gmm import DynamicsPriorGMM
 from gps.algorithm.traj_opt.traj_opt_lqr_python import TrajOptLQRPython
@@ -47,7 +50,7 @@ common = {
     'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_14.pkl',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
-    'demo_conditions': 5,
+    'demo_conditions': 3,
     'conditions': 1,
     'LG_demo_file': os.path.join(EXP_DIR, 'data_files', 'demos_LG.pkl'),
     'nn_demo': False,
@@ -104,9 +107,9 @@ algorithm = {
     'demo_distr_empest': True,
     'max_ent_traj': 1.0,
     'conditions': common['conditions'],
-    'iterations': 15,
+    'iterations': 14,
     'kl_step': 1.0,
-    'min_step_mult': 0.01,
+    'min_step_mult': 0.1,
     #'min_step_mult': 1.0,
     'max_step_mult': 10.0,
     'demo_cond': 1,
@@ -124,10 +127,35 @@ algorithm['init_traj_distr'] = {
     'T': agent['T'],
 }
 
+state_cost = {
+    'type': CostState,
+    'l2': 10.,
+    'l1': 0.,
+    'alpha': 1e-5,
+    'data_types' : {
+        JOINT_ANGLES: {
+            'wp': np.ones(SENSOR_DIMS[ACTION]),
+            'target_state': target_pos[0:2]
+        },
+    },
+}
+
+action_cost = {
+    'type': CostAction,
+    'wu': np.array([1., 1.])*1e-2
+}
+
+algorithm['gt_cost'] = {
+    'type': CostSum,
+    'costs': [state_cost, action_cost],
+    'weights': [0.1, 0.1], # used 10,1 for T=3
+}
+
+
 algorithm['cost'] = {
     #'type': CostIOCQuadratic,
     'type': CostIOCTF,
-    'wu': np.array([1e-5, 1e-5]),
+    'wu': np.array([1e-3, 1e-3]),
     'dO': 10,
     'T': agent['T'],
     'iterations': 1000,
@@ -136,18 +164,26 @@ algorithm['cost'] = {
     'ioc_loss': algorithm['ioc'],
 }
 
-algorithm['gt_cost'] = {
-    'type': CostState,
-    'l2': 10,
-    'l1': 0,
-    'alpha': 1e-4,
-    'data_types' : {
-        JOINT_ANGLES: {
-            'wp': np.ones(SENSOR_DIMS[ACTION]),
-            'target_state': target_pos[0:2],
-        },
-    },
+"""
+algorithm['cost'] = {  # TODO - make vision cost and emp. est derivatives
+    'type': CostIOCSupervised,
+    'weight_dir': common['data_files_dir'],
+    'agent': demo_agent,
+    'gt_cost': algorithm['gt_cost'],
+    'demo_file': os.path.join(common['data_files_dir'], 'demos_LG.pkl'),
+    'traj_samples': [], #[os.path.join(DEMO_DIR, 'data_files', 'traj_sample_itr_%02d.pkl' % i) for i in range(14)],
+    'finetune': False,
+    'init_iterations': 3000,
+
+    'dO': 10,
+    'wu': np.array([1e-3, 1e-3]),
+    'T': agent['T'],
+    'iterations': 1000,
+    'demo_batch_size': 10,
+    'sample_batch_size': 10,
+    'ioc_loss': algorithm['ioc'],
 }
+"""
 
 algorithm['dynamics'] = {
     'type': DynamicsLRPrior,
@@ -169,7 +205,7 @@ algorithm['policy_prior'] = {
 
 config = {
     'iterations': algorithm['iterations'],
-    'num_samples': 15,
+    'num_samples': 5,
     'verbose_trials': 1,
     'verbose_policy_trials': 1,
     'common': common,
