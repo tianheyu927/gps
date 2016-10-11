@@ -278,9 +278,9 @@ def nn_forward(net_input, u_input, num_hidden=1, dim_hidden=42, wu=1e-3, learn_w
     return all_costs_preu, all_costs
 
 def init_weights(shape, name=None):
-    return tf.Variable(tf.random_normal(shape, stddev=0.01), name=name)
+    return safe_get(name, initializer=tf.random_normal(shape, stddev=0.01))
 def init_bias(shape, name=None):
-    return tf.Variable(tf.zeros(shape, dtype='float'), name=name)
+    return safe_get(name, initializer=tf.zeros(shape, dtype='float'))
 def conv2d(img, w, b, strides=[1, 1, 1, 1]):
     return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=strides, padding='SAME'), b))
 
@@ -289,17 +289,18 @@ def compute_image_feats(img_input):
     num_filters = [15, 15, 15]
     num_channels=3
     # Store layers weight & bias
-    weights = {
-        'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]]), # 5x5 conv, 1 input, 32 outputs
-        'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]]), # 5x5 conv, 32 inputs, 64 outputs
-        'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]]), # 5x5 conv, 32 inputs, 64 outputs
-    }
+    with tf.variable_scope('conv_params'):
+        weights = {
+            'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
+            'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
+        }
 
-    biases = {
-        'bc1': init_bias([num_filters[0]]),
-        'bc2': init_bias([num_filters[1]]),
-        'bc3': init_bias([num_filters[2]]),
-    }
+        biases = {
+            'bc1': init_bias([num_filters[0]], name='bc1'),
+            'bc2': init_bias([num_filters[1]], name='bc2'),
+            'bc3': init_bias([num_filters[2]], name='bc3'),
+        }
 
     conv_layer_0 = conv2d(img=img_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1])
     conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'])
