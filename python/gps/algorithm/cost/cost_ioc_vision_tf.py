@@ -199,7 +199,7 @@ class CostIOCVisionTF(Cost):
 
         # Get all conv weights
         params = tf.all_variables()
-        vision_params = tf.get_collection(tf.GraphKeys.VARIABLES, scope='cost_ioc_nn/conv')
+        vision_params = tf.get_collection(tf.GraphKeys.VARIABLES, scope='conv')
         self.vision_params = vision_params
         self.vision_params_assign_placeholders = [tf.placeholder(tf.float32, shape=param.get_shape()) for
                                                   param in self.vision_params]
@@ -226,7 +226,8 @@ class CostIOCVisionTF(Cost):
     def set_vision_params(self, param_values):
         value_list = [param_values[self.vision_params[i].name] for i in range(len(self.vision_params))]
         feeds = {self.vision_params_assign_placeholders[i]:value_list[i] for i in range(len(self.vision_params))}
-        self.run(self.vision_params_assign_ops, feeds=feeds)
+        with self.graph.as_default():
+            self.session.run(self.vision_params_assign_ops, feeds)
 
     def save_model(self, fname):
         LOGGER.debug('Saving model to: %s', fname)

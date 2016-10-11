@@ -70,55 +70,53 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     img_idx = tf.constant(img_idx)
 
 
-    with tf.variable_scope('cost_ioc_nn'):
-        _, test_feat, test_cost  = nn_vis_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
-        demo_cost_preu, _, demo_costs = nn_vis_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
-        sample_cost_preu, _, sample_costs = nn_vis_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
-        sup_cost_preu, _, sup_costs = nn_vis_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
+    _, test_feat, test_cost  = nn_vis_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
+    demo_cost_preu, _, demo_costs = nn_vis_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
+    sample_cost_preu, _, sample_costs = nn_vis_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
+    sup_cost_preu, _, sup_costs = nn_vis_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx)
 
-        # Build a differentiable test cost by feeding each timestep individually
-        test_obs_single = tf.expand_dims(test_obs_single, 0)
-        test_torque_single = tf.expand_dims(test_torque_single, 0)
+    # Build a differentiable test cost by feeding each timestep individually
+    test_obs_single = tf.expand_dims(test_obs_single, 0)
+    test_torque_single = tf.expand_dims(test_torque_single, 0)
 
-        test_cost_single_preu, test_feat_single, _ = nn_vis_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden, learn_wu=learn_wu, x_idx=x_idx, img_idx=img_idx)
-        test_cost_single = tf.squeeze(test_cost_single_preu)
+    test_cost_single_preu, test_feat_single, _ = nn_vis_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden, learn_wu=learn_wu, x_idx=x_idx, img_idx=img_idx)
+    test_cost_single = tf.squeeze(test_cost_single_preu)
 
-        sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
+    sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
 
+    demo_sample_preu = tf.concat(0, [demo_cost_preu, sample_cost_preu])
+    sample_demo_size = sample_batch_size+demo_batch_size
+    assert_shape(demo_sample_preu, [sample_demo_size, T, 1])
+    costs_prev = tf.slice(demo_sample_preu, begin=[0, 0,0], size=[sample_demo_size, T-2, -1])
+    costs_next = tf.slice(demo_sample_preu, begin=[0, 2,0], size=[sample_demo_size, T-2, -1])
+    costs_cur = tf.slice(demo_sample_preu, begin=[0, 1,0], size=[sample_demo_size, T-2, -1])
+    # cur-prev
+    slope_prev = costs_cur-costs_prev
+    # next-cur
+    slope_next = costs_next-costs_cur
 
-        demo_sample_preu = tf.concat(0, [demo_cost_preu, sample_cost_preu])
-        sample_demo_size = sample_batch_size+demo_batch_size
-        assert_shape(demo_sample_preu, [sample_demo_size, T, 1])
-        costs_prev = tf.slice(demo_sample_preu, begin=[0, 0,0], size=[sample_demo_size, T-2, -1])
-        costs_next = tf.slice(demo_sample_preu, begin=[0, 2,0], size=[sample_demo_size, T-2, -1])
-        costs_cur = tf.slice(demo_sample_preu, begin=[0, 1,0], size=[sample_demo_size, T-2, -1])
-        # cur-prev
-        slope_prev = costs_cur-costs_prev
-        # next-cur
-        slope_next = costs_next-costs_cur
+    if smooth_reg_weight > 0:
+        # regularization
+        """
+        """
+        raise NotImplementedError("Smoothness reg not implemented")
 
-        if smooth_reg_weight > 0:
-            # regularization
-            """
-            """
-            raise NotImplementedError("Smoothness reg not implemented")
+    if mono_reg_weight > 0:
+        demo_slope = tf.slice(slope_next, begin=[0,0,0], size=[demo_batch_size, -1, -1])
+        slope_reshape = tf.reshape(demo_slope, shape=[-1,1])
+        mono_reg = l2_mono_loss(slope_reshape)*mono_reg_weight
+    else:
+        mono_reg = 0
 
-        if mono_reg_weight > 0:
-            demo_slope = tf.slice(slope_next, begin=[0,0,0], size=[demo_batch_size, -1, -1])
-            slope_reshape = tf.reshape(demo_slope, shape=[-1,1])
-            mono_reg = l2_mono_loss(slope_reshape)*mono_reg_weight
-        else:
-            mono_reg = 0
+    # init logZ or Z to 1, only learn the bias
+    # (also might be good to reduce lr on bias)
+    logZ = safe_get('Wdummy', initializer=tf.ones(1))
+    Z = tf.exp(logZ) # TODO: What does this do?
 
-        # init logZ or Z to 1, only learn the bias
-        # (also might be good to reduce lr on bias)
-        logZ = safe_get('Wdummy', initializer=tf.ones(1))
-        Z = tf.exp(logZ) # TODO: What does this do?
-
-        # TODO - removed loss weights, changed T, batching, num samples
-        # demo cond, num demos, etc.
-        ioc_loss = icml_loss(demo_costs, sample_costs, demo_imp_weight, sample_imp_weight, Z)
-        ioc_loss += mono_reg
+    # TODO - removed loss weights, changed T, batching, num samples
+    # demo cond, num demos, etc.
+    ioc_loss = icml_loss(demo_costs, sample_costs, demo_imp_weight, sample_imp_weight, Z)
+    ioc_loss += mono_reg
 
     outputs = {
         'multiobj_loss': sup_loss+ioc_loss,
@@ -158,54 +156,53 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     inputs['test_obs_single'] = test_obs_single = tf.placeholder(tf.float32, shape=(dim_input), name='test_obs_single')
     inputs['test_torque_single'] = test_torque_single = tf.placeholder(tf.float32, shape=(1), name='test_torque_u_single')
 
-    with tf.variable_scope('cost_ioc_nn'):
-        _, test_cost  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden)
-        demo_cost_preu, demo_costs = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden)
-        sample_cost_preu, sample_costs = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden)
-        sup_cost_preu, sup_costs = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden)
+    _, test_cost  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden)
+    demo_cost_preu, demo_costs = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden)
+    sample_cost_preu, sample_costs = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden)
+    sup_cost_preu, sup_costs = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden)
 
-        # Build a differentiable test cost by feeding each timestep individually
-        test_obs_single = tf.expand_dims(test_obs_single, 0)
-        test_torque_single = tf.expand_dims(test_torque_single, 0)
-        test_cost_single_preu, _ = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden, learn_wu=learn_wu)
-        test_cost_single = tf.squeeze(test_cost_single_preu)
+    # Build a differentiable test cost by feeding each timestep individually
+    test_obs_single = tf.expand_dims(test_obs_single, 0)
+    test_torque_single = tf.expand_dims(test_torque_single, 0)
+    test_cost_single_preu, _ = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden, learn_wu=learn_wu)
+    test_cost_single = tf.squeeze(test_cost_single_preu)
 
-        sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
+    sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
 
 
-        demo_sample_preu = tf.concat(0, [demo_cost_preu, sample_cost_preu])
-        sample_demo_size = sample_batch_size+demo_batch_size
-        assert_shape(demo_sample_preu, [sample_demo_size, T, 1])
-        costs_prev = tf.slice(demo_sample_preu, begin=[0, 0,0], size=[sample_demo_size, T-2, -1])
-        costs_next = tf.slice(demo_sample_preu, begin=[0, 2,0], size=[sample_demo_size, T-2, -1])
-        costs_cur = tf.slice(demo_sample_preu, begin=[0, 1,0], size=[sample_demo_size, T-2, -1])
-        # cur-prev
-        slope_prev = costs_cur-costs_prev
-        # next-cur
-        slope_next = costs_next-costs_cur
+    demo_sample_preu = tf.concat(0, [demo_cost_preu, sample_cost_preu])
+    sample_demo_size = sample_batch_size+demo_batch_size
+    assert_shape(demo_sample_preu, [sample_demo_size, T, 1])
+    costs_prev = tf.slice(demo_sample_preu, begin=[0, 0,0], size=[sample_demo_size, T-2, -1])
+    costs_next = tf.slice(demo_sample_preu, begin=[0, 2,0], size=[sample_demo_size, T-2, -1])
+    costs_cur = tf.slice(demo_sample_preu, begin=[0, 1,0], size=[sample_demo_size, T-2, -1])
+    # cur-prev
+    slope_prev = costs_cur-costs_prev
+    # next-cur
+    slope_next = costs_next-costs_cur
 
-        if smooth_reg_weight > 0:
-            # regularization
-            """
-            """
-            raise NotImplementedError("Smoothness reg not implemented")
+    if smooth_reg_weight > 0:
+        # regularization
+        """
+        """
+        raise NotImplementedError("Smoothness reg not implemented")
 
-        if mono_reg_weight > 0:
-            demo_slope = tf.slice(slope_next, begin=[0,0,0], size=[demo_batch_size, -1, -1])
-            slope_reshape = tf.reshape(demo_slope, shape=[-1,1])
-            mono_reg = l2_mono_loss(slope_reshape)*mono_reg_weight
-        else:
-            mono_reg = 0
+    if mono_reg_weight > 0:
+        demo_slope = tf.slice(slope_next, begin=[0,0,0], size=[demo_batch_size, -1, -1])
+        slope_reshape = tf.reshape(demo_slope, shape=[-1,1])
+        mono_reg = l2_mono_loss(slope_reshape)*mono_reg_weight
+    else:
+        mono_reg = 0
 
-        # init logZ or Z to 1, only learn the bias
-        # (also might be good to reduce lr on bias)
-        logZ = safe_get('Wdummy', initializer=tf.ones(1))
-        Z = tf.exp(logZ) # TODO: What does this do?
+    # init logZ or Z to 1, only learn the bias
+    # (also might be good to reduce lr on bias)
+    logZ = safe_get('Wdummy', initializer=tf.ones(1))
+    Z = tf.exp(logZ) # TODO: What does this do?
 
-        # TODO - removed loss weights, changed T, batching, num samples
-        # demo cond, num demos, etc.
-        ioc_loss = icml_loss(demo_costs, sample_costs, demo_imp_weight, sample_imp_weight, Z)
-        ioc_loss += mono_reg
+    # TODO - removed loss weights, changed T, batching, num samples
+    # demo cond, num demos, etc.
+    ioc_loss = icml_loss(demo_costs, sample_costs, demo_imp_weight, sample_imp_weight, Z)
+    ioc_loss += mono_reg
 
     outputs = {
         'multiobj_loss': sup_loss+ioc_loss,
