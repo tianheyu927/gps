@@ -126,9 +126,10 @@ class AlgorithmMDGPS(Algorithm):
         self._update_trajectories()
 
         # S-step
-        # TODO - copy conv layers from cost to policy here.
-        conv_params = self.cost.get_vision_params()
-        self.policy_opt.policy.set_copy_params(conv_params)
+        if self._hyperparams['ioc']: # TODO and if using vision
+            # copy conv layers from cost to policy here.
+            conv_params = self.cost.get_vision_params()
+            self.policy_opt.policy.set_copy_params(conv_params)
         self._update_policy()
 
         # Computing KL-divergence between sample distribution and demo distribution

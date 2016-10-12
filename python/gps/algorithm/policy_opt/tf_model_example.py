@@ -213,15 +213,15 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
     # Store layers weight & bias
     with tf.variable_scope('conv_params'):
         weights = {
-            'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]]), # 5x5 conv, 1 input, 32 outputs
-            'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]]), # 5x5 conv, 32 inputs, 64 outputs
-            'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]]), # 5x5 conv, 32 inputs, 64 outputs
+            'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
+            'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
         }
 
         biases = {
-            'bc1': init_bias([num_filters[0]]),
-            'bc2': init_bias([num_filters[1]]),
-            'bc3': init_bias([num_filters[2]]),
+            'bc1': init_bias([num_filters[0]], name='bc1'),
+            'bc2': init_bias([num_filters[1]], name='bc2'),
+            'bc3': init_bias([num_filters[2]], name='bc3'),
         }
 
     conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1])
