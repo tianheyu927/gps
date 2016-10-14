@@ -126,7 +126,7 @@ class CostIOCVisionTF(Cost):
         s_sampler = BatchSampler([sampleO, sample_torque_norm, s_log_iw])
 
         optimize_op = self.ioc_optimizer
-        if fc_only:
+        if fc_only or (self._hyperparams['fc_only_iters'] and itr<self._hyperparams['fc_only_iters']):
             optimize_op = self.fc_ioc_optimizer
 
         # TODO - make sure this is on GPU.
