@@ -194,7 +194,7 @@ class GPSMain(object):
                 self.gui.set_status_text('Press \'go\' to begin.')
             return 0
         else:
-            algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl' % itr_load
+            algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl.gz' % itr_load
             self.algorithm = self.data_logger.unpickle(algorithm_file)
             if self.algorithm is None:
                 print("Error: cannot find '%s.'" % algorithm_file)
@@ -370,19 +370,19 @@ class GPSMain(object):
         if 'no_sample_logging' in self._hyperparams['common']:
             return
 
-        if ((itr+1) % 4 == 0) or itr == self.algorithm._hyperparams['iterations'] - 1: # Just save the last iteration of the algorithm file
+        if ((itr+1) % 1 == 4) or itr == self.algorithm._hyperparams['iterations'] - 1: # Just save the last iteration of the algorithm file
             self.algorithm.demo_policy = None
             self.data_logger.pickle(
-                self._data_files_dir + ('algorithm_itr_%02d.pkl' % itr),
+                self._data_files_dir + ('algorithm_itr_%02d.pkl.gz' % itr),
                 copy.copy(self.algorithm)
             )
         self.data_logger.pickle(
-            self._data_files_dir + ('traj_sample_itr_%02d.pkl' % itr),
+            self._data_files_dir + ('traj_sample_itr_%02d.pkl.gz' % itr),
             copy.copy(traj_sample_lists)
         )
         if pol_sample_lists:
             self.data_logger.pickle(
-                self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
+                self._data_files_dir + ('pol_sample_itr_%02d.pkl.gz' % itr),
                 copy.copy(pol_sample_lists)
             )
 
