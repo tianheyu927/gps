@@ -201,7 +201,7 @@ class CostIOCVisionTF(Cost):
         self.dldxx = jacobian(self.dldx, feat_single)
 
         # Get all conv weights
-        vision_params = tf.get_collection(tf.GraphKeys.VARIABLES, scope='conv')
+        vision_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='conv_params')
         self.vision_params = vision_params
         self.vision_params_assign_placeholders = [tf.placeholder(tf.float32, shape=param.get_shape()) for
                                                   param in self.vision_params]
@@ -228,6 +228,7 @@ class CostIOCVisionTF(Cost):
 
     def get_vision_params(self):
         param_values = self.run(self.vision_params)
+        print 'get param_values:', {self.vision_params[i].name:param_values[i] for i in range(len(self.vision_params))}
         return {self.vision_params[i].name:param_values[i] for i in range(len(self.vision_params))}
 
     def set_vision_params(self, param_values):
