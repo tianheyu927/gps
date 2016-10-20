@@ -204,10 +204,6 @@ class CostIOCVisionTF(Cost):
         self.dldxx = jacobian(self.dldx, feat_single)
 
         # Get all conv weights
-<<<<<<< HEAD
-=======
-        params = tf.all_variables()
->>>>>>> ioc_vision
         vision_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='conv_params')
         self.vision_params = vision_params
         self.vision_params_assign_placeholders = [tf.placeholder(tf.float32, shape=param.get_shape()) for
