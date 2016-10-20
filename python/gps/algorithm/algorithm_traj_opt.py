@@ -6,6 +6,7 @@ import numpy as np
 
 from gps.algorithm.algorithm import Algorithm
 from gps.sample.sample_list import SampleList
+from gps.utility.demo_utils import extract_samples
 from gps.algorithm.traj_opt.traj_opt_utils import traj_distr_kl
 from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
         END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, \
@@ -29,13 +30,15 @@ class AlgorithmTrajOpt(Algorithm):
         Args:
             sample_lists: List of SampleList objects for each condition.
         """
-        self.N = sum(len(self.sample_list[i]) for i in self.sample_list.keys())
+        if self._hyperparams['ioc']:
+            self.N = sum(len(self.sample_list[i]) for i in self.sample_list.keys())
         for m in range(self.M):
             self.cur[m].sample_list = sample_lists[m]
-            prev_samples = self.sample_list[m].get_samples()
-            prev_samples.extend(sample_lists[m].get_samples())
-            self.sample_list[m] = SampleList(prev_samples)
-            self.N += len(sample_lists[m])
+            if self._hyperparams['ioc']:
+                prev_samples = self.sample_list[m].get_samples()
+                prev_samples.extend(sample_lists[m].get_samples())
+                self.sample_list[m] = SampleList(prev_samples)
+                self.N += len(sample_lists[m])
 
         # Update dynamics model using all samples.
         self._update_dynamics()
@@ -162,7 +165,6 @@ class AlgorithmTrajOpt(Algorithm):
         M = len(self.prev)
         Md = self._hyperparams['demo_M']
         sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
-        sampleX_arr = np.vstack((self.sample_list[i].get_X() for i in xrange(M)))
         sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
         samples_logiw = {i: samples_logiw[i].reshape((-1, 1)) for i in xrange(M)}
         demos_logiw = {i: demos_logiw[i].reshape((-1, 1)) for i in xrange(Md)}
@@ -170,10 +172,10 @@ class AlgorithmTrajOpt(Algorithm):
         samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
         if not self._hyperparams['global_cost']:
             for i in xrange(M):
-                self.cost[i].update(self.demoU, self.demoX, self.demoO, demos_logiw_arr, self.sample_list[i].get_U(),
-                                self.sample_list[i].get_X(), self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
+                self.cost[i].update(self.demoU, self.demoO, demos_logiw_arr, self.sample_list[i].get_U(),
+                                self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
         else:
-            self.cost.update(self.demoU, self.demoX, self.demoO, demos_logiw_arr, sampleU_arr, sampleX_arr,
+            self.cost.update(self.demoU, self.demoO, demos_logiw_arr, sampleU_arr,
                                                         sampleO_arr, samples_logiw_arr, itr=self.iteration_count)
 
 

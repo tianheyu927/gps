@@ -1,6 +1,7 @@
 """ This file defines the MD-based GPS algorithm. """
 import copy
 import logging
+import pickle
 
 import numpy as np
 import scipy as sp
@@ -45,6 +46,19 @@ class AlgorithmMDGPS(Algorithm):
                 self._hyperparams['policy_opt'][i], self.dO, self.dU
             ) for i in xrange(self.num_policies)]
 
+        # initialize cost params
+        if self._hyperparams['init_cost_params']:
+            with open(self._hyperparams['init_cost_params'], 'r') as f:
+                init_algorithm = pickle.load(f)
+            conv_params = init_algorithm.policy_opt.policy.get_copy_params()
+            self.cost.set_vision_params(conv_params)
+
+        if self._hyperparams['ioc']: # TODO and ioc with vision.
+            # Make cost and policy conv params consistent here.
+            conv_params = self.cost.get_vision_params()
+            self.policy_opt.policy.set_copy_params(conv_params)
+
+
     def iteration(self, sample_lists):
         """
         Run iteration of MDGPS-based guided policy search.
@@ -52,16 +66,20 @@ class AlgorithmMDGPS(Algorithm):
         Args:
             sample_lists: List of SampleList objects for each condition.
         """
+        import pdb; pdb.set_trace() # TODO test that features are the same for cost and policy here.
+
         # Store the samples.
         itr = self.iteration_count
-        self.N = sum(len(self.sample_list[i]) for i in self.sample_list.keys())
-        self.num_samples = [len(self.sample_list[i]) for i in self.sample_list.keys()]
+        if self._hyperparams['ioc']:
+            self.N = sum(len(self.sample_list[i]) for i in self.sample_list.keys())
+            self.num_samples = [len(self.sample_list[i]) for i in self.sample_list.keys()]
         for m in range(self.M):
             self.cur[m].sample_list = sample_lists[m]
-            prev_samples = self.sample_list[m].get_samples()
-            prev_samples.extend(sample_lists[m].get_samples())
-            self.sample_list[m] = SampleList(prev_samples)
-            self.N += len(sample_lists[m])
+            if self._hyperparams['ioc']:
+                prev_samples = self.sample_list[m].get_samples()
+                prev_samples.extend(sample_lists[m].get_samples())
+                self.sample_list[m] = SampleList(prev_samples)
+                self.N += len(sample_lists[m])
             # Compute mean distance to target. For peg experiment only.
             if 'target_end_effector' in self._hyperparams:
                 if type(self._hyperparams['target_end_effector']) is list:
@@ -129,7 +147,7 @@ class AlgorithmMDGPS(Algorithm):
         if self._hyperparams['ioc']: # TODO and if using vision
             # copy conv layers from cost to policy here.
             conv_params = self.cost.get_vision_params()
-            self.policy_opt.policy.set_copy_params(conv_params)
+            self.policy_opt.policy.set_copy_params(conv_params)  # TODO- need to do this for policy opt policies too? (okay for TF?)
         self._update_policy()
 
         # Computing KL-divergence between sample distribution and demo distribution

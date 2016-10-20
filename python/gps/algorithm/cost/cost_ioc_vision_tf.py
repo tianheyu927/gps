@@ -54,6 +54,8 @@ class CostIOCVisionTF(Cost):
     def get_features(self, obs):
         """ Get the image features corresponding to the rgb image.
         """
+        if len(obs.shape) == 1:
+            obs = np.expand_dims(obs, axis=0)
         return self.run([self.outputs['test_feat']], test_obs=obs)[0]
 
     def eval(self, sample):
@@ -104,8 +106,7 @@ class CostIOCVisionTF(Cost):
 
         return l, lx, lu, lxx, luu, lux
 
-    def update(self, demoU, demoO, d_log_iw, sampleU, sampleO, s_log_iw, itr=-1,
-               fc_only=True):
+    def update(self, demoU, demoO, d_log_iw, sampleU, sampleO, s_log_iw, itr=-1, fc_only=False):
         """
         Learn cost function with generic function representation.
         Args:
@@ -115,6 +116,7 @@ class CostIOCVisionTF(Cost):
             sampleU: the actions of samples.
             sampleO: the observations of samples.
             s_log_iw: log importance weights for samples.
+            fc_only: only train fc layers of cost (not conv layers).
         """
         print 'Updating cost'
         demo_torque_norm = np.sum(demoU **2, axis=2, keepdims=True)
@@ -128,6 +130,7 @@ class CostIOCVisionTF(Cost):
         optimize_op = self.ioc_optimizer
         if fc_only or (self._hyperparams['fc_only_iters'] and itr<self._hyperparams['fc_only_iters']):
             optimize_op = self.fc_ioc_optimizer
+
 
         # TODO - make sure this is on GPU.
         for i, (d_batch, s_batch) in enumerate(
@@ -153,9 +156,9 @@ class CostIOCVisionTF(Cost):
         # Pass in net parameter by protostring (could add option to input prototxt file).
         network_arch_params = self._hyperparams['network_arch_params']
 
-        network_arch_params['demo_batch_size'] = self._hyperparams['demo_batch_size']
+        network_arch_params['demo_batch_size'] = self.demo_batch_size
         if sample_batch_size is None:
-            network_arch_params['sample_batch_size'] = self._hyperparams['sample_batch_size']
+            network_arch_params['sample_batch_size'] = self.sample_batch_size
         else:
             network_arch_params['sample_batch_size'] = sample_batch_size
         network_arch_params['T'] = self._T
@@ -201,6 +204,10 @@ class CostIOCVisionTF(Cost):
         self.dldxx = jacobian(self.dldx, feat_single)
 
         # Get all conv weights
+<<<<<<< HEAD
+=======
+        params = tf.all_variables()
+>>>>>>> ioc_vision
         vision_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='conv_params')
         self.vision_params = vision_params
         self.vision_params_assign_placeholders = [tf.placeholder(tf.float32, shape=param.get_shape()) for
@@ -212,6 +219,9 @@ class CostIOCVisionTF(Cost):
 
         # Set up fc only training
         params = tf.all_variables()
+        fc_vars = [param for param in params if param not in vision_params]
+        self.fc_ioc_optimizer = optimizer.minimize(self.ioc_loss, var_list=fc_vars)
+
         fc_vars = [param for param in params if param not in vision_params]
         self.fc_ioc_optimizer = optimizer.minimize(self.ioc_loss, var_list=fc_vars)
 
