@@ -306,9 +306,7 @@ class GPSTrainingGUI(object):
             samples = []
             images = []
 
-            for sample_list in traj_sample_lists:
-                samples = sample_list.get_samples()
-                size = np.array(samples[0].get(RGB_IMAGE_SIZE))
+            size = np.array(traj_sample_lists[0][0].get(RGB_IMAGE_SIZE))
             for sample in samples:
                 fp = sample.get(IMAGE_FEAT, 0)
                 img = sample.get(RGB_IMAGE, 0)
