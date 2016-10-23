@@ -163,8 +163,17 @@ class GPSMain(object):
         if self.algorithm is None:
             print("Error: cannot find '%s.'" % algorithm_file)
             os._exit(1) # called instead of sys.exit(), since t
-        traj_sample_lists = self.data_logger.unpickle(self._data_files_dir +
-            ('traj_sample_itr_%02d.pkl' % itr))
+
+        traj_sample_lists = self._take_policy_samples(N)
+        for cond in range(len(self._train_idx)):
+            for i in range(N):
+                self._take_sample(itr, cond, i)
+
+        traj_sample_lists = [
+            self.agent.get_samples(cond, -self._hyperparams['num_samples'])
+            for cond in self._train_idx
+        ]
+        import pdb; pdb.set_trace()
 
         pol_sample_lists = self._take_policy_samples(N)
         self.data_logger.pickle(
@@ -173,6 +182,8 @@ class GPSMain(object):
         )
 
         if self.gui:
+            # Note - this update doesn't use the cost of the samples. It uses
+            # the cost stored in the algorithm object.
             self.gui.update(itr, self.algorithm, self.agent,
                 traj_sample_lists, pol_sample_lists)
             self.gui.set_status_text(('Took %d policy sample(s) from ' +
