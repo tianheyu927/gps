@@ -4,6 +4,7 @@ import copy
 import numpy as np
 
 import mjcpy
+import pickle
 
 from gps.agent.agent import Agent
 from gps.agent.agent_utils import generate_noise, setup
@@ -39,6 +40,13 @@ class AgentMuJoCo(Agent):
                 file.close()
         else:
             self._setup_world(hyperparams['filename'])
+
+        self.feature_encoder = None
+        if 'feature_encoder' in hyperparams:
+            with open(hyperparams['feature_encoder'],'r') as f:
+                alg = pickle.load(f)
+            self.feature_encoder = alg.policy_opt.policy
+
 
     def _setup_conditions(self):
         """
@@ -159,10 +167,12 @@ class AgentMuJoCo(Agent):
             verbose: Whether or not to plot the trial.
             save: Whether or not to store the trial into the samples.
             noisy: Whether or not to use noise during sampling.
+            feature_encoder: Function to get image features from.
         """
         # Create new sample, populate first time step.
         feature_fn = None
-        # TODO - make this less hacky, just pass in policy.
+        if self.feature_encoder:
+            feature_fn = self.feature_encoder.get_features
         if 'get_features' in dir(policy):
             feature_fn = policy.get_features
         new_sample = self._init_sample(condition, feature_fn=feature_fn)
