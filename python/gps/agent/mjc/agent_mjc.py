@@ -47,6 +47,12 @@ class AgentMuJoCo(Agent):
                 alg = pickle.load(f)
             self.feature_encoder = alg.policy_opt.policy
 
+        if self._hyperparams['hardcoded_linear_dynamics']:
+            dt = self._hyperparams['dt']
+            F = np.array([[ 1, 0, dt, 0, dt**2., 0], [0, 1, 0, dt, 0, dt**2.],
+                          [0, 0, 1, 0, dt, 0], [0, 0, 0, 1, 0, dt]])
+            self.F = F
+
 
     def _setup_conditions(self):
         """
@@ -157,6 +163,19 @@ class AgentMuJoCo(Agent):
         if IMAGE_FEAT in self.x_data_types:
             import pdb; pdb.set_trace()  # TODO
 
+    def visualize_sample(self, sample, condition):
+        # replays a sample, with verbose
+        self._init(condition)
+        mj_X = self._hyperparams['x0'][condition]
+        for t in range(self.T):
+            mj_U = sample.get_U(t=t)
+            self._world[condition].plot(mj_X)
+            if (t + 1) < self.T:
+                for _ in range(self._hyperparams['substeps']):
+                    mj_X, _ = self._world[condition].step(mj_X, mj_U)
+
+
+
     def sample(self, policy, condition, verbose=True, save=True, noisy=True):
         """
         Runs a trial and constructs a new sample containing information
@@ -211,7 +230,10 @@ class AgentMuJoCo(Agent):
                 self._world[condition].plot(mj_X)
             if (t + 1) < self.T:
                 for _ in range(self._hyperparams['substeps']):
-                    mj_X, _ = self._world[condition].step(mj_X, mj_U)
+                    if 'hardcoded_linear_dynamics' in self._hyperparams and self._hyperparams['hardcoded_linear_dynamics']:
+                        mj_X = self.F.dot(np.r_[mj_X, mj_U])
+                    else:
+                        mj_X, _ = self._world[condition].step(mj_X, mj_U)
                 #TODO: Some hidden state stuff will go here.
                 #TODO: Will it? This TODO has been here for awhile
                 self._data = self._world[condition].get_data()
@@ -254,7 +276,10 @@ class AgentMuJoCo(Agent):
         data = self._world[condition].get_data()
         sample.set(JOINT_ANGLES, data['qpos'].flatten(), t=0)
         sample.set(JOINT_VELOCITIES, data['qvel'].flatten(), t=0)
-        eepts = data['site_xpos'].flatten()
+        if self._hyperparams['hardcoded_linear_dynamics']:
+            eepts = np.r_[data['qpos'].flatten(), [0.]]
+        else:
+            eepts = data['site_xpos'].flatten()
         sample.set(END_EFFECTOR_POINTS, eepts, t=0)
         if (END_EFFECTOR_POINTS_NO_TARGET in self._hyperparams['obs_include']):
             sample.set(END_EFFECTOR_POINTS_NO_TARGET, np.delete(eepts, self._hyperparams['target_idx']), t=0)
@@ -315,10 +340,14 @@ class AgentMuJoCo(Agent):
             condition: Which condition to set.
             feature_fn: function to compute image features from the observation (e.g. image).
         """
-        data = self._world[condition].get_data()
-        sample.set(JOINT_ANGLES, data['qpos'].flatten(), t=t+1)
-        sample.set(JOINT_VELOCITIES, data['qvel'].flatten(), t=t+1)
-        cur_eepts = data['site_xpos'].flatten()
+        if self._hyperparams['hardcoded_linear_dynamics']:
+            sample.set(JOINT_ANGLES, mj_X[self._joint_idx], t=t+1)
+            sample.set(JOINT_VELOCITIES, mj_X[self._vel_idx], t=t+1)
+            cur_eepts = np.r_[mj_X[self._joint_idx], [0.]]
+        else:
+            sample.set(JOINT_ANGLES, self._data['qpos'].flatten(), t=t+1)
+            sample.set(JOINT_VELOCITIES, self._data['qvel'].flatten(), t=t+1)
+            cur_eepts = self._data['site_xpos'].flatten()
         sample.set(END_EFFECTOR_POINTS, cur_eepts, t=t+1)
         if (END_EFFECTOR_POINTS_NO_TARGET in self._hyperparams['obs_include']):
             sample.set(END_EFFECTOR_POINTS_NO_TARGET, np.delete(cur_eepts, self._hyperparams['target_idx']), t=t+1)
