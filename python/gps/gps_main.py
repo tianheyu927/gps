@@ -174,6 +174,9 @@ class GPSMain(object):
             for cond in self._train_idx
         ]
         import pdb; pdb.set_trace()
+        for cond in range(len(self._train_idx)):
+            self.agent.visualize_sample(traj_sample_lists[cond][0], cond)
+        import pdb; pdb.set_trace()
 
         pol_sample_lists = self._take_policy_samples(N)
         self.data_logger.pickle(
