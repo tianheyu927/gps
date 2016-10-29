@@ -54,8 +54,15 @@ BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_images/'
 
-CONDITIONS = 4
+DEMO_CONDITIONS = 100 #20
+CONDITIONS = 20 #20
 np.random.seed(14)
+demo_pos_body_offset = []
+for _ in range(DEMO_CONDITIONS):
+    demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1, 0]))
+#pos_body_offset = demo_pos_body_offset[:CONDITIONS]
+
+np.random.seed(42)
 pos_body_offset = []
 for _ in range(CONDITIONS):
     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1, 0]))
@@ -68,8 +75,8 @@ common = {
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
-    'demo_controller_file': [DEMO_DIR + 'data_files/algorithm_itr_12.pkl'],
-    'demo_conditions': 4,
+    'demo_controller_file': [DEMO_DIR + 'data_files/algorithm_itr_09.pkl'],
+    'demo_conditions': DEMO_CONDITIONS,
     'conditions': CONDITIONS,
     'nn_demo': True,
     'NN_demo_file': EXP_DIR + 'data_files/pol_demos.pkl',
@@ -109,7 +116,7 @@ demo_agent = {
     'x0': np.zeros(4),
     'dt': 0.05,
     'substeps': 5,
-    'pos_body_offset': pos_body_offset,
+    'pos_body_offset': demo_pos_body_offset,
     'pos_body_idx': np.array([4]),
     'conditions': common['demo_conditions'],
     'T': agent['T'],
@@ -123,8 +130,8 @@ demo_agent = {
     'image_channels': IMAGE_CHANNELS,
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])])
-                            for i in xrange(CONDITIONS)],
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i], np.array([0., 0., 0.])])
+                            for i in xrange(DEMO_CONDITIONS)],
     'feature_encoder': common['demo_controller_file'][0], # initialize conv layers of policy
 }
 
@@ -140,12 +147,13 @@ algorithm = {
     'max_step_mult': 4.0,
     'policy_sample_mode': 'replace',
     'demo_cond': demo_agent['conditions'],
-    'num_demos': 10,
+    'num_demos': 2,
     'demo_var_mult': 1.0,
     'synthetic_cost_samples': 100,
     'plot_dir': EXP_DIR,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])])
                             for i in xrange(CONDITIONS)],
+    'global_cost': True,
 }
 
 
