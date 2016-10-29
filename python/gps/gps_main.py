@@ -30,12 +30,13 @@ from gps.utility.visualization import get_comparison_hyperparams, compare_experi
 
 class GPSMain(object):
     """ Main class to run algorithms and experiments. """
-    def __init__(self, config, quit_on_end=False):
+    def __init__(self, config, quit_on_end=False, test_pol=False):
         """
         Initialize GPSMain
         Args:
             config: Hyperparameters for experiment
             quit_on_end: When true, quit automatically on completion
+            test_pol: whether or not we are testing the policy. (Don't load demos if so)
         """
         self._quit_on_end = quit_on_end
         self._hyperparams = config
@@ -57,7 +58,7 @@ class GPSMain(object):
 
         config['algorithm']['agent'] = self.agent
 
-        if self.using_ioc():
+        if self.using_ioc() and not test_pol:
             demos = get_demos(self)
             self.agent = config['agent']['type'](config['agent'])
             self.algorithm.demoX = demos['demoX']
@@ -138,6 +139,9 @@ class GPSMain(object):
                     for cond in self._train_idx
                 ]
 
+            # clear samples
+            self.agent.clear_samples()
+
             with Timer('GPSMain.run: _take_iteration'):
                 self._take_iteration(itr, traj_sample_lists)
 
@@ -162,7 +166,7 @@ class GPSMain(object):
             N: the number of policy samples to take
         Returns: None
         """
-        algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl.gz' % itr
+        algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl' % itr
         print 'Loading algorithm file.'
         self.algorithm = self.data_logger.unpickle(algorithm_file)
         print 'Done loading algorithm file.'
@@ -184,9 +188,15 @@ class GPSMain(object):
             self.agent.visualize_sample(traj_sample_lists[cond][0], cond)
         import pdb; pdb.set_trace()
 
+        # Code for looking at demo policy.
+        # demo_controller = self.data_logger.unpickle(self._hyperparams['common']['demo_controller_file'][0])
+        # demo_policy = demo_controller.policy_opt.policy
+        # sample = self.agent.sample(demo_policy, 0)
+        # self.agent.visualize_sample(sample, 0)
+
         pol_sample_lists = self._take_policy_samples(N)
         self.data_logger.pickle(
-            self._data_files_dir + ('pol_sample_itr_%02d.pkl.gz' % itr),
+            self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
             copy.copy(pol_sample_lists)
         )
 
@@ -214,7 +224,7 @@ class GPSMain(object):
                 self.gui.set_status_text('Press \'go\' to begin.')
             return 0
         else:
-            algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl.gz' % itr_load
+            algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl' % itr_load
             self.algorithm = self.data_logger.unpickle(algorithm_file)
             if self.algorithm._hyperparams['ioc']:
                 self.algorithm.sample_list = extract_samples(itr_load, self._data_files_dir + 'traj_sample_itr')
@@ -224,10 +234,10 @@ class GPSMain(object):
 
             if self.gui:
                 traj_sample_lists = self.data_logger.unpickle(self._data_files_dir +
-                    ('traj_sample_itr_%02d.pkl.gz' % itr_load))
+                    ('traj_sample_itr_%02d.pkl' % itr_load))
                 if self.algorithm.cur[0].pol_info:
                     pol_sample_lists = self.data_logger.unpickle(self._data_files_dir +
-                        ('pol_sample_itr_%02d.pkl.gz' % itr_load))
+                        ('pol_sample_itr_%02d.pkl' % itr_load))
                 else:
                     pol_sample_lists = None
                 #self.gui.update(itr_load, self.algorithm, self.agent,
@@ -403,17 +413,17 @@ class GPSMain(object):
                 copy_alg = copy.copy(self.algorithm)
                 copy_alg.sample_list = {}
                 self.data_logger.pickle(
-                        self._data_files_dir + ('algorithm_itr_%02d.pkl.gz' % itr),
+                        self._data_files_dir + ('algorithm_itr_%02d.pkl' % itr),
                         copy_alg
                     )
             with Timer('GPSMain._log_data: saving samples'):
                 self.data_logger.pickle(
-                    self._data_files_dir + ('traj_sample_itr_%02d.pkl.gz' % itr),
+                    self._data_files_dir + ('traj_sample_itr_%02d.pkl' % itr),
                     copy.copy(traj_sample_lists)
                 )
                 if pol_sample_lists:
                     self.data_logger.pickle(
-                        self._data_files_dir + ('pol_sample_itr_%02d.pkl.gz' % itr),
+                        self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
                         copy.copy(pol_sample_lists)
                     )
 
@@ -545,7 +555,7 @@ def main():
         current_algorithm = sorted(algorithm_filenames, reverse=True)[0]
         current_itr = int(current_algorithm[len(algorithm_prefix):len(algorithm_prefix)+2])
 
-        gps = GPSMain(hyperparams.config)
+        gps = GPSMain(hyperparams.config, test_pol=True)
         if hyperparams.config['gui_on']:
             test_policy = threading.Thread(
                 target=lambda: gps.test_policy(itr=current_itr, N=test_policy_N)

@@ -89,6 +89,7 @@ class GenDemo(object):
 
             M = agent_config['conditions']
             N = self._hyperparams['algorithm']['num_demos']
+            #import pdb; pdb.set_trace()
             if not self.nn_demo:
                 controllers = {}
 
@@ -130,7 +131,7 @@ class GenDemo(object):
                         for j in xrange(N):
                             demo = self.agent.sample(
                                 pol, i, # Should be changed back to controller if using linearization
-                                verbose=True or (i < self._hyperparams['verbose_trials']), noisy=True
+                                verbose=(i < self._hyperparams['verbose_trials']), noisy=True
                                 )
                             demos.append(demo)
                             #import pdb; pdb.set_trace()
@@ -235,7 +236,7 @@ class GenDemo(object):
             elif agent_config['type']==AgentMuJoCo and \
                 ('reacher' in agent_config.get('filename', []) or 'wall' in agent_config.get('exp_name', [])):
                 dists = []; failed_indices = []
-                success_thresh = 0.30
+                success_thresh = 0.05 # 0.30
                 for m in range(M):
                     if type(agent_config['target_end_effector']) is list:
                         target_position = agent_config['target_end_effector'][m][:3]
@@ -249,6 +250,7 @@ class GenDemo(object):
                       if dists[index] >= success_thresh: #agent_config['success_upper_bound']:
                         failed_indices.append(index)
                 good_indices = [i for i in xrange(len(demos)) if i not in failed_indices]
+                #import pdb; pdb.set_trace()
                 self._hyperparams['algorithm']['demo_cond'] = len(good_indices)
                 filtered_demos = []
                 filtered_demo_conditions = []

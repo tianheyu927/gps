@@ -76,6 +76,7 @@ AGENT_MUJOCO = {
     'record_reward': False,
     'render': True, # for EC2
     'filename': None,
+    'hardcoded_linear_dynamics': False,
 }
 
 AGENT_BOX2D = {
