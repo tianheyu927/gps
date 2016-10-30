@@ -54,7 +54,7 @@ PR2_GAINS = np.array([1.0, 1.0])
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 
-CONDITIONS = 4
+CONDITIONS = 20
 np.random.seed(14)
 pos_body_offset = []
 for _ in range(CONDITIONS):

@@ -10,6 +10,7 @@ from gps.agent.mjc.agent_mjc import AgentMuJoCo
 from gps.algorithm.algorithm_mdgps import AlgorithmMDGPS
 from gps.algorithm.algorithm_traj_opt import AlgorithmTrajOpt
 from gps.algorithm.cost.cost_ioc_vision_tf import CostIOCVisionTF
+from gps.algorithm.cost.cost_ioc_tf import CostIOCTF
 from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.cost.cost_sum import CostSum
@@ -55,7 +56,7 @@ EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_images/'
 
 DEMO_CONDITIONS = 100 #20
-CONDITIONS = 20 #20
+CONDITIONS = 2 #20
 np.random.seed(14)
 demo_pos_body_offset = []
 for _ in range(DEMO_CONDITIONS):
@@ -97,7 +98,8 @@ agent = {
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
                       END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT],  # TODO - may want to include fp velocities.
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT],
+    # 'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
     'target_idx': np.array(list(range(3,6))),
     'meta_include': [RGB_IMAGE_SIZE],
     'image_width': IMAGE_WIDTH,
@@ -122,7 +124,7 @@ demo_agent = {
     'T': agent['T'],
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
                       END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT],  # TODO - may want to include fp velocities.
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE], # we store demo obs under different agent.
     'target_idx': np.array(list(range(3,6))),
     'meta_include': [RGB_IMAGE_SIZE],
     'image_width': IMAGE_WIDTH,
@@ -202,25 +204,45 @@ algorithm['gt_cost'] = [{
     'weights': [2.0, 1.0],
 }  for i in range(common['conditions'])]
 
+#algorithm['cost'] = {
+#    'type': CostIOCVisionTF,
+#    'wu': 2000 / PR2_GAINS,
+#    'network_params': {
+#        'obs_include': agent['obs_include'],
+#        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT],
+#        'obs_image_data': [],
+#        'image_width': IMAGE_WIDTH,
+#        'image_height': IMAGE_HEIGHT,
+#        'image_channels': IMAGE_CHANNELS,
+#        'sensor_dims': SENSOR_DIMS,
+#    },
+#    'T': agent['T'],
+#    'iterations': 1000,  # TODO - we might want to make fc only training here too.
+#    'demo_batch_size': 5,  # are we going to run out of memory? # also should we init from policy feat?
+#    'sample_batch_size': 5,
+#    'ioc_loss': algorithm['ioc'],
+#    'fc_only_iters': 15,  # Train fc only.
+#}
+
+
 algorithm['cost'] = {
-    'type': CostIOCVisionTF,
-    'wu': 2000 / PR2_GAINS,
+    'type': CostIOCTF,
+    'wu': 2000.0 / PR2_GAINS,
     'network_params': {
         'obs_include': agent['obs_include'],
-        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
-        'obs_image_data': [RGB_IMAGE],
-        'image_width': IMAGE_WIDTH,
-        'image_height': IMAGE_HEIGHT,
-        'image_channels': IMAGE_CHANNELS,
+        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT],
+        'obs_image_data': [],
         'sensor_dims': SENSOR_DIMS,
     },
     'T': agent['T'],
-    'iterations': 1000,  # TODO - we might want to make fc only training here too.
-    'demo_batch_size': 5,  # are we going to run out of memory? # also should we init from policy feat?
+    'dO': 40,
+    'iterations': 1000, # TODO - do we need 5k?
+    'demo_batch_size': 5,
     'sample_batch_size': 5,
     'ioc_loss': algorithm['ioc'],
-    'fc_only_iters': 15,  # Train fc only.
 }
+
+
 
 NUM_SAMPLES = 5
 algorithm['dynamics'] = {
@@ -254,7 +276,6 @@ config = {
     'gui_on': True,
     'algorithm': algorithm,
     'conditions': common['conditions'],
-    'random_seed': 1,
 }
 
 common['info'] = generate_experiment_info(config)
