@@ -63,7 +63,6 @@ class GPSMain(object):
         if self.using_ioc() and not test_pol:
             with Timer('loading demos'):
                 demos = get_demos(self)
-                self.agent = config['agent']['type'](config['agent'])
                 self.algorithm.demoX = demos['demoX']
                 self.algorithm.demoU = demos['demoU']
                 self.algorithm.demoO = demos['demoO']
@@ -506,8 +505,8 @@ def main():
     import random
     import numpy as np
 
-    random.seed(0)
-    np.random.seed(0)
+    random.seed(1)
+    np.random.seed(1)
 
     if args.targetsetup:
         try:
