@@ -68,7 +68,7 @@ class AlgorithmTrajOpt(Algorithm):
         if 'target_end_effector' in self._hyperparams:
             for i in xrange(self.M):
                 if type(self._hyperparams['target_end_effector']) is list:
-                    target_position = self._hyperparams['target_end_effector'][m][:3]
+                    target_position = self._hyperparams['target_end_effector'][i][:3]
                 else:
                     target_position = self._hyperparams['target_end_effector'][:3]
                 cur_samples = sample_lists[i].get_samples()
@@ -164,17 +164,20 @@ class AlgorithmTrajOpt(Algorithm):
         # Transform all the dictionaries to arrays
         M = len(self.prev)
         Md = self._hyperparams['demo_M']
-        sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
-        sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
+        assert Md == 1
         samples_logiw = {i: samples_logiw[i].reshape((-1, 1)) for i in xrange(M)}
-        demos_logiw = {i: demos_logiw[i].reshape((-1, 1)) for i in xrange(Md)}
-        demos_logiw_arr = np.hstack([demos_logiw[i] for i in xrange(Md)]).reshape((-1, 1))
-        samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
+        demos_logiw = {i: demos_logiw[i].reshape((-1, 1)) for i in xrange(M)}
+        # TODO - make these changes in other algorithm objects too.
         if not self._hyperparams['global_cost']:
             for i in xrange(M):
-                self.cost[i].update(self.demoU, self.demoO, demos_logiw_arr, self.sample_list[i].get_U(),
+                self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
                                 self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
         else:
+            sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
+            sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
+            samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
+            # TODO - this is a weird hack that is wrong, and has been in the code for awhile.
+            demos_logiw_arr = demos_logiw[0].reshape((-1, 1))  # np.hstack([demos_logiw[i] for i in xrange(Md)]).reshape((-1, 1))
             self.cost.update(self.demoU, self.demoO, demos_logiw_arr, sampleU_arr,
                                                         sampleO_arr, samples_logiw_arr, itr=self.iteration_count)
 
