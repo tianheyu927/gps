@@ -398,6 +398,34 @@ class Algorithm(object):
                             traj_distr.chol_pol_covar[t, :, :].T.dot(np.random.randn(dU, N))).T
         return pX, pU, pProb
 
+    def _update_cost(self):
+        """ Update the cost objective in each iteration. """
+
+        # Estimate the importance weights for fusion distributions.
+        demos_logiw, samples_logiw = self.importance_weights()
+
+        # Update the learned cost
+        # Transform dictionaries to arrays
+        M = len(self.prev)
+        Md = self._hyperparams['demo_M']
+        assert Md == 1
+        samples_logiw = {i: samples_logiw[i].reshape((-1, 1)) for i in xrange(M)}
+        demos_logiw = {i: demos_logiw[i].reshape((-1, 1)) for i in xrange(M)}
+        # TODO - make these changes in other algorithm objects too.
+        if not self._hyperparams['global_cost']:
+            for i in xrange(M):
+                self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
+                                self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
+        else:
+            sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
+            sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
+            samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
+            # TODO - this is a weird hack that is wrong, and has been in the code for awhile.
+            demos_logiw_arr = demos_logiw[0].reshape((-1, 1))  # np.hstack([demos_logiw[i] for i in xrange(Md)]).reshape((-1, 1))
+            self.cost.update(self.demoU, self.demoO, demos_logiw_arr, sampleU_arr,
+                                                        sampleO_arr, samples_logiw_arr, itr=self.iteration_count)
+
+
     def importance_weights(self):
         """
             Estimate the importance weights for fusion distributions.
