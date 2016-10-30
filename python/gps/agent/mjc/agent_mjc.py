@@ -194,9 +194,9 @@ class AgentMuJoCo(Agent):
         # Create new sample, populate first time step.
         feature_fn = None
         if self.feature_encoder:
-            feature_fn = self.feature_encoder.get_features
-        if 'get_features' in dir(policy):
-            feature_fn = policy.get_features
+            feature_fn = self.feature_encoder.get_image_features
+        if 'get_image_features' in dir(policy):
+            feature_fn = policy.get_image_features
         new_sample = self._init_sample(condition, feature_fn=feature_fn)
 
         mj_X = self._hyperparams['x0'][condition]
@@ -324,18 +324,16 @@ class AgentMuJoCo(Agent):
                                                     self._hyperparams['image_width'],
                                                     self._hyperparams['image_height']]), t=None)
             # only save subsequent images if image is part of observation
-            if RGB_IMAGE in self.obs_data_types:
+            if RGB_IMAGE in self.obs_data_types or IMAGE_FEAT in self.x_data_types or IMAGE_FEAT in self.obs_data_types:
                 sample.set(RGB_IMAGE, img_data, t=0)
                 sample.set(RGB_IMAGE_SIZE, [self._hyperparams['image_channels'],
                                             self._hyperparams['image_width'],
                                             self._hyperparams['image_height']], t=None)
-                assert IMAGE_FEAT not in self.obs_data_types
-                if IMAGE_FEAT in self.obs_data_types:
-                    raise ValueError('Image features should not be in observation, just state')
-                # TODO - make sure policy is passed in.
+
                 if feature_fn is not None:
-                    obs = sample.get_obs(t=0)  # Assumes that the rest of the sample has been populated
-                    sample.set(IMAGE_FEAT, feature_fn(obs)[0], t=0)
+                    sample.set(IMAGE_FEAT, feature_fn(sample.get(RGB_IMAGE, t=0))[0], t=0)
+                    if RGB_IMAGE not in self.obs_data_types:
+                        sample.set(RGB_IMAGE, None, t=0)  # Remove image from sample for memory reasons.
                 else:
                     # TODO - need better solution than setting this to 0.
                     sample.set(IMAGE_FEAT, np.zeros((self._hyperparams['sensor_dims'][IMAGE_FEAT],)), t=0)
@@ -378,17 +376,18 @@ class AgentMuJoCo(Agent):
         if CONDITION_DATA in self.obs_data_types:
             sample.set(CONDITION_DATA, self._hyperparams['condition_data'][condition], t=t+1)
 
-        if RGB_IMAGE in self.obs_data_types:
+        if RGB_IMAGE in self.obs_data_types or IMAGE_FEAT in self.x_data_types or IMAGE_FEAT in self.obs_data_types:
             img = self._world[condition].get_image_scaled(self._hyperparams['image_width'],
                                                           self._hyperparams['image_height'])
             sample.set(RGB_IMAGE, np.transpose(img["img"], (2, 1, 0)).flatten(), t=t+1)
+
             if feature_fn is not None:
-                obs = sample.get_obs(t=t+1)  # Assumes that the rest of the observation has been populated
-                sample.set(IMAGE_FEAT, feature_fn(obs)[0], t=t+1)
+                sample.set(IMAGE_FEAT, feature_fn(sample.get(RGB_IMAGE, t=t+1))[0], t=t+1)
+                if RGB_IMAGE not in self.obs_data_types:
+                    sample.set(RGB_IMAGE, None, t=t+1)  # Remove image from sample for memory reasons.
             else:
                 # TODO - need better solution than setting this to 0.
                 sample.set(IMAGE_FEAT, np.zeros((self._hyperparams['sensor_dims'][IMAGE_FEAT],)), t=t+1)
-
 
     def _get_image_from_obs(self, obs):
         imstart = 0
