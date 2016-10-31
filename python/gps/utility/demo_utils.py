@@ -81,7 +81,6 @@ def eval_demos_xu(agent, demoX, demoU, costfn, n=-1):
     else:
         return losses
 
-
 def get_target_end_effector(algorithm, condition=0):
     target_dict = algorithm._hyperparams['target_end_effector']
     if type(target_dict) is list:

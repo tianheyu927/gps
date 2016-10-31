@@ -39,8 +39,16 @@ class CostIOCQuadratic(Cost):
 
     def copy(self):
       new_cost = CostIOCQuadratic(self._hyperparams)
-      self.solver.test_nets[0].share_with(new_cost.solver.net)
-      self.solver.test_nets[0].share_with(new_cost.solver.test_nets[0])
+      self.solver.snapshot()
+      new_cost.caffe_iter = self.caffe_iter
+      new_cost.solver.restore(
+              self._hyperparams['weights_file_prefix'] + '_iter_' +
+              str(self.caffe_iter) + '.solverstate'
+      )
+      new_cost.solver.test_nets[0].copy_from(
+              self._hyperparams['weights_file_prefix'] + '_iter_' +
+              str(self.caffe_iter) + '.caffemodel'
+      )
       return new_cost
 
 
@@ -88,7 +96,7 @@ class CostIOCQuadratic(Cost):
     # TODO - we might want to make the demos and samples input as SampleList objects, rather than arrays.
     # TODO - also we might want to exclude demoU/sampleU since we generally don't use them
     # TODO - change name of dlogis/slogis to d_log_iw and s_log_iw.
-    def update(self, demoU, demoO, dlogis, sampleU, sampleO, slogis):
+    def update(self, demoU, demoO, dlogis, sampleU, sampleO, slogis, itr=None):
         """
         Learn cost function with generic function representation.
         Args:
@@ -193,7 +201,7 @@ class CostIOCQuadratic(Cost):
     # For unpickling.
     def __setstate__(self, state):
         # TODO - finalize this once __init__ is finalized (setting dO and T)
-        self.__init__(state['hyperparams'], state['dO'], state['T'])
+        self.__init__(state['hyperparams'])
         self.caffe_iter = state['caffe_iter']
         self.solver.restore(
             self._hyperparams['weights_file_prefix'] + '_iter_' +

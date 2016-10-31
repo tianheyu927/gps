@@ -20,13 +20,14 @@ import numpy as np
 # Add gps/python to path so that imports work.
 sys.path.append('/'.join(str.split(__file__, '/')[:-2]))
 from gps.gui.gps_training_gui import GPSTrainingGUI, NUM_DEMO_PLOTS
-from gps.utility.data_logger import DataLogger
+from gps.utility.data_logger import DataLogger, open_zip
 from gps.sample.sample_list import SampleList
 # from gps.utility.generate_demo import GenDemo
 from gps.utility.general_utils import disable_caffe_logs, Timer
 from gps.utility.demo_utils import eval_demos_xu, compute_distance_cost_plot, compute_distance_cost_plot_xu, \
                                     measure_distance_and_success_peg, get_demos, extract_samples
-from gps.utility.visualization import get_comparison_hyperparams, compare_experiments
+from gps.utility.visualization import get_comparison_hyperparams, compare_experiments, compare_samples
+
 
 class GPSMain(object):
     """ Main class to run algorithms and experiments. """
@@ -54,6 +55,11 @@ class GPSMain(object):
 
         with Timer('init agent'):
             self.agent = config['agent']['type'](config['agent'])
+        if 'test_agent' in config:
+            self.test_agent = config['test_agent']['type'](config['test_agent'])
+        else:
+            self.test_agent = self.agent
+
         self.data_logger = DataLogger()
         with Timer('init GUI'):
             self.gui = GPSTrainingGUI(config['common'], gui_on=config['gui_on'])
@@ -117,19 +123,25 @@ class GPSMain(object):
             with Timer('_take_iteration'):
                 self._take_iteration(itr, traj_sample_lists)
 
+            traj_sample_lists = [
+                self.agent.get_samples(cond, -self._hyperparams['num_samples'])
+                for cond in self._train_idx
+            ]
+
             with Timer('_log_data'):
                 if self.algorithm._hyperparams['sample_on_policy']:
-                # TODO - need to add these to lines back in when we move to mdgps
-                    with Timer('_log_data, take_policy_samples'):
-                        pol_sample_lists = self._take_policy_samples()
+                    # TODO - need to add these to lines back in when we move to mdgps
+                    with Timer('take_policy_samples'):
+                        pol_sample_lists = self._take_policy_samples(idx=self._train_idx)
                     self._log_data(itr, traj_sample_lists, pol_sample_lists)
                 else:
+                    #for i in range(self._hyperparams['num_samples']):
+                    #    self._take_sample(itr, cond, i)
                     self._log_data(itr, traj_sample_lists)
-
         self._end()
         return None
 
-    def test_policy(self, itr, N):
+    def test_policy(self, itr, N, testing=False, eval_pol_gt=False):
         """
         Take N policy samples of the algorithm state at iteration itr,
         for testing the policy to see how it is behaving.
@@ -137,6 +149,7 @@ class GPSMain(object):
         Args:
             itr: the iteration from which to take policy samples
             N: the number of policy samples to take
+            testing: the flag that marks whether we test the policy for untrained cond
         Returns: None
         """
         algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl' % itr
@@ -147,7 +160,6 @@ class GPSMain(object):
             print("Error: cannot find '%s.'" % algorithm_file)
             os._exit(1) # called instead of sys.exit(), since t
 
-        traj_sample_lists = self._take_policy_samples(N)
         for cond in range(len(self._train_idx)):
             for i in range(N):
                 self._take_sample(itr, cond, i)
@@ -159,7 +171,6 @@ class GPSMain(object):
         import pdb; pdb.set_trace()
         for cond in range(len(self._train_idx)):
             self.agent.visualize_sample(traj_sample_lists[cond][0], cond)
-        import pdb; pdb.set_trace()
 
         # Code for looking at demo policy.
         # demo_controller = self.data_logger.unpickle(self._hyperparams['common']['demo_controller_file'][0])
@@ -167,7 +178,7 @@ class GPSMain(object):
         # sample = self.agent.sample(demo_policy, 0)
         # self.agent.visualize_sample(sample, 0)
 
-        pol_sample_lists = self._take_policy_samples(N)
+        pol_sample_lists = self._take_policy_samples(N, testing, self._test_idx)
         self.data_logger.pickle(
             self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
             copy.copy(pol_sample_lists)
@@ -177,7 +188,7 @@ class GPSMain(object):
             # Note - this update doesn't use the cost of the samples. It uses
             # the cost stored in the algorithm object.
             self.gui.update(itr, self.algorithm, self.agent,
-                traj_sample_lists, pol_sample_lists)
+                traj_sample_lists, pol_sample_lists, eval_pol_gt)
             self.gui.set_status_text(('Took %d policy sample(s) from ' +
                 'algorithm state at iteration %d.\n' +
                 'Saved to: data_files/pol_sample_itr_%02d.pkl.\n') % (N, itr, itr))
@@ -306,11 +317,13 @@ class GPSMain(object):
         if self.gui:
             self.gui.stop_display_calculating()
 
-    def _take_policy_samples(self, N=None):
+    def _take_policy_samples(self, N=None, testing=False, idx=None):
         """
         Take samples from the policy to see how it's doing.
         Args:
             N  : number of policy samples to take per condition
+            testing: the flag that marks whether we test the policy for untrained cond
+            idx: a range of index of conditions to take policy samples.
         Returns: None
         """
         if 'verbose_policy_trials' not in self._hyperparams:
@@ -319,20 +332,26 @@ class GPSMain(object):
         verbose = self._hyperparams['verbose_policy_trials']
         if self.gui:
             self.gui.set_status_text('Taking policy samples.')
-        pol_samples = [[None] for _ in range(len(self._test_idx))]
+        pol_samples = [[None] for _ in idx]
         # Since this isn't noisy, just take one sample.
         # TODO: Make this noisy? Add hyperparam?
         # TODO: Take at all conditions for GUI?
-        for cond in range(len(self._test_idx)):
+        # TODO: Take N samples per condition rather than just one
+        for cond in idx:
             if not self.algorithm._hyperparams['multiple_policy']:
-                pol_samples[cond][0] = self.agent.sample(
-                    self.algorithm.policy_opt.policy, self._test_idx[cond],
-                    verbose=verbose, save=False, noisy=True)
+                if testing:
+                    pol_samples[cond][0] = self.test_agent.sample(
+                        self.algorithm.policy_opt.policy, idx[cond],
+                        verbose=True, save=False, noisy=True)
+                else:
+                    pol_samples[cond][0] = self.agent.sample(
+                        self.algorithm.policy_opt.policy, idx[cond],
+                        verbose=True, save=False, noisy=True)
             else:
                 pol = self.algorithm.policy_opts[cond / self.algorithm.num_policies].policy
-                pol_samples[cond][0] = self.agent.sample(
-                    pol, self._test_idx[cond],
-                    verbose=verbose, save=False, noisy=True)
+                pol_samples[cond][0] = self.test_agent.sample(
+                    pol, idx[cond],
+                    verbose=True, save=False, noisy=True)
         return [SampleList(samples) for samples in pol_samples]
 
     def _log_data(self, itr, traj_sample_lists, pol_sample_lists=None):
@@ -364,7 +383,6 @@ class GPSMain(object):
                 sample_losses = None
                 dists_vs_costs = None
                 demo_dists_vs_costs = None
-
             if self.gui:
                 self.gui.set_status_text('Logging data and updating GUI.')
                 self.gui.update(itr, self.algorithm, self.agent,
@@ -376,24 +394,24 @@ class GPSMain(object):
             if 'no_sample_logging' in self._hyperparams['common']:
                 return
 
-
-        log_data = itr>0 and (itr%5 == 0) or (itr==self._hyperparams['iterations'])
-
-
+        # if itr == self.algorithm._hyperparams['iterations'] - 1 or itr == self.algorithm._hyperparams['ioc_maxent_iter'] - 1: # Just save the last iteration of the algorithm file
+        # if ((itr+1) % 5 == 0) or itr == self.algorithm._hyperparams['iterations'] - 1: # Just save the last iteration of the algorithm file
+        log_data = itr>0 and (itr%5 == 0) or (itr==self._hyperparams['iterations']-1)
         if log_data:
             with Timer('saving algorithm file'):
                 self.algorithm.demo_policy = None
                 copy_alg = copy.copy(self.algorithm)
                 copy_alg.sample_list = {}
                 self.data_logger.pickle(
-                        self._data_files_dir + ('algorithm_itr_%02d.pkl' % itr),
-                        copy_alg
-                    )
-            with Timer('saving samples'):
+                    self._data_files_dir + ('algorithm_itr_%02d.pkl' % itr),
+                    copy_alg
+                )
+            with Timer('saving traj samples'):
                 self.data_logger.pickle(
                     self._data_files_dir + ('traj_sample_itr_%02d.pkl' % itr),
                     copy.copy(traj_sample_lists)
                 )
+            with Timer('saving policy samples'):
                 if pol_sample_lists:
                     self.data_logger.pickle(
                         self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
@@ -434,12 +452,21 @@ def main():
                         help='Condition to dry-run the policy')
     parser.add_argument('-c', '--compare', metavar='N', type=int,
                     help='compare two experiments')
+    parser.add_argument('-m', '--measure', metavar='N', type=int,
+                    help='measure and visualize policy samples')
+    parser.add_argument('-e', '--eval', metavar='N', type=int,
+                    help='evaluate the ground truth cost of the last policy')
+    parser.add_argument('-x', '--extendtesting', metavar='N', type=int,
+                    help='testing the policy performance on a larger domain')
+    # TODO: make these subparsers
+
     args = parser.parse_args()
 
     exp_name = args.experiment
     resume_training_itr = args.resume
     test_policy_N = args.policy
     compare = args.compare
+    measure = args.measure
 
     from gps import __file__ as gps_filepath
     gps_filepath = os.path.abspath(gps_filepath)
@@ -520,7 +547,7 @@ def main():
             plt.show()
         except ImportError:
             sys.exit('ROS required for target setup.')
-    elif test_policy_N:
+    elif type(test_policy_N) is int or args.eval or args.extendtesting:
         data_files_dir = exp_dir + 'data_files/'
         data_filenames = os.listdir(data_files_dir)
         algorithm_prefix = 'algorithm_itr_'
@@ -530,16 +557,32 @@ def main():
 
         gps = GPSMain(hyperparams.config, test_pol=True)
         if hyperparams.config['gui_on']:
-            test_policy = threading.Thread(
-                target=lambda: gps.test_policy(itr=current_itr, N=test_policy_N)
-            )
+            if type(test_policy_N) is int:
+                test_policy = threading.Thread(
+                    target=lambda: gps.test_policy(itr=current_itr, N=test_policy_N)
+                )
+            elif args.eval:
+                test_policy = threading.Thread(
+                    target=lambda: gps.test_policy(itr=current_itr, N=args.eval, eval_pol_gt=True)
+                )
+            else:
+                test_policy = threading.Thread(
+                    target=lambda: gps.test_policy(itr=current_itr, N=args.extendtesting, testing=True)
+                )
             test_policy.daemon = True
             test_policy.start()
 
             plt.ioff()
             plt.show()
         else:
-            gps.test_policy(itr=current_itr, N=test_policy_N)
+            gps.test_policy(itr=current_itr, N=test_policy_N, testing=args.extendtesting, eval_pol_gt=args.eval)
+    elif measure:
+        for i in xrange(2, 3):
+            random.seed(i)
+            np.random.seed(i)
+            gps = GPSMain(hyperparams.config)
+            agent_config = gps._hyperparams['agent']
+            compare_samples(gps, measure, agent_config, three_dim=False, weight_varying=True, experiment='reacher')
     elif compare:
         mean_dists_1_dict, mean_dists_2_dict, success_rates_1_dict, \
             success_rates_2_dict = {}, {}, {}, {}
