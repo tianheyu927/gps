@@ -16,7 +16,8 @@ from gps.algorithm.dynamics.dynamics_lr_prior import DynamicsLRPrior
 from gps.algorithm.dynamics.dynamics_prior_gmm import DynamicsPriorGMM
 from gps.algorithm.traj_opt.traj_opt_lqr_python import TrajOptLQRPython
 from gps.algorithm.policy.lin_gauss_init import init_lqr, init_pd
-from gps.algorithm.policy_opt.policy_opt_caffe import PolicyOptCaffe
+from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
+from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.policy.policy_prior_gmm import PolicyPriorGMM
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
@@ -47,6 +48,8 @@ np.random.seed(13)
 #pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
 for _ in range(TOTAL_CONDITIONS):
     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+
+seed = 0
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -152,10 +155,25 @@ algorithm['cost'] = [{
 #    'type': CostGym,
 #}
 
+# algorithm['policy_opt'] = {
+#     'type': PolicyOptCaffe,
+#     'iterations': 5000,
+#     'weights_file_prefix': common['data_files_dir'] + 'policy',
+# }
+
 algorithm['policy_opt'] = {
-    'type': PolicyOptCaffe,
-    'iterations': 5000,
+    'type': PolicyOptTf,
+    'network_params': {
+        'obs_include': agent['obs_include'],
+        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+        'sensor_dims': SENSOR_DIMS,
+    },
+    'network_model': example_tf_network,
+    # 'fc_only_iterations': 5000,
+    # 'init_iterations': 1000,
+    'iterations': 1000,  # was 100
     'weights_file_prefix': common['data_files_dir'] + 'policy',
+    'random_seed': seed,
 }
 
 algorithm['init_traj_distr'] = {

@@ -557,8 +557,12 @@ def main():
     import random
     import numpy as np
 
-    random.seed(0)
-    np.random.seed(0)
+    if hasattr(hyperparams, 'seed'):
+        SEED = hyperparams.seed
+    else:
+        SEED = 0
+    random.seed(SEED)
+    np.random.seed(SEED)
 
     if args.targetsetup:
         try:
