@@ -43,8 +43,8 @@ class GPSMain(object):
         self._hyperparams = config
         self._conditions = config['common']['conditions']
         if 'train_conditions' in config['common']:
-            self._train_idx = range(config['common']['train_conditions'])
-            self._test_idx = range(config['common']['test_conditions'])
+            self._train_idx = config['common']['train_conditions']
+            self._test_idx = config['common']['test_conditions']
             if not self._test_idx:
                 self._test_idx = self._train_idx
         else:
@@ -95,35 +95,38 @@ class GPSMain(object):
 
         itr_start = self._initialize(itr_load)
         for itr in range(itr_start, self._hyperparams['iterations']):
-            with Timer('_reset'):
-                if self.agent._hyperparams.get('randomly_sample_x0', False):
+            if not self.using_bc():
+                with Timer('_reset'):
+                    if self.agent._hyperparams.get('randomly_sample_x0', False):
+                            for cond in self._train_idx:
+                                self.agent.reset_initial_x0(cond)
+
+                    if self.agent._hyperparams.get('randomly_sample_bodypos', False):
                         for cond in self._train_idx:
-                            self.agent.reset_initial_x0(cond)
+                            self.agent.reset_initial_body_offset(cond)
 
-                if self.agent._hyperparams.get('randomly_sample_bodypos', False):
+                with Timer('_take_sample'):
                     for cond in self._train_idx:
-                        self.agent.reset_initial_body_offset(cond)
+                        if itr == 0:
+                            for i in range(self.algorithm._hyperparams['init_samples']):
+                                self._take_sample(itr, cond, i)
+                        else:
+                            for i in range(self._hyperparams['num_samples']):
+                                self._take_sample(itr, cond, i)
 
-            with Timer('_take_sample'):
-                for cond in self._train_idx:
-                    if itr == 0:
-                        for i in range(self.algorithm._hyperparams['init_samples']):
-                            self._take_sample(itr, cond, i)
-                    else:
-                        for i in range(self._hyperparams['num_samples']):
-                            self._take_sample(itr, cond, i)
+                with Timer('_get_samples'):
+                    traj_sample_lists = [
+                        self.agent.get_samples(cond, -self._hyperparams['num_samples'])
+                        for cond in self._train_idx
+                    ]
 
-            with Timer('_get_samples'):
-                traj_sample_lists = [
-                    self.agent.get_samples(cond, -self._hyperparams['num_samples'])
-                    for cond in self._train_idx
-                ]
+                # clear samples
+                self.agent.clear_samples()
 
-            # clear samples
-            self.agent.clear_samples()
-
-            with Timer('_take_iteration'):
-                self._take_iteration(itr, traj_sample_lists)
+                with Timer('_take_iteration'):
+                    self._take_iteration(itr, traj_sample_lists)
+            else:
+                traj_sample_lists = []
 
             with Timer('_log_data'):
                 if self.algorithm._hyperparams['sample_on_policy']:
@@ -267,7 +270,7 @@ class GPSMain(object):
         Returns: None
         """
         if self.algorithm._hyperparams['sample_on_policy'] and (self.algorithm.iteration_count > 0 or \
-            self.algorithm._hyperparams['init_demo_policy']):
+            self.algorithm._hyperparams.get('init_demo_policy', False)):
             if not self.algorithm._hyperparams['multiple_policy']:
                 pol = self.algorithm.policy_opt.policy
             else:
@@ -453,6 +456,8 @@ class GPSMain(object):
     def using_ioc(self):
         return 'ioc' in self._hyperparams['algorithm'] and self._hyperparams['algorithm']['ioc']
 
+    def using_bc(self):
+        return self._hyperparams['algorithm'].get('bc', False)
 
 def main():
     """ Main function to be run. """

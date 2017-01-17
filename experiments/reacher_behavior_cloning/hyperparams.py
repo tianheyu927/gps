@@ -7,18 +7,13 @@ import operator
 
 from gps import __file__ as gps_filepath
 from gps.agent.mjc.agent_mjc import AgentMuJoCo
-from gps.algorithm.algorithm_mdgps import AlgorithmMDGPS
+from gps.algorithm.behavior_cloning import BehaviorCloning
 from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.cost.cost_state import CostState
 from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_sum import CostSum
-from gps.algorithm.dynamics.dynamics_lr_prior import DynamicsLRPrior
-from gps.algorithm.dynamics.dynamics_prior_gmm import DynamicsPriorGMM
-from gps.algorithm.traj_opt.traj_opt_lqr_python import TrajOptLQRPython
-from gps.algorithm.policy.lin_gauss_init import init_lqr, init_pd
-from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
+from gps.algorithm.policy_opt.policy_cloning_tf import PolicyCloningTf
 from gps.algorithm.policy_opt.tf_model_example import example_tf_network
-from gps.algorithm.policy.policy_prior_gmm import PolicyPriorGMM
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
 
@@ -36,20 +31,31 @@ SENSOR_DIMS = {
 
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
+DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
+IOC_DIR = BASE_DIR + '/../experiments/reacher_mdgps_ioc/'
+# DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
 
+#CONDITIONS = 1
+TRAIN_CONDITIONS = 1
 
 np.random.seed(47)
-TRAIN_CONDITIONS = 1 # 4
-TEST_CONDITIONS = 0 # 9
+DEMO_CONDITIONS = 1 #20
+TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
+
+demo_pos_body_offset = []
+for _ in range(DEMO_CONDITIONS):
+    demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+
 pos_body_offset = []
-np.random.seed(13)
-#pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
-#pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
 for _ in range(TOTAL_CONDITIONS):
     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
-seed = 0
+#pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+#pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
+#demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+
+SEED = 0
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -58,7 +64,14 @@ common = {
     'data_files_dir': EXP_DIR + 'data_files/',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
+    'demo_exp_dir': DEMO_DIR,
+    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_09.pkl',
+    'nn_demo': True, # Use neural network demonstrations. For experiment only
+    'LG_demo_file': os.path.join(IOC_DIR, 'data_files', 'demos_LG.pkl'),
+    'NN_demo_file': os.path.join(IOC_DIR, 'data_files', 'demos_NN.pkl'),
     'conditions': TOTAL_CONDITIONS,
+    'train_conditions': range(TRAIN_CONDITIONS),
+    'test_conditions': range(TRAIN_CONDITIONS, TOTAL_CONDITIONS),
 }
 
 if not os.path.exists(common['data_files_dir']):
@@ -70,6 +83,9 @@ agent = {
     'x0': np.zeros(4),
     'dt': 0.05,
     'substeps': 5,
+    'randomly_sample_bodypos': False,
+    'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
+    'prohibited_ranges_bodypos':[ [None, None, None, None] ],
     'pos_body_offset': pos_body_offset,
     'pos_body_idx': np.array([4]),
     'conditions': common['conditions'],
@@ -82,21 +98,40 @@ agent = {
     'meta_include': [],
     'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ pos_body_offset[i], np.array([0., 0., 0.])])
-        for i in range(TOTAL_CONDITIONS)],
-    'render':True,
+                            for i in xrange(TOTAL_CONDITIONS)],
+    'render': True,
+}
+
+demo_agent = {
+    'type': AgentMuJoCo,
+    'filename': './mjc_models/reacher_img.xml',
+    'x0': np.zeros(4),
+    'dt': 0.05,
+    'substeps': 5,
+    'pos_body_offset': demo_pos_body_offset,
+    'pos_body_idx': np.array([4]),
+    'conditions': DEMO_CONDITIONS,
+    'T': agent['T'],
+    'sensor_dims': SENSOR_DIMS,
+    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
+            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
+            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+    'meta_include': [],
+    'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i], np.array([0., 0., 0.])])
+                            for i in xrange(DEMO_CONDITIONS)],
+    'success_upper_bound': 0.01,
+    'render': True,
 }
 
 
 algorithm = {
-    'type': AlgorithmMDGPS,
+    'type': BehaviorCloning,
+    'bc': True,
     'sample_on_policy': True,
     'conditions': common['conditions'],
-    'iterations': 10,
-    'kl_step': 1.0,
-    'max_ent_traj': 0.001,
-    'min_step_mult': 0.2,
-    'max_step_mult': 2.0,
-    'policy_sample_mode': 'replace',
+    'iterations': 1, # must be 1
     'agent_pos_body_idx': agent['pos_body_idx'],
     'agent_pos_body_offset': agent['pos_body_offset'],
     'plot_dir': EXP_DIR,
@@ -162,57 +197,26 @@ algorithm['cost'] = [{
 # }
 
 algorithm['policy_opt'] = {
-    'type': PolicyOptTf,
+    'type': PolicyCloningTf,
     'network_params': {
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
         'sensor_dims': SENSOR_DIMS,
+        'bc': True,
     },
     'network_model': example_tf_network,
     # 'fc_only_iterations': 5000,
     # 'init_iterations': 1000,
     'iterations': 1000,  # was 100
+    'demo_file': common['NN_demo_file'],
+    'agent': demo_agent,
     'weights_file_prefix': common['data_files_dir'] + 'policy',
-    'random_seed': seed,
-}
-
-algorithm['init_traj_distr'] = {
-    'type': init_lqr,
-    'init_gains':  100.0 * np.ones(SENSOR_DIMS[ACTION]),
-    'init_acc': np.zeros(SENSOR_DIMS[ACTION]),
-    'init_var': 1.0,
-    'dt': agent['dt'],
-    'T': agent['T'],
-}
-
-algorithm['dynamics'] = {
-    'type': DynamicsLRPrior,
-    'regularization': 1e-6,
-    'prior': {
-        'type': DynamicsPriorGMM,
-        'max_clusters': 30,
-        'min_samples_per_cluster': 40,
-        'max_samples': 10, #len(common['train_conditions']),
-    },
-}
-
-algorithm['traj_opt'] = {
-    'type': TrajOptLQRPython,
-    'min_eta': 1e-4,
-    'max_eta': 1.0,
-}
-
-
-algorithm['policy_prior'] = {
-    'type': PolicyPriorGMM,
-    'max_clusters': 40,
-    'min_samples_per_cluster': 40,
+    'random_seed': SEED,
 }
 
 
 config = {
     'iterations': algorithm['iterations'],
-    'num_samples': 5,
     'verbose_trials': 1,
     'verbose_policy_trials': 1,
     'common': common,
@@ -220,7 +224,7 @@ config = {
     'gui_on': True,
     'algorithm': algorithm,
     'conditions': common['conditions'],
-    'random_seed': 1,
+    'random_seed': SEED,
 }
 
 common['info'] = generate_experiment_info(config)

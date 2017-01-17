@@ -41,6 +41,7 @@ NUM_DEMO_PLOTS = 5
 # Needed for typechecks
 from gps.algorithm.algorithm_badmm import AlgorithmBADMM
 from gps.algorithm.algorithm_mdgps import AlgorithmMDGPS
+from gps.algorithm.behavior_cloning import BehaviorCloning
 
 class GPSTrainingGUI(object):
 
@@ -302,7 +303,7 @@ class GPSTrainingGUI(object):
             self._output_column_titles(algorithm)
             self._first_update = False
 
-        if config['fp_on']:
+        if config['fp_on'] and not algorithm._hyperparams['bc']:
             if RGB_IMAGE in agent.obs_data_types:
                 img = []
                 samples = []
@@ -328,16 +329,19 @@ class GPSTrainingGUI(object):
                    # img.append(image.reshape(size).transpose((2, 1, 0)))
                    # feature_points = algorithm.policy_opt.fp_vals
                    # idx = np.random.randint(len(img))
-
-        costs = [np.mean(np.sum(algorithm.prev[m].cs, axis=1)) for m in range(algorithm.M)]
+        if not algorithm._hyperparams.get('bc', False):
+            costs = [np.mean(np.sum(algorithm.prev[m].cs, axis=1)) for m in range(algorithm.M)]
+        else:
+            costs = 'N/A'
         if algorithm._hyperparams['ioc']:
             gt_costs = [np.mean(np.sum(algorithm.prev[m].cgt, axis=1)) for m in range(algorithm.M)]
             self._update_iteration_data(itr, algorithm, gt_costs, pol_sample_lists, eval_pol_gt)
             self._gt_cost_plotter.update(gt_costs, t=itr)
         else:
             self._update_iteration_data(itr, algorithm, costs, pol_sample_lists)
-        self._cost_plotter.update(costs, t=itr)
-        if END_EFFECTOR_POINTS in agent.x_data_types:
+        if not algorithm._hyperparams.get('bc', False):
+            self._cost_plotter.update(costs, t=itr)
+        if END_EFFECTOR_POINTS in agent.x_data_types and not algorithm._hyperparams.get('bc', False):
             self._update_trajectory_visualizations(algorithm, agent,
                     traj_sample_lists, pol_sample_lists)
 
@@ -357,15 +361,16 @@ class GPSTrainingGUI(object):
         controller entropies, and initial/final KL divergences for BADMM.
         """
         self.set_output_text(self._hyperparams['experiment_name'])
-        if isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, AlgorithmBADMM):
+        if isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, AlgorithmBADMM) or isinstance(algorithm, BehaviorCloning):
             condition_titles = '%3s | %8s %12s' % ('', '', '')
             itr_data_fields  = '%3s | %8s %12s' % ('itr', 'avg_cost', 'avg_pol_cost')
         else:
             condition_titles = '%3s | %8s' % ('', '')
             itr_data_fields  = '%3s | %8s' % ('itr', 'avg_cost')
         for m in range(algorithm.M):
-            condition_titles += ' | %8s %9s %-7d' % ('', 'condition', m)
-            itr_data_fields  += ' | %8s %8s %8s' % ('  cost  ', '  step  ', 'entropy ')
+            if not algorithm._hyperparams.get('bc', False):
+                condition_titles += ' | %8s %9s %-7d' % ('', 'condition', m)
+                itr_data_fields  += ' | %8s %8s %8s' % ('  cost  ', '  step  ', 'entropy ')
 
             #if algorithm._hyperparams['ioc'] and not algorithm._hyperparams['learning_from_prior']:
             #    condition_titles += ' %8s' % ('')
@@ -377,7 +382,7 @@ class GPSTrainingGUI(object):
             if isinstance(algorithm, AlgorithmBADMM):
                 condition_titles += ' %8s %8s %8s' % ('', '', '')
                 itr_data_fields  += ' %8s %8s %8s' % ('pol_cost', 'kl_div_i', 'kl_div_f')
-            elif isinstance(algorithm, AlgorithmMDGPS):
+            elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning):
                 condition_titles += ' %8s' % ('')
                 itr_data_fields  += ' %8s' % ('pol_cost')
         self.append_output_text(condition_titles)
@@ -389,7 +394,10 @@ class GPSTrainingGUI(object):
         each condition the mean cost over samples, step size, linear Guassian
         controller entropies, and initial/final KL divergences for BADMM.
         """
-        avg_cost = np.mean(costs)
+        if not algorithm._hyperparams.get('bc', False):
+            avg_cost = np.mean(costs)
+        else:
+            avg_cost = 'N/A'
         pol_costs = [-123 for _ in range(algorithm.M)]
         if pol_sample_lists is not None:
             test_idx = algorithm._hyperparams['test_conditions']
@@ -408,19 +416,23 @@ class GPSTrainingGUI(object):
                 assert algorithm._hyperparams['ioc']
                 pol_costs = [np.sum(algorithm.gt_cost[idx].eval(s)[0])
                         for s, idx in zip(samples, test_idx)]
-            itr_data = '%3d | %8.2f %12.2f' % (itr, avg_cost, np.mean(pol_costs))
+            if not algorithm._hyperparams.get('bc', False):
+                itr_data = '%3d | %8.2f %12.2f' % (itr, avg_cost, np.mean(pol_costs))
+            else:
+                itr_data = '%3d | %8s %12.2f' % (itr, avg_cost, np.mean(pol_costs))
         else:
             test_idx = None
             itr_data = '%3d | %8.2f' % (itr, avg_cost)
 
         for m in range(algorithm.M):
-            cost = costs[m]
-            step = algorithm.prev[m].step_mult * algorithm.base_kl_step
-            entropy = 2*np.sum(np.log(np.diagonal(algorithm.prev[m].traj_distr.chol_pol_covar,
-                    axis1=1, axis2=2)))
-            itr_data += ' | %8.2f %8.2f %8.2f' % (cost, step, entropy)
-            #if algorithm._hyperparams['ioc'] and not algorithm._hyperparams['learning_from_prior']:
-            #    itr_data += ' %8.2f' % (algorithm.kl_div[itr][m])
+            if not algorithm._hyperparams.get('bc', False):
+                cost = costs[m]
+                step = algorithm.prev[m].step_mult * algorithm.base_kl_step
+                entropy = 2*np.sum(np.log(np.diagonal(algorithm.prev[m].traj_distr.chol_pol_covar,
+                        axis1=1, axis2=2)))
+                itr_data += ' | %8.2f %8.2f %8.2f' % (cost, step, entropy)
+                #if algorithm._hyperparams['ioc'] and not algorithm._hyperparams['learning_from_prior']:
+                #    itr_data += ' %8.2f' % (algorithm.kl_div[itr][m])
 
             if pol_sample_lists is None:
                 if algorithm.dists_to_target:
@@ -443,7 +455,7 @@ class GPSTrainingGUI(object):
                 kl_div_i = algorithm.cur[m].pol_info.init_kl.mean()
                 kl_div_f = algorithm.cur[m].pol_info.prev_kl.mean()
                 itr_data += ' %8.2f %8.2f %8.2f' % (pol_costs[m], kl_div_i, kl_div_f)
-            elif isinstance(algorithm, AlgorithmMDGPS):
+            elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning):
                 # TODO: Change for test/train better.
                 if test_idx == algorithm._hyperparams['train_conditions']:
                     itr_data += ' %8.2f' % (pol_costs[m])

@@ -90,3 +90,10 @@ ALG_MDGPS = {
     # algorithm file with policy to copy params from to cost.
     'init_cost_params': None,
 }
+
+# AlgorithmBC
+ALG_BC = {
+    'ioc': False,
+    'global_cost': True,
+    'multiple_policy': False,
+}

@@ -80,14 +80,15 @@ class PolicyOptTf(PolicyOpt):
                 tf_map, fc_vars, last_conv_vars = tf_map_generator(dim_input=self._dO, dim_output=self._dU, batch_size=self.batch_size,
                                           network_config=self._hyperparams['network_params'])
             self.obs_tensor = tf_map.get_input_tensor()
-            self.precision_tensor = tf_map.get_precision_tensor()
+            if not self._hyperparams['network_params']['bc']:
+                self.precision_tensor = tf_map.get_precision_tensor()
             self.action_tensor = tf_map.get_target_output_tensor()
             self.act_op = tf_map.get_output_op()
             self.feat_op = tf_map.get_feature_op()
             self.image_op = tf_map.get_image_op()  # TODO - make this.
             self.loss_scalar = tf_map.get_loss_op()
             self.debug = tf_map.debug
-            if self._hyperparams.get('use_vision', True):
+            if self.uses_vision:
                 self.fc_vars = fc_vars
                 self.last_conv_vars = last_conv_vars
             else:
@@ -120,7 +121,7 @@ class PolicyOptTf(PolicyOpt):
         with self.graph.as_default():
             self.saver = tf.train.Saver()
 
-    def update(self, obs, tgt_mu, tgt_prc, tgt_wt, iter_count=None, fc_only=False):
+    def update(self, obs, tgt_mu, tgt_prc, tgt_wt, iter_count=None, fc_only=False, behavior_clone=False):
         """
         Update policy.
         Args:
@@ -129,37 +130,39 @@ class PolicyOptTf(PolicyOpt):
             tgt_prc: Numpy array of precision matrices, N x T x dU x dU.
             tgt_wt: Numpy array of weights, N x T.
             fc_only: If true, don't train end-to-end.
+            behavior_clone: If true, run policy cloning
         Returns:
             A tensorflow object with updated weights.
         """
         N, T = obs.shape[:2]
         dU, dO = self._dU, self._dO
+        if not behavior_clone:
+            # TODO - Make sure all weights are nonzero?
 
-        # TODO - Make sure all weights are nonzero?
+            # Save original tgt_prc.
+            tgt_prc_orig = np.reshape(tgt_prc, [N*T, dU, dU])
 
-        # Save original tgt_prc.
-        tgt_prc_orig = np.reshape(tgt_prc, [N*T, dU, dU])
+            # Renormalize weights.
+            tgt_wt *= (float(N * T) / np.sum(tgt_wt))
+            # Allow weights to be at most twice the robust median.
+            mn = np.median(tgt_wt[(tgt_wt > 1e-2).nonzero()])
+            for n in range(N):
+                for t in range(T):
+                    tgt_wt[n, t] = min(tgt_wt[n, t], 2 * mn)
+            # Robust median should be around one.
+            tgt_wt /= mn
 
-        # Renormalize weights.
-        tgt_wt *= (float(N * T) / np.sum(tgt_wt))
-        # Allow weights to be at most twice the robust median.
-        mn = np.median(tgt_wt[(tgt_wt > 1e-2).nonzero()])
-        for n in range(N):
-            for t in range(T):
-                tgt_wt[n, t] = min(tgt_wt[n, t], 2 * mn)
-        # Robust median should be around one.
-        tgt_wt /= mn
+            # Reshape inputs.
+            tgt_prc = np.reshape(tgt_prc, (N*T, dU, dU))
+            tgt_wt = np.reshape(tgt_wt, (N*T, 1, 1))
 
-        # Reshape inputs.
+            # Fold weights into tgt_prc.
+            tgt_prc = tgt_wt * tgt_prc
+
+            # TODO: Find entries with very low weights?
+
         obs = np.reshape(obs, (N*T, dO))
         tgt_mu = np.reshape(tgt_mu, (N*T, dU))
-        tgt_prc = np.reshape(tgt_prc, (N*T, dU, dU))
-        tgt_wt = np.reshape(tgt_wt, (N*T, 1, 1))
-
-        # Fold weights into tgt_prc.
-        tgt_prc = tgt_wt * tgt_prc
-
-        # TODO: Find entries with very low weights?
 
         # Normalize obs, but only compute normalzation at the beginning.
         if self.policy.scale is None or self.policy.bias is None:
@@ -189,8 +192,11 @@ class PolicyOptTf(PolicyOpt):
                 start_idx = int(i * self.batch_size %
                                 (batches_per_epoch * self.batch_size))
                 idx_i = idx[start_idx:start_idx+self.batch_size]
-                feed_dict = {self.action_tensor: tgt_mu[idx_i],
-                             self.precision_tensor: tgt_prc[idx_i]}
+                if not behavior_clone:
+                    feed_dict = {self.action_tensor: tgt_mu[idx_i],
+                                 self.precision_tensor: tgt_prc[idx_i]}
+                else:
+                    feed_dict = {self.action_tensor: tgt_mu[idx_i]}
                 if self.uses_vision:
                     feed_dict[self.last_conv_vars] = conv_values[idx_i]
                 else:
@@ -217,9 +223,13 @@ class PolicyOptTf(PolicyOpt):
             start_idx = int(i * self.batch_size %
                             (batches_per_epoch * self.batch_size))
             idx_i = idx[start_idx:start_idx+self.batch_size]
-            feed_dict = {self.obs_tensor: obs[idx_i],
-                         self.action_tensor: tgt_mu[idx_i],
-                         self.precision_tensor: tgt_prc[idx_i]}
+            if not behavior_clone:
+                feed_dict = {self.obs_tensor: obs[idx_i],
+                             self.action_tensor: tgt_mu[idx_i],
+                             self.precision_tensor: tgt_prc[idx_i]}
+            else:
+                feed_dict = {self.obs_tensor: obs[idx_i],
+                             self.action_tensor: tgt_mu[idx_i]}
             train_loss = self.solver(feed_dict, self._sess, device_string=self.device_string)
 
             average_loss += train_loss
@@ -239,15 +249,16 @@ class PolicyOptTf(PolicyOpt):
         self.tf_iter += self._hyperparams['iterations']
 
         # Optimize variance.
-        A = np.sum(tgt_prc_orig, 0) + 2 * N * T * \
-                self._hyperparams['ent_reg'] * np.ones((dU, dU))
-        A = A / np.sum(tgt_wt)
+        if not behavior_clone:
+            A = np.sum(tgt_prc_orig, 0) + 2 * N * T * \
+                    self._hyperparams['ent_reg'] * np.ones((dU, dU))
+            A = A / np.sum(tgt_wt)
 
-        # TODO - Use dense covariance?
-        self.var = 1 / np.diag(A)
-        self.policy.chol_pol_covar = np.diag(np.sqrt(self.var))
+            # TODO - Use dense covariance?
+            self.var = 1 / np.diag(A)
+            self.policy.chol_pol_covar = np.diag(np.sqrt(self.var))
 
-        return self.policy
+            return self.policy
 
     def prob(self, obs):
         """

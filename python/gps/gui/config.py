@@ -127,13 +127,21 @@ def generate_experiment_info(config):
         if (algorithm_cost_type) == 'CostSum':
             algorithm_cost_type += '(%s)' % ', '.join(
                     map(lambda cost: cost['type'].__name__, algorithm['cost']['costs']))
-
-    return (
-        'exp_name:   ' + str(common['experiment_name'])              + '\n' +
-        'alg_type:   ' + str(algorithm['type'].__name__)             + '\n' +
-        'alg_dyn:    ' + str(algorithm['dynamics']['type'].__name__) + '\n' +
-        'alg_cost:   ' + str(algorithm_cost_type)                    + '\n' +
-        'iterations: ' + str(config['iterations'])                   + '\n' +
-        'conditions: ' + str(algorithm['conditions'])                + '\n' +
-        'samples:    ' + str(config['num_samples'])                  + '\n'
-    )
+    if not algorithm.get('bc', False):
+        return (
+            'exp_name:   ' + str(common['experiment_name'])              + '\n' +
+            'alg_type:   ' + str(algorithm['type'].__name__)             + '\n' +
+            'alg_dyn:    ' + str(algorithm['dynamics']['type'].__name__) + '\n' +
+            'alg_cost:   ' + str(algorithm_cost_type)                    + '\n' +
+            'iterations: ' + str(config['iterations'])                   + '\n' +
+            'conditions: ' + str(algorithm['conditions'])                + '\n' +
+            'samples:    ' + str(config['num_samples'])                  + '\n'
+        )
+    else:
+        return (
+            'exp_name:   ' + str(common['experiment_name'])              + '\n' +
+            'alg_type:   ' + str(algorithm['type'].__name__)             + '\n' +
+            'alg_cost:   ' + str(algorithm_cost_type)                    + '\n' +
+            'iterations: ' + str(config['iterations'])                   + '\n' +
+            'conditions: ' + str(algorithm['conditions'])                + '\n'
+        )

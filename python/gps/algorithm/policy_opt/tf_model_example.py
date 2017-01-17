@@ -23,23 +23,29 @@ def batched_matrix_vector_multiply(vector, matrix):
     return squeezed_result
 
 
-def euclidean_loss_layer(a, b, precision, batch_size):
+def euclidean_loss_layer(a, b, precision, batch_size, behavior_clone=False):
     """ Math:  out = (action - mlp_out)'*precision*(action-mlp_out)
                     = (u-uhat)'*A*(u-uhat)"""
     scale_factor = tf.constant(2*batch_size, dtype='float')
-    uP = batched_matrix_vector_multiply(a-b, precision)
+    if not behavior_clone:
+        uP = batched_matrix_vector_multiply(a-b, precision)
+    else:
+        uP = a-b
     uPu = tf.reduce_sum(uP*(a-b))  # this last dot product is then summed, so we just the sum all at once.
     return uPu/scale_factor
 
 
-def get_input_layer(dim_input, dim_output):
+def get_input_layer(dim_input, dim_output, behavior_clone=False):
     """produce the placeholder inputs that are used to run ops forward and backwards.
         net_input: usually an observation.
         action: mu, the ground truth actions we're trying to learn.
         precision: precision matrix used to commpute loss."""
     net_input = tf.placeholder(tf.float32, [None, dim_input], name='nn_input')
     action = tf.placeholder(tf.float32, [None, dim_output], name='action')
-    precision = tf.placeholder(tf.float32, [None, dim_output, dim_output], name='precision')
+    if not behavior_clone:
+        precision = tf.placeholder(tf.float32, [None, dim_output, dim_output], name='precision')
+    else:
+        precision = None
     return net_input, action, precision
 
 
@@ -64,9 +70,9 @@ def get_mlp_layers(mlp_input, number_layers, dimension_hidden):
     return cur_top, weights, biases
 
 
-def get_loss_layer(mlp_out, action, precision, batch_size):
+def get_loss_layer(mlp_out, action, precision, batch_size, behavior_clone=False):
     """The loss layer used for the MLP network is obtained through this class."""
-    return euclidean_loss_layer(a=action, b=mlp_out, precision=precision, batch_size=batch_size)
+    return euclidean_loss_layer(a=action, b=mlp_out, precision=precision, batch_size=batch_size, behavior_clone=behavior_clone)
 
 
 def example_tf_network(dim_input=27, dim_output=7, batch_size=25, network_config=None):
@@ -82,12 +88,13 @@ def example_tf_network(dim_input=27, dim_output=7, batch_size=25, network_config
     """
     n_layers = network_config.get('n_layers', 3)
     dim_hidden = network_config.get('dim_hidden', 40)
+    behavior_clone = network_config.get('bc', False)
     dim_hidden = (n_layers - 1) * [dim_hidden]
     dim_hidden.append(dim_output)
-    nn_input, action, precision = get_input_layer(dim_input, dim_output)
+    nn_input, action, precision = get_input_layer(dim_input, dim_output, behavior_clone)
     mlp_applied, weights_FC, biases_FC = get_mlp_layers(nn_input, n_layers, dim_hidden)
     fc_vars = weights_FC + biases_FC
-    loss_out = get_loss_layer(mlp_out=mlp_applied, action=action, precision=precision, batch_size=batch_size)
+    loss_out = get_loss_layer(mlp_out=mlp_applied, action=action, precision=precision, batch_size=batch_size, behavior_clone=behavior_clone)
 
     return TfMap.init_from_lists([nn_input, action, precision], [mlp_applied], [loss_out]), fc_vars, []
 

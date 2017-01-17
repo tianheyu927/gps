@@ -11,7 +11,7 @@ from gps.algorithm.algorithm_badmm import AlgorithmBADMM
 from gps.algorithm.algorithm_traj_opt import AlgorithmTrajOpt
 from gps.algorithm.algorithm_mdgps import AlgorithmMDGPS
 from gps.algorithm.cost.cost_action import CostAction
-from gps.algorithm.cost.cost_ioc_nn import CostIOCNN
+from gps.algorithm.cost.cost_ioc_tf import CostIOCTF
 from gps.algorithm.cost.cost_state import CostState
 from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_sum import CostSum
@@ -20,7 +20,8 @@ from gps.algorithm.dynamics.dynamics_lr_prior import DynamicsLRPrior
 from gps.algorithm.dynamics.dynamics_prior_gmm import DynamicsPriorGMM
 from gps.algorithm.traj_opt.traj_opt_lqr_python import TrajOptLQRPython
 from gps.algorithm.policy.lin_gauss_init import init_lqr, init_pd, init_demo
-from gps.algorithm.policy_opt.policy_opt_caffe import PolicyOptCaffe
+from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
+from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.policy.policy_prior_gmm import PolicyPriorGMM
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
@@ -39,15 +40,15 @@ SENSOR_DIMS = {
 
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
-#DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
+DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
+# DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
 
 #CONDITIONS = 1
-TRAIN_CONDITIONS = 9
+TRAIN_CONDITIONS = 1
 
 np.random.seed(47)
-DEMO_CONDITIONS = 10 #20
-TEST_CONDITIONS = 9
+DEMO_CONDITIONS = 1 #20
+TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 
 demo_pos_body_offset = []
@@ -62,6 +63,7 @@ for _ in range(TOTAL_CONDITIONS):
 #pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
 #demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 
+SEED = 0
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -71,9 +73,10 @@ common = {
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
-    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_14.pkl',
-    #'demo_controller_file': DEMO_DIR + 'data_files_maxent_9cond_z_0.05_1/algorithm_itr_09.pkl',
-    'nn_demo': False, # Use neural network demonstrations. For experiment only
+    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_09.pkl',
+    'nn_demo': True, # Use neural network demonstrations. For experiment only
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files', 'demos_LG.pkl'),
+    'NN_demo_file': os.path.join(EXP_DIR, 'data_files', 'demos_NN.pkl'),
     'conditions': TOTAL_CONDITIONS,
     'train_conditions': range(TRAIN_CONDITIONS),
     'test_conditions': range(TRAIN_CONDITIONS, TOTAL_CONDITIONS),
@@ -88,7 +91,7 @@ agent = {
     'x0': np.zeros(4),
     'dt': 0.05,
     'substeps': 5,
-    'randomly_sample_bodypos': True,
+    'randomly_sample_bodypos': False,
     'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
     'pos_body_offset': pos_body_offset,
@@ -137,14 +140,12 @@ algorithm = {
     'ioc' : 'ICML',  # IOC STUFF HERE
     'max_ent_traj': 1.0,
     'num_demos': 10,
-    'synthetic_cost_samples': 100,
+    'synthetic_cost_samples': 0,
     'global_cost': True,
     'demo_var_mult': 1.0,
     'conditions': common['conditions'],  # NON IOC STUFF HERE
-    'train_conditions': common['train_conditions'],
-    'test_conditions': common['test_conditions'],
     'iterations': 15,
-    'ioc_maxent_iter': 10,
+    'ioc_maxent_iter': 15,
     'kl_step': 1.0,
     'min_step_mult': 0.2,
     'max_step_mult': 2.0,
@@ -198,18 +199,24 @@ algorithm['gt_cost'] = [{
     'weights': [2.0, 1.0],
 }  for i in range(common['conditions'])][0]
 
-algorithm['cost'] = {  # TODO - make vision cost and emp. est derivatives
-    'type': CostIOCNN,
-    'wu': 200 / PR2_GAINS,
+algorithm['cost'] = {
+    'type': CostIOCTF,
+    'wu': 2000.0 / PR2_GAINS,
+    # 'wu' : 0.0,
+    'network_params': {
+        'obs_include': agent['obs_include'],
+        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+        'obs_image_data': [],
+        'sensor_dims': SENSOR_DIMS,
+    },
     'T': agent['T'],
     'dO': 16,
-    'iterations': 1000,
+    'iterations': 5000, # TODO - do we need 5k?
     'demo_batch_size': 5,
     'sample_batch_size': 5,
     'ioc_loss': algorithm['ioc'],
-    'smooth_reg_weight': 0.1,
-    'mono_reg_weight': 100.0,
-    'learn_wu': False,
+    'approximate_lxx': False,
+    'random_seed': SEED,
 }
 
 #algorithm['init_traj_distr'] = {
@@ -254,9 +261,17 @@ algorithm['traj_opt'] = {
 }
 
 algorithm['policy_opt'] = {
-    'type': PolicyOptCaffe,
-    'iterations': 5000,
+    'type': PolicyOptTf,
+    'network_params': {
+        'obs_include': agent['obs_include'],
+        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+        'obs_image_data': [],
+        'sensor_dims': SENSOR_DIMS,
+    },
+    'network_model': example_tf_network,
+    'iterations': 1000,  # was 100
     'weights_file_prefix': common['data_files_dir'] + 'policy',
+    'random_seed': SEED,
 }
 
 algorithm['policy_prior'] = {
