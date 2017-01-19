@@ -189,6 +189,8 @@ class CostIOCTF(Cost):
         network_arch_params['mono_reg_weight'] = self._hyperparams['mono_reg_weight']
         network_arch_params['gp_reg_weight'] = self._hyperparams['gp_reg_weight']
         network_arch_params['learn_wu'] = self._hyperparams['learn_wu']
+        network_arch_params['batch_norm'] = self._hyperparams['batch_norm']
+        network_arch_params['decay'] = self._hyperparams.get('decay', 0.9)
         inputs, outputs = construct_nn_cost_net_tf(**network_arch_params)
         self.outputs = outputs
 

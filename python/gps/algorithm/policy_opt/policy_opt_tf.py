@@ -66,6 +66,8 @@ class PolicyOptTf(PolicyOpt):
             else:
                 self.x_idx = self.x_idx + list(range(i, i+dim))
             i += dim
+        self._hyperparams['network_params'].update({'batch_norm': self._hyperparams['batch_norm']})
+        self._hyperparams['network_params'].update({'decay': 0.9})
         # self.policy.scale = np.eye(len(self.x_idx))
         # self.policy.bias = np.zeros(len(self.x_idx))
         with self.graph.as_default():
@@ -80,7 +82,7 @@ class PolicyOptTf(PolicyOpt):
                 tf_map, fc_vars, last_conv_vars = tf_map_generator(dim_input=self._dO, dim_output=self._dU, batch_size=self.batch_size,
                                           network_config=self._hyperparams['network_params'])
             self.obs_tensor = tf_map.get_input_tensor()
-            if not self._hyperparams['network_params']['bc']:
+            if not self._hyperparams['network_params'].get('bc', False):
                 self.precision_tensor = tf_map.get_precision_tensor()
             self.action_tensor = tf_map.get_target_output_tensor()
             self.act_op = tf_map.get_output_op()

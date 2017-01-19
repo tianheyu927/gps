@@ -65,7 +65,7 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
                              demo_batch_size=5, sample_batch_size=5, phase=None, ioc_loss='ICML',
                              Nq=1, smooth_reg_weight=0.0, mono_reg_weight=0.0, gp_reg_weight=0.0,
                              multi_obj_supervised_wt=1.0, learn_wu=False, x_idx=None, img_idx=None,
-                              num_filters=[15,15,15]):
+                              num_filters=[15,15,15], batch_norm=False, decay=0.9):
     """ Construct cost net with images and robot config.
     Args:
         ...
@@ -96,16 +96,26 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     img_idx = tf.constant(img_idx)
 
 
-    _, test_imgfeat, _, test_cost  = nn_vis_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters)
-    demo_cost_preu, _, _, demo_costs = nn_vis_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters)
-    sample_cost_preu, _, _, sample_costs = nn_vis_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters)
-    sup_cost_preu, _, _, sup_costs = nn_vis_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters)
+    demo_cost_preu, _, _, demo_costs = nn_vis_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu,
+                                                    dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters,
+                                                    batch_norm=batch_norm, is_training=True, decay=decay)
+    sample_cost_preu, _, _, sample_costs = nn_vis_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu,
+                                                    dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters,
+                                                    batch_norm=batch_norm, is_training=True, decay=decay)
+    sup_cost_preu, _, _, sup_costs = nn_vis_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                                    x_idx=x_idx, img_idx=img_idx, num_filters=num_filters, batch_norm=batch_norm,
+                                                    is_training=True, decay=decay)
+    _, test_imgfeat, _, test_cost  = nn_vis_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu,
+                                                    dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters,
+                                                    batch_norm=batch_norm, is_training=False, decay=decay)
 
     # Build a differentiable test cost by feeding each timestep individually
     test_obs_single = tf.expand_dims(test_obs_single, 0)
     test_torque_single = tf.expand_dims(test_torque_single, 0)
 
-    test_cost_single_preu, test_X_single, test_feat_single, _ = nn_vis_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden, learn_wu=learn_wu, x_idx=x_idx, img_idx=img_idx)
+    test_cost_single_preu, test_X_single, test_feat_single, _ = nn_vis_forward(test_obs_single, test_torque_single, num_hidden=num_hidden,
+                                                                                dim_hidden=dim_hidden, learn_wu=learn_wu, x_idx=x_idx,
+                                                                                img_idx=img_idx, batch_norm=batch_norm, is_training=True, decay=decay)
     test_cost_single = tf.squeeze(test_cost_single_preu)
 
     sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
@@ -161,7 +171,7 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
 def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
                              demo_batch_size=5, sample_batch_size=5, phase=None, ioc_loss='ICML',
                              Nq=1, smooth_reg_weight=0.0, mono_reg_weight=0.0, gp_reg_weight=0.0,
-                             multi_obj_supervised_wt=1.0, learn_wu=False):
+                             multi_obj_supervised_wt=1.0, learn_wu=False, batch_norm=False, decay=0.9):
 
     inputs = {}
     inputs['demo_obs'] = demo_obs = tf.placeholder(tf.float32, shape=(demo_batch_size, T, dim_input))
@@ -182,16 +192,22 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     inputs['test_obs_single'] = test_obs_single = tf.placeholder(tf.float32, shape=(dim_input), name='test_obs_single')
     inputs['test_torque_single'] = test_torque_single = tf.placeholder(tf.float32, shape=(1), name='test_torque_u_single')
 
-    _, test_cost  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden)
-    demo_cost_preu, demo_costs = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden)
-    sample_cost_preu, sample_costs = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden)
-    sup_cost_preu, sup_costs = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden)
+    demo_cost_preu, demo_costs = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=True, decay=decay)
+    sample_cost_preu, sample_costs = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=True, decay=decay)
+    sup_cost_preu, sup_costs = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=True, decay=decay)
+    _, test_cost  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=False, decay=decay)
 
     # Build a differentiable test cost by feeding each timestep individually
     test_obs_single = tf.expand_dims(test_obs_single, 0)
     test_torque_single = tf.expand_dims(test_torque_single, 0)
-    test_feat_single = compute_feats(test_obs_single, num_hidden=num_hidden, dim_hidden=dim_hidden)
-    test_cost_single_preu, _ = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden, learn_wu=learn_wu)
+    test_feat_single = compute_feats(test_obs_single, num_hidden=num_hidden, dim_hidden=dim_hidden, batch_norm=batch_norm,
+                                    is_training=False, decay=decay)
+    test_cost_single_preu, _ = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden,
+                                    learn_wu=learn_wu, batch_norm=batch_norm, is_training=False, decay=decay)
     test_cost_single = tf.squeeze(test_cost_single_preu)
 
     sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
@@ -242,7 +258,8 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     return inputs, outputs
 
 
-def compute_feats(net_input, num_hidden=1, dim_hidden=42):
+def compute_feats(net_input, num_hidden=1, dim_hidden=42, batch_norm=False,
+                    is_training=True, decay=0.9):
     len_shape = len(net_input.get_shape())
     if  len_shape == 3:
         batch_size, T, dinput = net_input.get_shape()
@@ -259,7 +276,21 @@ def compute_feats(net_input, num_hidden=1, dim_hidden=42):
                 # b = safe_get('b', shape=(dim_hidden))
                 W = init_weights((dim_hidden, layer.get_shape()[1].value), name='W')
                 b = init_bias((dim_hidden), name='b')
-                layer = tf.nn.relu(tf.matmul(layer, W, transpose_b=True, name='mul_layer'+str(i)) + b)
+                layer = tf.matmul(layer, W, transpose_b=True, name='mul_layer'+str(i)) + b
+            if batch_norm:
+                with tf.variable_scope('bn_layer_%d' % i) as vs:
+                    if is_training:
+                        try:
+                            layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                                scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                        except ValueError:
+                            layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                                scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                    else:
+                        layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
+                            scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+            else:
+                layer = tf.nn.relu(layer)
 
         Wfeat = init_weights((dim_hidden, layer.get_shape()[1].value), name='Wfeat')
         bfeat = init_bias((dim_hidden), name='bfeat')
@@ -273,11 +304,13 @@ def compute_feats(net_input, num_hidden=1, dim_hidden=42):
     return feat
 
 
-def nn_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False):
+def nn_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False,
+                batch_norm=False, is_training=True, decay=0.9):
     # Reshape into 2D matrix for matmuls
     u_input = tf.reshape(u_input, [-1, 1])
 
-    feat = compute_feats(net_input, num_hidden=num_hidden, dim_hidden=dim_hidden)
+    feat = compute_feats(net_input, num_hidden=num_hidden, dim_hidden=dim_hidden,
+                            batch_norm=batch_norm, is_training=is_training, decay=decay)
     feat = tf.reshape(feat, [-1, dim_hidden])
 
     with tf.variable_scope('cost_forward'):
@@ -308,10 +341,26 @@ def nn_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False):
     return all_costs_preu, all_costs
 
 
-def conv2d(img, w, b, strides=[1, 1, 1, 1]):
-    return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=strides, padding='SAME'), b))
+def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, is_training=True, decay=0.9, id=0):
+    layer = tf.nn.bias_add(tf.nn.conv2d(img, w, strides=strides, padding='SAME'), b)
+    if not batch_norm:
+        return tf.nn.relu(layer)
+    else:
+        with tf.variable_scope('bn_layer_%d' % id) as vs:
+            if is_training:
+                try:
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                        scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                except ValueError:
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                        scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+            else:
+                layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
+                    scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+        return layer
 
-def compute_image_feats(img_input, num_filters=[15,15,15]):
+def compute_image_feats(img_input, num_filters=[15,15,15], batch_norm=False,
+                        is_training=True, decay=0.9):
     filter_size = 5
     num_channels=3
     # Store layers weight & bias
@@ -328,9 +377,9 @@ def compute_image_feats(img_input, num_filters=[15,15,15]):
             'bc3': init_bias([num_filters[2]], name='bc3'),
         }
 
-    conv_layer_0 = conv2d(img=img_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1])
-    conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'])
-    conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'])
+    conv_layer_0 = conv2d(img=img_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, is_training=is_training, decay=decay, id=0)
+    conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, is_training=is_training, decay=decay, id=1)
+    conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, is_training=is_training, decay=decay, id=2)
 
     _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
     num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
@@ -361,7 +410,7 @@ def compute_image_feats(img_input, num_filters=[15,15,15]):
 
 
 def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False, x_idx=None, img_idx=None,
-                   num_filters=[15,15,15]):
+                   num_filters=[15,15,15], batch_norm=False, is_training=True, decay=0.9):
 
     net_input = tf.transpose(net_input)
     x_input = tf.transpose(tf.gather(net_input, x_idx))
@@ -373,7 +422,8 @@ def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=Fal
     img_input = tf.reshape(img_input, [-1, num_channels, im_width, im_height])
     img_input = tf.transpose(img_input, perm=[0,3,2,1])
 
-    img_feats = compute_image_feats(img_input, num_filters=num_filters)
+    img_feats = compute_image_feats(img_input, num_filters=num_filters, batch_norm=batch_norm,
+                                    is_training=is_training, decay=decay)
     if len(x_input.get_shape()) == 3:
         img_feats = tf.reshape(img_feats, [int(x_input.get_shape()[0]), int(x_input.get_shape()[1]), -1])
 
@@ -391,7 +441,8 @@ def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=Fal
     # Reshape into 2D matrix for matmuls
     u_input = tf.reshape(u_input, [-1, 1])
 
-    return_feat = compute_feats(all_feat, num_hidden=num_hidden, dim_hidden=dim_hidden)
+    return_feat = compute_feats(all_feat, num_hidden=num_hidden, dim_hidden=dim_hidden, batch_norm=batch_norm,
+                                is_training=is_training, decay=decay)
     feat = tf.reshape(return_feat, [-1, dim_hidden])
 
     with tf.variable_scope('cost_forward'):

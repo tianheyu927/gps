@@ -104,6 +104,7 @@ COST_IOC_TF = {
     # Other hyperparameters.
     'checkpoint_prefix': checkpoint_path,
     'approximate_lxx': True,
+    'batch_norm': False,
 }
 COST_IOC_TF.update(IOC_CONFIG)
 

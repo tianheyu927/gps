@@ -215,6 +215,8 @@ algorithm['cost'] = {
     'demo_batch_size': 5,
     'sample_batch_size': 5,
     'ioc_loss': algorithm['ioc'],
+    'batch_norm': True,
+    'decay': 0.9,
     'approximate_lxx': False,
     'random_seed': SEED,
 }
@@ -270,6 +272,8 @@ algorithm['policy_opt'] = {
     },
     'network_model': example_tf_network,
     'iterations': 1000,  # was 100
+    'batch_norm': True,
+    'decay': 0.9,
     'weights_file_prefix': common['data_files_dir'] + 'policy',
     'random_seed': SEED,
 }
