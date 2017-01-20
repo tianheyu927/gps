@@ -44,10 +44,10 @@ DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
 # DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
 
 #CONDITIONS = 1
-TRAIN_CONDITIONS = 1
+TRAIN_CONDITIONS = 4
 
 np.random.seed(47)
-DEMO_CONDITIONS = 1 #20
+DEMO_CONDITIONS = 10 #20
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 
@@ -59,9 +59,6 @@ pos_body_offset = []
 for _ in range(TOTAL_CONDITIONS):
     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
-#pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
-#pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
-#demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 
 SEED = 0
 
@@ -113,6 +110,7 @@ agent = {
 demo_agent = {
     'type': AgentMuJoCo,
     'filename': './mjc_models/reacher_img.xml',
+    'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
     'substeps': 5,
@@ -129,7 +127,7 @@ demo_agent = {
     'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i], np.array([0., 0., 0.])])
                             for i in xrange(DEMO_CONDITIONS)],
-    'success_upper_bound': 0.01,
+    'success_upper_bound': 0.05,
     'render': True,
 }
 
@@ -215,7 +213,7 @@ algorithm['cost'] = {
     'demo_batch_size': 5,
     'sample_batch_size': 5,
     'ioc_loss': algorithm['ioc'],
-    'batch_norm': True,
+    'batch_norm': False,
     'decay': 0.9,
     'approximate_lxx': False,
     'random_seed': SEED,
@@ -272,7 +270,7 @@ algorithm['policy_opt'] = {
     },
     'network_model': example_tf_network,
     'iterations': 1000,  # was 100
-    'batch_norm': True,
+    'batch_norm': False,
     'decay': 0.9,
     'weights_file_prefix': common['data_files_dir'] + 'policy',
     'random_seed': SEED,
