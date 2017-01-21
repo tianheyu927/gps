@@ -39,7 +39,7 @@ EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 
 
 np.random.seed(47)
-TRAIN_CONDITIONS = 4 # 4
+TRAIN_CONDITIONS = 1 # 4
 TEST_CONDITIONS = 0 # 9
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 pos_body_offset = []
@@ -48,8 +48,10 @@ np.random.seed(13)
 # pos_body_offset.append(np.array([-0.2, 0.2, 0.0]))
 # pos_body_offset.append(np.array([0.0, 0.0, 0.0]))
 # pos_body_offset.append(np.array([0.0, 0.2, 0.0]))
-for _ in range(TOTAL_CONDITIONS):
-    pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+# for _ in range(TOTAL_CONDITIONS):
+#     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+
+pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 
 seed = 0
 
@@ -95,7 +97,7 @@ algorithm = {
     'conditions': common['conditions'],
     'iterations': 10,
     'kl_step': 1.0,
-    'max_ent_traj': 0.001,
+    'max_ent_traj': 0.0001,
     'min_step_mult': 0.2,
     'max_step_mult': 2.0,
     'policy_sample_mode': 'replace',

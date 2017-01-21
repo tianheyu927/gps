@@ -138,6 +138,7 @@ class PolicyOptTf(PolicyOpt):
         """
         N, T = obs.shape[:2]
         dU, dO = self._dU, self._dO
+        # import pdb; pdb.set_trace()
         if not behavior_clone:
             # TODO - Make sure all weights are nonzero?
 
@@ -235,9 +236,9 @@ class PolicyOptTf(PolicyOpt):
             train_loss = self.solver(feed_dict, self._sess, device_string=self.device_string)
 
             average_loss += train_loss
-            if (i+1) % 50 == 0:
+            if i % 50 == 0:
                 LOGGER.debug('tensorflow iteration %d, average loss %f',
-                             i+1, average_loss / 50)
+                             i, average_loss / 50)
                 print ('supervised tf loss is ' + str(average_loss))
                 average_loss = 0
 

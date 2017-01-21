@@ -44,16 +44,16 @@ TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 
 demo_pos_body_offset = []
-for _ in range(DEMO_CONDITIONS):
-    demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+# for _ in range(DEMO_CONDITIONS):
+#     demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
 pos_body_offset = []
-for _ in range(TOTAL_CONDITIONS):
-    pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+# for _ in range(TOTAL_CONDITIONS):
+#     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
-#pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 #pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
-#demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 
 SEED = 0
 
@@ -207,6 +207,7 @@ algorithm['policy_opt'] = {
     'network_model': example_tf_network,
     # 'fc_only_iterations': 5000,
     # 'init_iterations': 1000,
+    'lr': 1e-3,
     'iterations': 1000,  # was 100
     'demo_file': common['NN_demo_file'],
     'agent': demo_agent,

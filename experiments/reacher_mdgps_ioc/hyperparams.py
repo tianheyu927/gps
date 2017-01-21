@@ -44,21 +44,24 @@ DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
 # DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
 
 #CONDITIONS = 1
-TRAIN_CONDITIONS = 4
+TRAIN_CONDITIONS = 1
 
 np.random.seed(47)
-DEMO_CONDITIONS = 10 #20
+DEMO_CONDITIONS = 1 #20
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 
 demo_pos_body_offset = []
-for _ in range(DEMO_CONDITIONS):
-    demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+# for _ in range(DEMO_CONDITIONS):
+#     demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
 pos_body_offset = []
-for _ in range(TOTAL_CONDITIONS):
-    pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+# for _ in range(TOTAL_CONDITIONS):
+#     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
+pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+#pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
+demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 
 SEED = 0
 
@@ -137,7 +140,7 @@ algorithm = {
     'sample_on_policy': True,
     'ioc' : 'ICML',  # IOC STUFF HERE
     'max_ent_traj': 1.0,
-    'num_demos': 10,
+    'num_demos': 80,
     'synthetic_cost_samples': 0,
     'global_cost': True,
     'demo_var_mult': 1.0,
@@ -199,7 +202,7 @@ algorithm['gt_cost'] = [{
 
 algorithm['cost'] = {
     'type': CostIOCTF,
-    'wu': 2000.0 / PR2_GAINS,
+    'wu': 20000.0 / PR2_GAINS,
     # 'wu' : 0.0,
     'network_params': {
         'obs_include': agent['obs_include'],

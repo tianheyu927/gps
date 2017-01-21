@@ -29,7 +29,7 @@ class PolicyCloningTf(PolicyOptTf):
 
         if hyperparams.get('agent', False):
             train_samples, test_samples = self.extract_supervised_data(demo_agent, demo_file) 
-            self.update(train_samples.get_X(), train_samples.get_U(), 1.0, 1.0, behavior_clone=True)
+            self.update(train_samples.get_obs(), train_samples.get_U(), 1.0, 1.0, behavior_clone=True)
         self.sup_samples = train_samples
         self.sup_test_samples = test_samples
 
@@ -40,7 +40,9 @@ class PolicyCloningTf(PolicyOptTf):
 
     def extract_supervised_data(self, demo_agent, demo_file):
         X, U, O, cond = extract_demos(demo_file)
-        n_test = 1 # number of demos for testing
+        import pdb; pdb.set_trace()
+        N = X.shape[0]
+        n_test = N/5 # number of demos for testing
         testX = X[-n_test:]
         testU = U[-n_test:]
         X = X[:-n_test]
