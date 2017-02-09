@@ -56,7 +56,6 @@ class LinePlotter(object):
 
         assert x.shape[0] == self._t
         x = x.reshape(self._t)
-
         self._data[idx] = x
         self._plots[idx].set_data(np.arange(self._t), self._data[idx])
         self._plots[idx].set_linestyle(style)

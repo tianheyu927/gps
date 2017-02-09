@@ -68,15 +68,25 @@ class GPSMain(object):
 
         config['algorithm']['agent'] = self.agent
 
-        if self.using_ioc() and not test_pol:
+        if (self.using_ioc() or self.using_bc()) and not test_pol:
             with Timer('loading demos'):
                 demos = get_demos(self)
-                self.algorithm.demoX = demos['demoX']
-                self.algorithm.demoU = demos['demoU']
-                self.algorithm.demoO = demos['demoO']
                 if 'demo_conditions' in demos.keys() and 'failed_conditions' in demos.keys():
                     self.algorithm.demo_conditions = demos['demo_conditions']
                     self.algorithm.failed_conditions = demos['failed_conditions']
+                if config['algorithm'].get('demo_M', 1) > 1 and 'demo_conditions' in demos.keys():
+                    self.algorithm.demoX = []
+                    self.algorithm.demoU = []
+                    self.algorithm.demoO = []
+                    M = config['common']['conditions']
+                    for m in xrange(M):
+                        self.algorithm.demoX.append(demos['demoX'][self.algorithm.demo_conditions==m, :, :])
+                        self.algorithm.demoU.append(demos['demoU'][self.algorithm.demo_conditions==m, :, :])
+                        self.algorithm.demoO.append(demos['demoO'][self.algorithm.demo_conditions==m, :, :])
+                else:
+                    self.algorithm.demoX = demos['demoX']
+                    self.algorithm.demoU = demos['demoU']
+                    self.algorithm.demoO = demos['demoO']
         else:
             with Timer('init algorithm'):
                 self.algorithm = config['algorithm']['type'](config['algorithm'])
@@ -159,31 +169,33 @@ class GPSMain(object):
             print("Error: cannot find '%s.'" % algorithm_file)
             os._exit(1) # called instead of sys.exit(), since t
 
-        for cond in range(len(self._train_idx)):
-            for i in range(N):
-                self._take_sample(itr, cond, i)
+        if not self.algorithm._hyperparams.get('bc', False):
+            for cond in range(len(self._train_idx)):
+                for i in range(N):
+                    self._take_sample(itr, cond, i)
 
-        traj_sample_lists = [
-            self.agent.get_samples(cond, -self._hyperparams['num_samples'])
-            for cond in self._train_idx
-        ]
+            traj_sample_lists = [
+                self.agent.get_samples(cond, -self._hyperparams['num_samples'])
+                for cond in self._train_idx
+            ]
 
-        all_dists = []
-        from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
-        for cond in range(len(self._train_idx)):
-            target_position = target_positions[cond][:3]
-            cur_samples = traj_sample_lists[cond]
-            sample_end_effectors = [cur_samples[i].get(END_EFFECTOR_POINTS) for i in xrange(len(cur_samples))]
-            dists = [np.nanmin(np.sqrt(np.sum((sample_end_effectors[i][:, :3] - target_position.reshape(1, -1))**2,
-                     axis = 1)), axis = 0) for i in xrange(len(cur_samples))]
-            all_dists.append(dists)
-        print [np.mean(dist) for dist in all_dists]
+            all_dists = []
+            success_thresh = self.agent._hyperparams.get('success_upper_bound', 0.05)
+            from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
+            for cond in range(len(self._train_idx)):
+                target_position = target_positions[cond][:3]
+                cur_samples = traj_sample_lists[cond]
+                sample_end_effectors = [cur_samples[i].get(END_EFFECTOR_POINTS) for i in xrange(len(cur_samples))]
+                dists = [np.nanmin(np.sqrt(np.sum((sample_end_effectors[i][:, :3] - target_position.reshape(1, -1))**2,
+                         axis = 1)), axis = 0) for i in xrange(len(cur_samples))]
+                all_dists.append(dists)
+            print "Controller success rate is %.5f" % np.mean([np.mean(dist) < success_thresh for dist in all_dists])
 
-        import pdb; pdb.set_trace()
-
-        for cond in range(len(self._train_idx)):
-            for i in range(N):
-                self.agent.visualize_sample(traj_sample_lists[cond][i], cond)
+            for cond in range(len(self._train_idx)):
+                for i in range(N):
+                    self.agent.visualize_sample(traj_sample_lists[cond][i], cond)
+        else:
+            traj_sample_lists = None
 
         # Code for looking at demo policy.
         # demo_controller = self.data_logger.unpickle(self._hyperparams['common']['demo_controller_file'][0])
@@ -191,14 +203,25 @@ class GPSMain(object):
         # sample = self.agent.sample(demo_policy, 0)
         # self.agent.visualize_sample(sample, 0)
 
-        import pdb; pdb.set_trace()
-
         pol_sample_lists = self._take_policy_samples(N, testing, self._test_idx)
         self.data_logger.pickle(
             self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
             copy.copy(pol_sample_lists)
         )
 
+        all_dists = []
+        success_thresh = self.agent._hyperparams.get('success_upper_bound', 0.05)
+        from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
+        for cond in range(len(self._train_idx)):
+            target_position = target_positions[cond][:3]
+            cur_samples = pol_sample_lists[cond]
+            sample_end_effectors = [cur_samples[i].get(END_EFFECTOR_POINTS) for i in xrange(len(cur_samples))]
+            dists = [np.nanmin(np.sqrt(np.sum((sample_end_effectors[i][:, :3] - target_position.reshape(1, -1))**2,
+                     axis = 1)), axis = 0) for i in xrange(len(cur_samples))]
+            all_dists.extend(dists)
+        print all_dists
+        print "Policy success rate is %.5f" % np.mean([np.mean(dist) < success_thresh for dist in all_dists])
+        
         if self.gui:
             # Note - this update doesn't use the cost of the samples. It uses
             # the cost stored in the algorithm object.
@@ -207,6 +230,7 @@ class GPSMain(object):
             self.gui.set_status_text(('Took %d policy sample(s) from ' +
                 'algorithm state at iteration %d.\n' +
                 'Saved to: data_files/pol_sample_itr_%02d.pkl.\n') % (N, itr, itr))
+        return np.mean([np.mean(dist) < success_thresh for dist in all_dists])
 
 
     def _initialize(self, itr_load):
@@ -361,7 +385,9 @@ class GPSMain(object):
         verbose = self._hyperparams['verbose_policy_trials']
         if self.gui:
             self.gui.set_status_text('Taking policy samples.')
-        pol_samples = [[None] for _ in idx]
+        pol_samples = [[] for _ in idx]
+        if N is None:
+            N = 1
         # Since this isn't noisy, just take one sample.
         # TODO: Make this noisy? Add hyperparam?
         # TODO: Take at all conditions for GUI?
@@ -369,13 +395,15 @@ class GPSMain(object):
         for cond in idx:
             if not self.algorithm._hyperparams['multiple_policy']:
                 if testing:
-                    pol_samples[cond][0] = self.test_agent.sample(
-                        self.algorithm.policy_opt.policy, idx[cond],
-                        verbose=True, save=False, noisy=True)
+                    for i in xrange(N):
+                        pol_samples[cond].append(self.test_agent.sample(
+                            self.algorithm.policy_opt.policy, idx[cond],
+                            verbose=True, save=False, noisy=True))
                 else:
-                    pol_samples[cond][0] = self.agent.sample(
-                        self.algorithm.policy_opt.policy, idx[cond],
-                        verbose=True, save=False, noisy=True)
+                    for i in xrange(N):
+                        pol_samples[cond].append(self.agent.sample(
+                            self.algorithm.policy_opt.policy, idx[cond],
+                            verbose=True, save=False, noisy=True))
             else:
                 pol = self.algorithm.policy_opts[cond / self.algorithm.num_policies].policy
                 pol_samples[cond][0] = self.test_agent.sample(
@@ -394,18 +422,24 @@ class GPSMain(object):
         """
 
         with Timer('Updating GUI'):
-            if False: #self.using_ioc():
+            if self.using_ioc(): #False
                 # Produce time vs cost plots
-                sample_losses = self.algorithm.cur[6].cs
+                sample_losses = self.algorithm.cur[4].cs
+                sample_true_losses = self.algorithm.cur[4].cgt
                 if sample_losses is None:
-                    sample_losses = self.algorithm.prev[6].cs
+                    sample_losses = self.algorithm.prev[4].cs
                 if sample_losses.shape[0] < NUM_DEMO_PLOTS:
-                    sample_losses = np.tile(sample_losses, [NUM_DEMO_PLOTS, 1])[:Fset__NUM_DEMO_PLOTS]
+                    sample_losses = np.tile(sample_losses, [NUM_DEMO_PLOTS, 1])[:NUM_DEMO_PLOTS]
+                elif sample_losses.shape[0] > NUM_DEMO_PLOTS:
+                    sample_losses = sample_losses[:NUM_DEMO_PLOTS]
                 demo_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.cost, n=NUM_DEMO_PLOTS)
+                demo_true_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.gt_cost, n=NUM_DEMO_PLOTS)
 
                 # Produce distance vs cost plots
-                dists_vs_costs = compute_distance_cost_plot(self.algorithm, self.agent, traj_sample_lists[6])
-                demo_dists_vs_costs = compute_distance_cost_plot_xu(self.algorithm, self.agent, self.algorithm.demoX, self.algorithm.demoU)
+                # dists_vs_costs = compute_distance_cost_plot(self.algorithm, self.agent, traj_sample_lists[4])
+                # demo_dists_vs_costs = compute_distance_cost_plot_xu(self.algorithm, self.agent, self.algorithm.demoX, self.algorithm.demoU)
+                dists_vs_costs = None
+                demo_dists_vs_costs = None
 
             else:
                 demo_losses = None
@@ -416,7 +450,8 @@ class GPSMain(object):
                 self.gui.set_status_text('Logging data and updating GUI.')
                 self.gui.update(itr, self.algorithm, self.agent,
                     traj_sample_lists, pol_sample_lists, ioc_demo_losses=demo_losses, ioc_sample_losses=sample_losses,
-                                ioc_dist_cost=dists_vs_costs, ioc_demo_dist_cost=demo_dists_vs_costs)
+                                ioc_dist_cost=dists_vs_costs, ioc_demo_dist_cost=demo_dists_vs_costs, ioc_sample_true_losses=sample_true_losses,\
+                                ioc_demo_true_losses=demo_true_losses)
                 self.gui.save_figure(
                     self._data_files_dir + ('figure_itr_%02d.pdf' % itr)
                 )
@@ -424,25 +459,26 @@ class GPSMain(object):
                 return
 
         if True:
-            with Timer('saving algorithm file'):
-                self.algorithm.demo_policy = None
-                copy_alg = copy.copy(self.algorithm)
-                copy_alg.sample_list = {}
-                self.data_logger.pickle(
-                    self._data_files_dir + ('algorithm_itr_%02d.pkl' % itr),
-                    copy_alg
-                )
-            with Timer('saving traj samples'):
-                self.data_logger.pickle(
-                    self._data_files_dir + ('traj_sample_itr_%02d.pkl' % itr),
-                    copy.copy(traj_sample_lists)
-                )
-            with Timer('saving policy samples'):
-                if pol_sample_lists:
+            if (itr+1) % 5 == 0 or itr == 0:
+                with Timer('saving algorithm file'):
+                    self.algorithm.demo_policy = None
+                    copy_alg = copy.copy(self.algorithm)
+                    copy_alg.sample_list = {}
                     self.data_logger.pickle(
-                        self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
-                        copy.copy(pol_sample_lists)
+                        self._data_files_dir + ('algorithm_itr_%02d.pkl' % itr),
+                        copy_alg
                     )
+                with Timer('saving traj samples'):
+                    self.data_logger.pickle(
+                        self._data_files_dir + ('traj_sample_itr_%02d.pkl' % itr),
+                        copy.copy(traj_sample_lists)
+                    )
+                with Timer('saving policy samples'):
+                    if pol_sample_lists:
+                        self.data_logger.pickle(
+                            self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
+                            copy.copy(pol_sample_lists)
+                        )
 
     def _end(self):
         """ Finish running and exit. """
@@ -488,6 +524,10 @@ def main():
                     help='evaluate the ground truth cost of the last policy')
     parser.add_argument('-x', '--extendtesting', metavar='N', type=int,
                     help='testing the policy performance on a larger domain')
+    parser.add_argument('--multiple', metavar='N', type=int,
+                    help='run the experiments with multiple seeds sequentially')
+    parser.add_argument('--test_multiple', metavar='N', type=int,
+                help='test the policies with multiple seeds sequentially')
 
     args = parser.parse_args()
 
@@ -609,6 +649,30 @@ def main():
             plt.show()
         else:
             gps.test_policy(itr=current_itr, N=test_policy_N, testing=args.extendtesting, eval_pol_gt=args.eval)
+    elif args.test_multiple:
+        seeds = [0, 1, 2]
+        num_demos = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+        accuracy_history = {num_demo:[] for num_demo in num_demos}
+        for seed in seeds:
+            for num_demo in num_demos:
+                np.random.seed(seed)
+                random.seed(seed)
+                hyperparams = imp.load_source('hyperparams', hyperparams_file)
+                hyperparams.seed = seed
+                hyperparams.num_demos = num_demo
+                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_%d/' % (num_demo, seed)
+                # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
+                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_%d' % (num_demo, seed), 'demos_LG.pkl')
+                hyperparams.config['algorithm']['num_demos'] = num_demo
+                hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['LG_demo_file']
+                # hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
+                hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
+                current_itr = 0 #19 for ioc
+                gps = GPSMain(hyperparams.config, test_pol=True)
+                acc = gps.test_policy(itr=current_itr, N=args.test_multiple, testing=False)
+                accuracy_history[num_demo].append(acc)
+                plt.close('all')
+        print accuracy_history
     elif measure:
         gps = GPSMain(hyperparams.config)
         agent_config = gps._hyperparams['agent']
@@ -636,6 +700,29 @@ def main():
         compare_experiments(mean_dists_1_dict, mean_dists_2_dict, success_rates_1_dict, \
                                 success_rates_2_dict, gps._hyperparams['algorithm']['iterations'], \
                                 exp_dir, hyperparams_compare.config, hyperparams.config)
+    elif args.multiple:
+        seeds = [0, 1, 2]
+        num_demos = [20]
+        for seed in seeds:
+            for num_demo in num_demos:
+                np.random.seed(seed)
+                random.seed(seed)
+                hyperparams = imp.load_source('hyperparams', hyperparams_file)
+                hyperparams.seed = seed
+                hyperparams.num_demos = num_demo
+                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_%d/' % (num_demo, seed)
+                # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
+                # use exp dir to run bc alone. change to ioc_dir if comparing to ioc
+                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_%d' % (num_demo, seed), 'demos_LG.pkl')
+                hyperparams.config['algorithm']['num_demos'] = num_demo
+                # hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['LG_demo_file']
+                hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
+                hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
+                if not os.path.exists(hyperparams.config['common']['data_files_dir']):
+                    os.makedirs(hyperparams.config['common']['data_files_dir'])
+                gps = GPSMain(hyperparams.config)
+                gps.run()
+                plt.close('all')
     else:
         gps = GPSMain(hyperparams.config)
         if hyperparams.config['gui_on']:

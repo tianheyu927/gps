@@ -137,8 +137,8 @@ def fit_emp_controller(demo_x, demo_u):
     traj = LinearGaussianPolicy(K, k, pol_covar, chol_pol_covar, inv_pol_covar)
 
     for t in xrange(T):
-        X = np.hstack((np.squeeze(demo_x[:, t, :]), np.ones((N, 1))))
-        U = np.squeeze(demo_u[:, t, :])
+        X = np.hstack((demo_x[:, t, :], np.ones((N, 1))))
+        U = demo_u[:, t, :]
         result = np.linalg.pinv(X).dot(U).T
         traj.K[t, :, :] = result[:, 0: dX]
         traj.k[t, :] = result[:, -1]

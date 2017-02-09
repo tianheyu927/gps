@@ -192,13 +192,13 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     inputs['test_obs_single'] = test_obs_single = tf.placeholder(tf.float32, shape=(dim_input), name='test_obs_single')
     inputs['test_torque_single'] = test_torque_single = tf.placeholder(tf.float32, shape=(1), name='test_torque_u_single')
 
-    demo_cost_preu, demo_costs = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
+    demo_cost_preu, demo_costs, demo_u_costs = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
                                 batch_norm=batch_norm, is_training=True, decay=decay)
-    sample_cost_preu, sample_costs = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
+    sample_cost_preu, sample_costs, sample_u_costs = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
                                 batch_norm=batch_norm, is_training=True, decay=decay)
-    sup_cost_preu, sup_costs = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
+    sup_cost_preu, sup_costs, _ = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
                                 batch_norm=batch_norm, is_training=True, decay=decay)
-    _, test_cost  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
+    _, test_cost, _  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
                                 batch_norm=batch_norm, is_training=False, decay=decay)
 
     # Build a differentiable test cost by feeding each timestep individually
@@ -206,7 +206,7 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     test_torque_single = tf.expand_dims(test_torque_single, 0)
     test_feat_single = compute_feats(test_obs_single, num_hidden=num_hidden, dim_hidden=dim_hidden, batch_norm=batch_norm,
                                     is_training=False, decay=decay)
-    test_cost_single_preu, _ = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden,
+    test_cost_single_preu, _, _ = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden,
                                     learn_wu=learn_wu, batch_norm=batch_norm, is_training=False, decay=decay)
     test_cost_single = tf.squeeze(test_cost_single_preu)
 
@@ -249,6 +249,10 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
 
     outputs = {
         'multiobj_loss': sup_loss+ioc_loss,
+        'demo_costs': demo_costs,
+        'demo_u_costs': demo_u_costs,
+        'sample_costs': sample_costs,
+        'sample_u_costs': sample_u_costs,
         'sup_loss': sup_loss,
         'ioc_loss': ioc_loss,
         'test_loss': test_cost,
@@ -282,13 +286,13 @@ def compute_feats(net_input, num_hidden=1, dim_hidden=42, batch_norm=False,
                     if is_training:
                         try:
                             layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                                scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
                         except ValueError:
                             layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                                scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
                     else:
                         layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
-                            scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                            scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
             else:
                 layer = tf.nn.relu(layer)
 
@@ -338,7 +342,7 @@ def nn_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False,
         u_cost = tf.reshape(u_cost, [-1, 1])
     all_costs_preu = tf.reduce_sum(AxAx, reduction_indices=[-1], keep_dims=True)
     all_costs = all_costs_preu + u_cost
-    return all_costs_preu, all_costs
+    return all_costs_preu, all_costs, u_cost
 
 
 def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, is_training=True, decay=0.9, id=0):
@@ -350,13 +354,13 @@ def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, is_training=True, 
             if is_training:
                 try:
                     layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
                 except ValueError:
                     layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
             else:
                 layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
-                    scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
         return layer
 
 def compute_image_feats(img_input, num_filters=[15,15,15], batch_norm=False,

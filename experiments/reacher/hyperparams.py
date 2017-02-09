@@ -42,14 +42,20 @@ BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 
 
-CONDITIONS = 20
+CONDITIONS = 1
 #CONDITIONS = 4
 np.random.seed(14)
 pos_body_offset = []
 #pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 #pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
-for _ in range(CONDITIONS):
-    pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+# for _ in range(CONDITIONS):
+#     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+
+pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
+# pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
+#                     np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
+#                     np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
+#                     np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])]
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -89,7 +95,7 @@ algorithm = {
     'type': AlgorithmTrajOpt,
     'max_ent_traj': 0.001,
     'conditions': common['conditions'],
-    'iterations': 12,
+    'iterations': 15,
     'step_rule': 'classic',
     'plot_dir': EXP_DIR,
     'agent_x0': agent['x0'],
@@ -115,7 +121,7 @@ algorithm = {
 PR2_GAINS = np.array([1.0, 1.0])
 torque_cost_1 = [{
     'type': CostAction,
-    'wu': 1 / PR2_GAINS,
+    'wu': 1.0 / PR2_GAINS,
 } for i in range(common['conditions'])]
 
 fk_cost_1 = [{

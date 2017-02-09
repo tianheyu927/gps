@@ -96,4 +96,8 @@ ALG_BC = {
     'ioc': False,
     'global_cost': True,
     'multiple_policy': False,
+    # variance multiplier for demos.
+    'demo_var_mult': 1.0,
+    # Demo condition during training.
+    'demo_M': 1,
 }

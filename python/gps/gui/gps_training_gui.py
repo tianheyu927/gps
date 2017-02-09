@@ -96,9 +96,9 @@ class GPSTrainingGUI(object):
         self._gs_action_output          = self._gs[1:2,  0:4]
         self._gs_status_output          = self._gs[2:3,  0:4]
         self._gs_cost_plotter           = self._gs[1:3,  4:8]
-        self._gs_gt_cost_plotter        = self._gs[7:9,  4:8]
-        self._gs_demo_cost_plotter      = self._gs[9:11,  4:8]
-        self._gs_dist_cost_plotter      = self._gs[9:11,  0:4]
+        self._gs_gt_cost_plotter        = self._gs[9:11,  4:8]
+        self._gs_demo_cost_plotter      = self._gs[7:9,  4:8]
+        self._gs_scatter_cost_plotter   = self._gs[7:9,  0:4]
         self._gs_algthm_output          = self._gs[3:7,  0:4]
         if config['image_on']:
             self._gs_traj_visualizer    = self._gs[11:18, 0:4]
@@ -111,7 +111,8 @@ class GPSTrainingGUI(object):
 
         # Create GUI components.
         self._action_panel = ActionPanel(self._fig, self._gs_action_panel, 1, 4, actions_arr)
-        self._scatter_cost_plotter = ScatterPlot(self._fig, self._gs_dist_cost_plotter, xlabel='Dist', ylabel='Cost', gui_on=gui_on)
+        self._scatter_cost_plotter = ScatterPlot(self._fig, self._gs_scatter_cost_plotter, xlabel='Ground_Truth',
+                                                ylabel='Learned_Cost', gui_on=gui_on)
         self._action_output = Textbox(self._fig, self._gs_action_output, border_on=True, gui_on=gui_on)
         self._status_output = Textbox(self._fig, self._gs_status_output, border_on=False, gui_on=gui_on)
         self._algthm_output = Textbox(self._fig, self._gs_algthm_output,
@@ -125,7 +126,7 @@ class GPSTrainingGUI(object):
         self._gt_cost_plotter = MeanPlotter(self._fig, self._gs_gt_cost_plotter,
                 color='red', label='ground truth cost', gui_on=gui_on)
         self._demo_cost_plotter = LinePlotter(self._fig, self._gs_demo_cost_plotter,
-                                         color='blue', label='demo cost', num_plots=NUM_DEMO_PLOTS*2, gui_on=gui_on)
+                                         color='blue', label='demo cost', num_plots=NUM_DEMO_PLOTS*3, gui_on=gui_on)
         self._traj_visualizer = Plotter3D(self._fig, self._gs_traj_visualizer,
                 num_plots=self._hyperparams['conditions'], gui_on=gui_on)
         if config['image_on']:
@@ -294,7 +295,8 @@ class GPSTrainingGUI(object):
 
     # Iteration update functions
     def update(self, itr, algorithm, agent, traj_sample_lists, pol_sample_lists, eval_pol_gt = False,
-               ioc_demo_losses=None, ioc_sample_losses=None, ioc_dist_cost=None, ioc_demo_dist_cost=None):
+               ioc_demo_losses=None, ioc_sample_losses=None, ioc_dist_cost=None, ioc_demo_dist_cost=None,
+               ioc_demo_true_losses=None, ioc_sample_true_losses=None):
         """
         After each iteration, update the iteration data output, the cost plot,
         and the 3D trajectory visualizations (if end effector points exist).
@@ -341,6 +343,7 @@ class GPSTrainingGUI(object):
             self._update_iteration_data(itr, algorithm, costs, pol_sample_lists)
         if not algorithm._hyperparams.get('bc', False):
             self._cost_plotter.update(costs, t=itr)
+            print "Learned cost: %.2f" %np.mean(costs)
         if END_EFFECTOR_POINTS in agent.x_data_types and not algorithm._hyperparams.get('bc', False):
             self._update_trajectory_visualizations(algorithm, agent,
                     traj_sample_lists, pol_sample_lists)
@@ -348,7 +351,11 @@ class GPSTrainingGUI(object):
         if ioc_demo_losses:
             self._update_ioc_demo_plot(ioc_demo_losses, ioc_sample_losses)
         if ioc_dist_cost:
-            self._update_ioc_dist_plot(ioc_dist_cost, ioc_demo_dist_cost)
+            self._update_scatter_plot(ioc_dist_cost, ioc_demo_dist_cost)
+        if ioc_demo_true_losses:
+            demo_losses = (ioc_demo_true_losses, ioc_demo_losses)
+            sample_losses = (ioc_sample_true_losses, ioc_sample_losses)
+            self._update_scatter_plot(demo_losses, sample_losses)
 
         if self.gui_on:
             self._fig.canvas.draw()
@@ -371,6 +378,9 @@ class GPSTrainingGUI(object):
             if not algorithm._hyperparams.get('bc', False):
                 condition_titles += ' | %8s %9s %-7d' % ('', 'condition', m)
                 itr_data_fields  += ' | %8s %8s %8s' % ('  cost  ', '  step  ', 'entropy ')
+            else:
+                condition_titles += ' | '
+                itr_data_fields  += ' | '
 
             #if algorithm._hyperparams['ioc'] and not algorithm._hyperparams['learning_from_prior']:
             #    condition_titles += ' %8s' % ('')
@@ -433,6 +443,8 @@ class GPSTrainingGUI(object):
                 itr_data += ' | %8.2f %8.2f %8.2f' % (cost, step, entropy)
                 #if algorithm._hyperparams['ioc'] and not algorithm._hyperparams['learning_from_prior']:
                 #    itr_data += ' %8.2f' % (algorithm.kl_div[itr][m])
+            else:
+                itr_data += ' | '
 
             if pol_sample_lists is None:
                 if algorithm.dists_to_target:
@@ -579,10 +591,10 @@ class GPSTrainingGUI(object):
             self._demo_cost_plotter.set_sequence(len(demo_losses)+i, sample_losses[i], style='--')
             pass
 
-    def _update_ioc_dist_plot(self, dist_cost, demo_dist_cost):
+    def _update_scatter_plot(self, demo_data, sample_data):
         self._scatter_cost_plotter.clear()
-        self._scatter_cost_plotter.add_data(dist_cost[0], dist_cost[1])
-        self._scatter_cost_plotter.add_data(demo_dist_cost[0], demo_dist_cost[1], color='red')
+        self._scatter_cost_plotter.add_data(sample_data[0], sample_data[1])
+        self._scatter_cost_plotter.add_data(demo_data[0], demo_data[1], color='red')
 
     def save_figure(self, filename):
         self._fig.savefig(filename)

@@ -5,7 +5,7 @@ import os
 import tempfile
 
 import numpy as np
-
+import matplotlib.pyplot as plt
 # NOTE: Order of these imports matters for some reason.
 # Changing it can lead to segmentation faults on some machines.
 
@@ -50,10 +50,13 @@ class PolicyOptTf(PolicyOpt):
         self.feat_vals = None
         self.debug = None
         self.debug_vals = None
+        self._hyperparams['network_params'].update({'batch_norm': self._hyperparams['batch_norm']})
+        self._hyperparams['network_params'].update({'decay': self._hyperparams['decay']})
         self.init_network()
         self.init_solver()
         self.var = self._hyperparams['init_var'] * np.ones(dU)
-        self.policy = TfPolicy(dU, self.obs_tensor, self.act_op, self.feat_op, self.image_op,
+        # use test action for policy action
+        self.policy = TfPolicy(dU, self.obs_tensor, self.test_act_op, self.feat_op, self.image_op,
                                np.zeros(dU), self._sess, self.graph, self.device_string, copy_param_scope=self._hyperparams['copy_param_scope'])
         # List of indices for state (vector) data and image (tensor) data in observation.
         self.x_idx, self.img_idx, i = [], [], 0
@@ -66,8 +69,6 @@ class PolicyOptTf(PolicyOpt):
             else:
                 self.x_idx = self.x_idx + list(range(i, i+dim))
             i += dim
-        self._hyperparams['network_params'].update({'batch_norm': self._hyperparams['batch_norm']})
-        self._hyperparams['network_params'].update({'decay': 0.9})
         # self.policy.scale = np.eye(len(self.x_idx))
         # self.policy.bias = np.zeros(len(self.x_idx))
         with self.graph.as_default():
@@ -86,6 +87,7 @@ class PolicyOptTf(PolicyOpt):
                 self.precision_tensor = tf_map.get_precision_tensor()
             self.action_tensor = tf_map.get_target_output_tensor()
             self.act_op = tf_map.get_output_op()
+            self.test_act_op = tf_map.get_test_output_op() # used for policy action
             self.feat_op = tf_map.get_feature_op()
             self.image_op = tf_map.get_image_op()  # TODO - make this.
             self.loss_scalar = tf_map.get_loss_op()
@@ -97,8 +99,8 @@ class PolicyOptTf(PolicyOpt):
                 self.fc_vars = None
                 self.last_conv_vars = None
 
-            # Setup the gradients
-            self.grads = [tf.gradients(self.act_op[:,u], self.obs_tensor)[0]
+            # Setup the gradients. Use test act op
+            self.grads = [tf.gradients(self.test_act_op[:,u], self.obs_tensor)[0]
                     for u in range(self._dU)]
 
     @property
@@ -123,7 +125,8 @@ class PolicyOptTf(PolicyOpt):
         with self.graph.as_default():
             self.saver = tf.train.Saver()
 
-    def update(self, obs, tgt_mu, tgt_prc, tgt_wt, iter_count=None, fc_only=False, behavior_clone=False):
+    def update(self, obs, tgt_mu, tgt_prc, tgt_wt, iter_count=None, fc_only=False,\
+                test_obs=None, test_acts=None, behavior_clone=False):
         """
         Update policy.
         Args:
@@ -132,6 +135,8 @@ class PolicyOptTf(PolicyOpt):
             tgt_prc: Numpy array of precision matrices, N x T x dU x dU.
             tgt_wt: Numpy array of weights, N x T.
             fc_only: If true, don't train end-to-end.
+            test_obs: Numpy array of test observations, Ntest x T x dO.
+            test_acts: Numpy array of test actions, Ntest x T x dU.
             behavior_clone: If true, run policy cloning
         Returns:
             A tensorflow object with updated weights.
@@ -166,7 +171,9 @@ class PolicyOptTf(PolicyOpt):
 
         obs = np.reshape(obs, (N*T, dO))
         tgt_mu = np.reshape(tgt_mu, (N*T, dU))
-
+        if test_obs is not None and test_acts is not None:
+            test_obs = np.reshape(test_obs, (-1, dO))
+            test_acts = np.reshape(test_acts, (-1, dU))
         # Normalize obs, but only compute normalzation at the beginning.
         if self.policy.scale is None or self.policy.bias is None:
             self.policy.x_idx = self.x_idx
@@ -182,6 +189,8 @@ class PolicyOptTf(PolicyOpt):
         batches_per_epoch = np.floor(N*T / self.batch_size)
         idx = range(N*T)
         average_loss = 0
+        loss_history = []
+        val_loss_history = []
         np.random.shuffle(idx)
 
         #if iter_count != None and iter_count > 0:
@@ -234,14 +243,25 @@ class PolicyOptTf(PolicyOpt):
                 feed_dict = {self.obs_tensor: obs[idx_i],
                              self.action_tensor: tgt_mu[idx_i]}
             train_loss = self.solver(feed_dict, self._sess, device_string=self.device_string)
-
             average_loss += train_loss
-            if i % 50 == 0:
+            if (i+1) % 50 == 0:
                 LOGGER.debug('tensorflow iteration %d, average loss %f',
-                             i, average_loss / 50)
+                             i+1, average_loss / 50)
                 print ('supervised tf loss is ' + str(average_loss))
                 average_loss = 0
-
+                if behavior_clone:
+                    loss_history.append(train_loss)
+                    if test_obs is not None and test_acts is not None:
+                        val_feed_dict = {self.obs_tensor: test_obs,
+                                        self.action_tensor: test_acts}
+                        with tf.device(self.device_string):
+                            val_loss_history.append(self.run(self.loss_scalar, feed_dict=val_feed_dict))
+        if behavior_clone:
+            plt.figure()
+            plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), loss_history, color='red', linestyle='-')
+            # plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), val_loss_history, color='blue', linestyle=':')
+            plt.savefig('/home/kevin/gps/loss_history.png')
+            plt.show()
         feed_dict = {self.obs_tensor: obs}
         num_values = obs.shape[0]
         if self.feat_op is not None:
@@ -263,11 +283,12 @@ class PolicyOptTf(PolicyOpt):
 
             return self.policy
 
-    def prob(self, obs):
+    def prob(self, obs, behavior_clone=False):
         """
         Run policy forward.
         Args:
             obs: Numpy array of observations that is N x T x dO.
+            behavior_clone: whether using behavior clone or not
         """
         dU = self._dU
         N, T = obs.shape[:2]
@@ -286,12 +307,16 @@ class PolicyOptTf(PolicyOpt):
                 # Feed in data.
                 feed_dict = {self.obs_tensor: np.expand_dims(obs[i, t], axis=0)}
                 with tf.device(self.device_string):
-                    output[i, t, :] = self.run(self.act_op, feed_dict=feed_dict)
+                    output[i, t, :] = self.run(self.test_act_op, feed_dict=feed_dict) # use test act op
 
-        pol_sigma = np.tile(np.diag(self.var), [N, T, 1, 1])
-        pol_prec = np.tile(np.diag(1.0 / self.var), [N, T, 1, 1])
-        pol_det_sigma = np.tile(np.prod(self.var), [N, T])
-
+        if not behavior_clone:
+            pol_sigma = np.tile(np.diag(self.var), [N, T, 1, 1])
+            pol_prec = np.tile(np.diag(1.0 / self.var), [N, T, 1, 1])
+            pol_det_sigma = np.tile(np.prod(self.var), [N, T])
+        else:
+            pol_sigma = None
+            pol_prec = None
+            pol_det_sigma = None
         return output, pol_sigma, pol_prec, pol_det_sigma
 
     def linearize(self, obs):
@@ -316,7 +341,8 @@ class PolicyOptTf(PolicyOpt):
 
         # Constant bias/gain matrices
         feed_dict = {self.obs_tensor: obs}
-        pol_k = self.run(self.act_op, feed_dict=feed_dict)
+        # use test act op
+        pol_k = self.run(self.test_act_op, feed_dict=feed_dict)
         for u in range(self._dU):
             pol_K[:, u, :] = self.run(self.grads[u], feed_dict=feed_dict)
 

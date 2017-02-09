@@ -78,7 +78,7 @@ class GenDemo(object):
             self.agent = agent_config['type'](agent_config)
 
             # Roll out the demonstrations from controllers
-            var_mult = self._hyperparams['algorithm']['demo_var_mult']
+            var_mult = self._hyperparams['algorithm'].get('demo_var_mult', 1.0)
             T = self.algorithms[0].T
             demos = []
             demo_idx_conditions = []  # Stores conditions for each demo
@@ -223,6 +223,7 @@ class GenDemo(object):
                       dists.append(np.min(np.sqrt(np.sum((demo_ee[:, :3] - target_position.reshape(1, -1))**2, axis = 1))))
                       if dists[index] >= success_thresh: #agent_config['success_upper_bound']:
                         failed_indices.append(index)
+                # import pdb; pdb.set_trace()
                 good_indices = [i for i in xrange(len(demos)) if i not in failed_indices]
                 self._hyperparams['algorithm']['demo_cond'] = len(good_indices)
                 filtered_demos = []

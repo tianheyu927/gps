@@ -31,15 +31,15 @@ SENSOR_DIMS = {
 
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
-DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
+# DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
 IOC_DIR = BASE_DIR + '/../experiments/reacher_mdgps_ioc/'
-# DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
+DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
 
 #CONDITIONS = 1
-TRAIN_CONDITIONS = 1
+TRAIN_CONDITIONS = 8
 
 np.random.seed(47)
-DEMO_CONDITIONS = 1 #20
+DEMO_CONDITIONS = 8 #20
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 
@@ -51,24 +51,34 @@ pos_body_offset = []
 # for _ in range(TOTAL_CONDITIONS):
 #     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
-pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+# pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 #pos_body_offset.append(np.array([0.05, 0.2, 0.0]))
-demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+# demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
+                   np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
+                   np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
+                   np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])]
+demo_pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
+                   np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
+                   np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
+                   np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])]
 
 SEED = 0
+NUM_DEMOS = 20
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files/',
+    'data_files_dir': EXP_DIR + 'data_files_8_LG_demo1_%d/' % SEED,
+    # 'data_files_dir': EXP_DIR + 'data_files_LG_demo5_%d/' % SEED,
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
-    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_09.pkl',
-    'nn_demo': True, # Use neural network demonstrations. For experiment only
-    'LG_demo_file': os.path.join(IOC_DIR, 'data_files', 'demos_LG.pkl'),
-    'NN_demo_file': os.path.join(IOC_DIR, 'data_files', 'demos_NN.pkl'),
+    'demo_controller_file': DEMO_DIR + 'data_files_8/algorithm_itr_14.pkl',
+    'nn_demo': False, # Use neural network demonstrations. For experiment only
+    'LG_demo_file': os.path.join(IOC_DIR, 'data_files_8_LG_demo1_%d' % SEED, 'demos_LG.pkl'),
+    'NN_demo_file': os.path.join(IOC_DIR, 'data_files_8_demo20_%d' % SEED, 'demos_NN.pkl'),
     'conditions': TOTAL_CONDITIONS,
     'train_conditions': range(TRAIN_CONDITIONS),
     'test_conditions': range(TRAIN_CONDITIONS, TOTAL_CONDITIONS),
@@ -99,6 +109,7 @@ agent = {
     'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ pos_body_offset[i], np.array([0., 0., 0.])])
                             for i in xrange(TOTAL_CONDITIONS)],
+    'success_upper_bound': 0.05,                
     'render': True,
 }
 
@@ -132,6 +143,8 @@ algorithm = {
     'sample_on_policy': True,
     'conditions': common['conditions'],
     'iterations': 1, # must be 1
+    'demo_var_mult': 1.0,
+    'num_demos': NUM_DEMOS,
     'agent_pos_body_idx': agent['pos_body_idx'],
     'agent_pos_body_offset': agent['pos_body_offset'],
     'plot_dir': EXP_DIR,
@@ -203,13 +216,18 @@ algorithm['policy_opt'] = {
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
         'sensor_dims': SENSOR_DIMS,
         'bc': True,
+        'n_layers': 3,
+        'dim_hidden': 50,
     },
     'network_model': example_tf_network,
     # 'fc_only_iterations': 5000,
     # 'init_iterations': 1000,
+    'batch_norm': False,
+    'decay': 0.99,
     'lr': 1e-3,
+    'batch_size': 25,
     'iterations': 1000,  # was 100
-    'demo_file': common['NN_demo_file'],
+    'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': demo_agent,
     'weights_file_prefix': common['data_files_dir'] + 'policy',
     'random_seed': SEED,
@@ -222,6 +240,7 @@ config = {
     'verbose_policy_trials': 1,
     'common': common,
     'agent': agent,
+    'demo_agent': demo_agent,
     'gui_on': True,
     'algorithm': algorithm,
     'conditions': common['conditions'],

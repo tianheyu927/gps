@@ -134,7 +134,7 @@ class CostIOCTF(Cost):
 
         return l, lx, lu, lxx, luu, lux
 
-    def update(self, demoU, demoO, d_log_iw, sampleU, sampleO, s_log_iw, itr=-1):
+    def update(self, demoU, demoO, d_log_iw, sampleU, sampleO, s_log_iw, itr=-1, M=1):
         """
         Learn cost function with generic function representation.
         Args:
@@ -149,13 +149,18 @@ class CostIOCTF(Cost):
         sample_torque_norm = np.sum(self._hyperparams['wu'] * (sampleU **2), axis=2, keepdims=True)
 
         num_samp = sampleU.shape[0]
+        num_demo = demoO.shape[0]
         s_log_iw = s_log_iw[-num_samp:,:]
         d_sampler = BatchSampler([demoO, demo_torque_norm, d_log_iw])
         s_sampler = BatchSampler([sampleO, sample_torque_norm, s_log_iw])
-
+        loss_history = []
+        if M > 1:
+            idx = np.random.randint(M)
         for i, (d_batch, s_batch) in enumerate(
-                izip(d_sampler.with_replacement(batch_size=self.demo_batch_size), \
-                    s_sampler.with_replacement(batch_size=self.sample_batch_size))):
+                izip(d_sampler.with_replacement(low=num_demo/M*idx, high=num_demo/M*(idx+1), \
+                                                batch_size=self.demo_batch_size), \
+                    s_sampler.with_replacement(low=num_samp/M*idx, high=num_samp/M*(idx+1), \
+                                                batch_size=self.sample_batch_size))):
             ioc_loss, grad = self.run([self.ioc_loss, self.ioc_optimizer],
                                       demo_obs=d_batch[0],
                                       demo_torque_norm=d_batch[1],
@@ -163,19 +168,32 @@ class CostIOCTF(Cost):
                                       sample_obs = s_batch[0],
                                       sample_torque_norm = s_batch[1],
                                       sample_iw = s_batch[2])
+            idx = np.random.randint(M)
             if i%200 == 0:
                 LOGGER.debug("Iteration %d loss: %f", i, ioc_loss)
-
+                loss_history.append(ioc_loss)
+                # demo_costs, demo_u_costs = self.run([self.demo_costs, self.demo_u_costs],
+                #                                 demo_obs=d_batch[0],
+                #                                 demo_torque_norm=d_batch[1])
+                # sample_costs, sample_u_costs = self.run([self.sample_costs, self.sample_u_costs],
+                #                                 sample_obs=s_batch[0],
+                #                                 sample_torque_norm=s_batch[1])
             if i > self._hyperparams['iterations']:
                 break
+        import matplotlib.pyplot as plt
 
+        plt.figure(2)
+        plt.plot(200*np.arange(self._hyperparams['iterations']/200 + 1), loss_history)
+        plt.savefig(self._hyperparams['data_files_dir'] + 'cost_loss_iter_%2d' % itr + '.png')
+        plt.close(2)
 
     def _init_solver(self, sample_batch_size=None):
         """ Helper method to initialize the solver. """
 
         # Pass in net parameter by protostring (could add option to input prototxt file).
         network_arch_params = self._hyperparams['network_arch_params']
-
+        network_arch_params['num_hidden'] = self._hyperparams.get('num_hidden', 3)
+        network_arch_params['dim_hidden'] = self._hyperparams.get('dim_hidden', 42)
         network_arch_params['dim_input'] = self._dO
         network_arch_params['demo_batch_size'] = self._hyperparams['demo_batch_size']
         if sample_batch_size is None:
@@ -197,6 +215,10 @@ class CostIOCTF(Cost):
         self.input_dict = inputs
         self.sup_loss = outputs['sup_loss']
         self.ioc_loss = outputs['ioc_loss']
+        self.demo_costs = outputs['demo_costs']
+        self.demo_u_costs = outputs['demo_u_costs']
+        self.sample_costs = outputs['sample_costs']
+        self.sample_u_costs = outputs['sample_u_costs']
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self._hyperparams['lr'])
         self.ioc_optimizer = optimizer.minimize(self.ioc_loss)

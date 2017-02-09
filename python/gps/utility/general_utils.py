@@ -198,9 +198,9 @@ class BatchSampler(object):
             assert d.shape[batch_dim] == self.num_data, "Bad shape on axis %d: %s, (expected %d)" % \
                                                         (batch_dim, str(d.shape), self.num_data)
 
-    def with_replacement(self, batch_size=10):
+    def with_replacement(self, batch_size=10, low=0, high=float('inf')):
         while True:
-            batch_idx = np.random.randint(0, self.num_data, size=batch_size)
+            batch_idx = np.random.randint(low, min(self.num_data, high), size=batch_size)
             batch = [data[batch_idx] for data in self.data]
             yield batch
 

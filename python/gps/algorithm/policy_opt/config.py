@@ -46,6 +46,7 @@ POLICY_OPT_TF = {
     'copy_param_scope': 'conv_params',
     'fc_only_iterations': 0,
     'batch_norm': False,
+    'decay': 0.99,
 }
 
 POLICY_OPT_TF.update(GENERIC_CONFIG)

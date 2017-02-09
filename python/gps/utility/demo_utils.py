@@ -73,7 +73,7 @@ def eval_demos_xu(agent, demoX, demoU, costfn, n=-1):
         sample = Sample(agent)
         sample.set_XU(demoX[demo_idx], demoU[demo_idx])
         if type(costfn) is list:
-            costfn = costfn[6]
+            costfn = costfn[4]
         l, _, _, _, _, _ = costfn.eval(sample)
         losses.append(l)
     if n>0:
@@ -173,8 +173,9 @@ def get_demos(gps):
       gps.demo_gen.generate(demo_file, gps.agent)
       demos = gps.data_logger.unpickle(demo_file)
     print 'Num demos:', demos['demoX'].shape[0]
-    gps._hyperparams['algorithm']['init_traj_distr']['init_demo_x'] = np.mean(demos['demoX'], 0)
-    gps._hyperparams['algorithm']['init_traj_distr']['init_demo_u'] = np.mean(demos['demoU'], 0)
+    if not gps.using_bc():
+        gps._hyperparams['algorithm']['init_traj_distr']['init_demo_x'] = np.mean(demos['demoX'], 0)
+        gps._hyperparams['algorithm']['init_traj_distr']['init_demo_u'] = np.mean(demos['demoU'], 0)
     gps.algorithm = gps._hyperparams['algorithm']['type'](gps._hyperparams['algorithm'])
 
     if gps.algorithm._hyperparams.get('init_demo_policy', False):

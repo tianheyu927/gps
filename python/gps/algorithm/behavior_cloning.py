@@ -57,4 +57,5 @@ class BehaviorCloning(object):
             self.policy_opt = self._hyperparams['policy_opt']['type'](
                 self._hyperparams['policy_opt'], self.dO, self.dU
             )
+        del self._hyperparams['policy_opt']['agent']
         
