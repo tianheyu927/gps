@@ -238,7 +238,7 @@ algorithm['cost'] = [{
     'approximate_lxx': False,
     'random_seed': i, #SEED
     'data_files_dir': common['data_files_dir'],
-} for i in xrange(3)]
+} for i in xrange(algorithm['num_costs'])]
 
 #algorithm['init_traj_distr'] = {
 #    'type': init_demo,

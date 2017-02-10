@@ -94,10 +94,17 @@ class Algorithm(object):
             else:
                 self.cost = self._hyperparams['cost']['type'](self._hyperparams['cost'])
         else:
-            self.cost = [
-                self._hyperparams['cost']['type'](self._hyperparams['cost'])
-                for _ in range(self.M)
-            ]
+            self.num_costs = self._hyperparams.get('num_costs', self.M)
+            if self.num_costs == self.M:
+                self.cost = [
+                    self._hyperparams['cost']['type'](self._hyperparams['cost'])
+                    for _ in range(self.M)
+                ]
+            else:
+                self.cost = [
+                    self._hyperparams['cost'][i]['type'](self._hyperparams['cost'][i])
+                    for i in range(self.M)
+                ]
         if type(self._hyperparams['cost']) is dict and self._hyperparams['cost'].get('agent', False):
             del self._hyperparams['cost']['agent']
 
@@ -231,10 +238,16 @@ class Algorithm(object):
                     l_tgt, _, _, _, _, _ = cost.eval(sample, wu=False)
                     ctgt[n, :] = l_tgt
             else:
-                l, lx, lu, lxx, luu, lux = cost[cond].eval(sample)
-                if self._hyperparams.get('fk_cost', False):
-                    l_tgt, _, _, _, _, _ = cost[cond].eval(sample, wu=False)
-                    ctgt[n, :] = l_tgt
+                if self.num_costs == M:
+                    l, lx, lu, lxx, luu, lux = cost[cond].eval(sample)
+                    if self._hyperparams.get('fk_cost', False):
+                        l_tgt, _, _, _, _, _ = cost[cond].eval(sample, wu=False)
+                        ctgt[n, :] = l_tgt
+                else:
+                    l, lx, lu, lxx, luu, lux = cost[0].eval(sample)
+                    if self._hyperparams.get('fk_cost', False):
+                        l_tgt, _, _, _, _, _ = cost[0].eval(sample, wu=False)
+                        ctgt[n, :] = l_tgt
 
             # Compute the ground truth cost
             if self._hyperparams['ioc'] and n >= synN:
@@ -317,8 +330,10 @@ class Algorithm(object):
         if self._hyperparams['global_cost'] and self._hyperparams['ioc']:
             with Timer('Algorithm._advance_iteration_variables cost_copy'):
                 self.previous_cost = self.cost.copy()
-        else:
+        elif self.num_costs == self.M:
             self.previous_cost = []
+        else:
+            self.previous_cost = [self.cost[i].copy() for i in xrange(self.num_costs)]
         for m in range(self.M):
             self.cur[m].traj_info = TrajectoryInfo()
             self.cur[m].traj_info.dynamics = copy.deepcopy(self.prev[m].traj_info.dynamics)
@@ -330,7 +345,7 @@ class Algorithm(object):
             self.traj_info[self.iteration_count].append(self.cur[m].traj_info)
             if self._hyperparams['ioc']:
               self.cur[m].prevcost_traj_info = TrajectoryInfo()
-              if not self._hyperparams['global_cost'] and self._hyperparams['ioc']:
+              if not self._hyperparams['global_cost'] and self._hyperparams['ioc'] and self.num_costs == self.M:
                 with Timer('Algorithm._advance_iteration_variables cost_copy'):
                     self.previous_cost.append(self.cost[m].copy())
         delattr(self, 'new_traj_distr')
@@ -437,12 +452,28 @@ class Algorithm(object):
         demos_logiw = {i: demos_logiw[i].reshape((-1, 1)) for i in xrange(M)}
         # TODO - make these changes in other algorithm objects too.
         if not self._hyperparams['global_cost']:
-            for i in xrange(M):
-                if type(self.demoX) is list:
-                    self.cost[i].update(self.demoU[i], self.demoO[i], demos_logiw[i], self.sample_list[i].get_U(),
-                                self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
-                self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
-                                self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count, M=M)
+            if self.num_costs == self.M:
+                for i in xrange(M):
+                    if type(self.demoX) is list:
+                        self.cost[i].update(self.demoU[i], self.demoO[i], demos_logiw[i], self.sample_list[i].get_U(),
+                                    self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
+                    self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
+                                    self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count, M=M)
+            else:
+                for i in xrange(num_costs):
+                    sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
+                    sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
+                    sampleO_arr[:, :, :4] = 0.0
+                    sampleO_arr[:, :, -6:] = 0.0
+                    samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
+                    # TODO - this is a weird hack that is wrong, and has been in the code for awhile.
+                    demoO = np.vstack((self.demoO for i in xrange(M)))
+                    demoO[:, :, :4] = 0.0
+                    demoO[:, :, -6:] = 0.0
+                    demoU = np.vstack((self.demoU for i in xrange(M)))
+                    demos_logiw_arr = np.hstack([demos_logiw[i] for i in xrange(M)]).reshape((-1, 1)) #demos_logiw[0].reshape((-1, 1))
+                    self.cost[i].update(demoU, demoO, demos_logiw_arr, sampleU_arr,
+                                                                sampleO_arr, samples_logiw_arr, itr=self.iteration_count, M=M)
         else:
             sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
             sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
