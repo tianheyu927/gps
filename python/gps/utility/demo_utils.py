@@ -66,7 +66,7 @@ def eval_demos(agent, demo_file, costfn, n=10):
     return eval_demos_xu(agent, demoX, demoU, costfn, n=n)
 
 
-def eval_demos_xu(agent, demoX, demoU, costfn, n=-1):
+def eval_demos_xu(agent, demoX, demoU, costfn, n=-1, gt=False, wu=True):
     num_demos = demoX.shape[0]
     losses = []
     for demo_idx in range(num_demos):
@@ -74,7 +74,14 @@ def eval_demos_xu(agent, demoX, demoU, costfn, n=-1):
         sample.set_XU(demoX[demo_idx], demoU[demo_idx])
         if type(costfn) is list:
             costfn = costfn[4]
-        l, _, _, _, _, _ = costfn.eval(sample)
+        if gt:
+            l, _, _, _, _, _ = costfn.eval(sample, use_jacobian=False)
+            l *= 1000.0
+        else:
+            if not wu:
+                l, _, _, _, _, _ = costfn.eval(sample, wu=False)
+            else:
+                l, _, _, _, _, _ = costfn.eval(sample)
         losses.append(l)
     if n>0:
         return random.sample(losses, n)

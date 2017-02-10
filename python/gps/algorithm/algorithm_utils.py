@@ -21,6 +21,8 @@ class IterationData(BundleType):
             'cs': None,  # Sample costs of the current iteration.
             'prevcost_cs': None,  # Current sample costs using the previous IOC cost.
             'cgt': None, # Ground truth sample cost of the current iteration.
+            'ctgt': None, # Learned cost for only the target, not including torque.
+            'cfk': None, # Ground truth cost for only the target, not including the torque.
             'step_mult': 1.0,  # KL step multiplier for the current iteration.
             'eta': 1.0,  # Dual variable used in LQR backward pass.
         }

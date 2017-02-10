@@ -146,6 +146,8 @@ class GPSMain(object):
                     self._log_data(itr, traj_sample_lists, pol_sample_lists)
                 else:
                     self._log_data(itr, traj_sample_lists)
+        if self.using_ioc() and not self.algorithm['global_cost'] and self.num_costs < self.algorithm['conditions']:
+            self.plot_cost()
         self._end()
         return None
 
@@ -424,16 +426,28 @@ class GPSMain(object):
         with Timer('Updating GUI'):
             if self.using_ioc(): #False
                 # Produce time vs cost plots
+                demo_target_losses = None
+                sample_target_losses = None
+                demo_true_losses = None
+                sample_true_losses = None
                 sample_losses = self.algorithm.cur[4].cs
-                sample_true_losses = self.algorithm.cur[4].cgt
                 if sample_losses is None:
                     sample_losses = self.algorithm.prev[4].cs
+                if self.algorithm._hyperparams.get('fk_cost', False):
+                    sample_target_losses = self.algorithm.cur[4].ctgt
+                    sample_true_losses = self.algorithm.cur[4].cfk
+                    if sample_true_losses is None:
+                        sample_true_losses = 1000.0*self.algorithm.prev[4].cfk
+                    if sample_target_losses is None:
+                        sample_target_losses = self.algorithm.prev[4].ctgt
                 if sample_losses.shape[0] < NUM_DEMO_PLOTS:
                     sample_losses = np.tile(sample_losses, [NUM_DEMO_PLOTS, 1])[:NUM_DEMO_PLOTS]
                 elif sample_losses.shape[0] > NUM_DEMO_PLOTS:
                     sample_losses = sample_losses[:NUM_DEMO_PLOTS]
                 demo_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.cost, n=NUM_DEMO_PLOTS)
-                demo_true_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.gt_cost, n=NUM_DEMO_PLOTS)
+                if self.algorithm._hyperparams.get('fk_cost', False):
+                    demo_true_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.fk_cost, n=NUM_DEMO_PLOTS, gt=True)
+                    demo_target_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.cost, n=NUM_DEMO_PLOTS, wu=False)
 
                 # Produce distance vs cost plots
                 # dists_vs_costs = compute_distance_cost_plot(self.algorithm, self.agent, traj_sample_lists[4])
@@ -446,12 +460,16 @@ class GPSMain(object):
                 sample_losses = None
                 dists_vs_costs = None
                 demo_dists_vs_costs = None
+                demo_target_losses = None
+                sample_target_losses = None
+                demo_true_losses = None
+                sample_true_losses = None
             if self.gui:
                 self.gui.set_status_text('Logging data and updating GUI.')
                 self.gui.update(itr, self.algorithm, self.agent,
                     traj_sample_lists, pol_sample_lists, ioc_demo_losses=demo_losses, ioc_sample_losses=sample_losses,
                                 ioc_dist_cost=dists_vs_costs, ioc_demo_dist_cost=demo_dists_vs_costs, ioc_sample_true_losses=sample_true_losses,\
-                                ioc_demo_true_losses=demo_true_losses)
+                                ioc_demo_true_losses=demo_true_losses, ioc_demo_target_losses=demo_target_losses, ioc_sample_target_losses=sample_target_losses)
                 self.gui.save_figure(
                     self._data_files_dir + ('figure_itr_%02d.pdf' % itr)
                 )
@@ -463,7 +481,8 @@ class GPSMain(object):
                 with Timer('saving algorithm file'):
                     self.algorithm.demo_policy = None
                     copy_alg = copy.copy(self.algorithm)
-                    copy_alg.sample_list = {}
+                    if (itr+1) < self.algorithm._hyperparams['iterations']:
+                        copy_alg.sample_list = {}
                     self.data_logger.pickle(
                         self._data_files_dir + ('algorithm_itr_%02d.pkl' % itr),
                         copy_alg
@@ -479,6 +498,11 @@ class GPSMain(object):
                             self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
                             copy.copy(pol_sample_lists)
                         )
+
+    def plot_cost(self):
+        algorithm = self.algorithm
+        sample_lists = algorithm.sample_list
+        plot_cost_3d(self, sample_list, algorithm.cost)
 
     def _end(self):
         """ Finish running and exit. """

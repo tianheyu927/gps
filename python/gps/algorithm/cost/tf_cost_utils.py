@@ -198,7 +198,7 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
                                 batch_norm=batch_norm, is_training=True, decay=decay)
     sup_cost_preu, sup_costs, _ = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
                                 batch_norm=batch_norm, is_training=True, decay=decay)
-    _, test_cost, _  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
+    test_preu_cost, test_cost, _  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
                                 batch_norm=batch_norm, is_training=False, decay=decay)
 
     # Build a differentiable test cost by feeding each timestep individually
@@ -256,6 +256,7 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
         'sup_loss': sup_loss,
         'ioc_loss': ioc_loss,
         'test_loss': test_cost,
+        'test_preu_loss': test_preu_cost,
         'test_loss_single': test_cost_single,
         'test_feat_single': test_feat_single,
     }

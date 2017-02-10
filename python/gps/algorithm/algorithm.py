@@ -107,11 +107,21 @@ class Algorithm(object):
                     self._hyperparams['gt_cost'][i]['type'](self._hyperparams['gt_cost'][i])
                     for i in range(self.M)
                 ]
+                if hyperparams.get('fk_cost', False):
+                    self.fk_cost = [
+                        self._hyperparams['fk_cost'][i]['type'](self._hyperparams['fk_cost'][i])
+                        for i in range(self.M)
+                    ]
             else:
                 self.gt_cost = [
                     self._hyperparams['gt_cost']['type'](self._hyperparams['gt_cost'])
                     for _ in range(self.M)
                 ]
+                if hyperparams.get('fk_cost', False):
+                    self.fk_cost = [
+                        self._hyperparams['fk_cost']['type'](self._hyperparams['fk_cost'])
+                        for i in range(self.M)
+                    ]
         self.base_kl_step = self._hyperparams['kl_step']
 
     @abc.abstractmethod
@@ -194,11 +204,14 @@ class Algorithm(object):
 
         # Compute cost.
         cs = np.zeros((N, T))
+        ctgt = np.zeros((N, T))
         cc = np.zeros((N, T))
         cv = np.zeros((N, T, dX+dU))
         Cm = np.zeros((N, T, dX+dU, dX+dU))
         if self._hyperparams['ioc']:
             cgt = np.zeros((N, T))
+            if self._hyperparams.get('fk_cost', False):
+                cfk = np.zeros((N, T))
         for n in range(N):
             sample = all_samples[n]
             # Get costs.
@@ -214,13 +227,22 @@ class Algorithm(object):
 
             if self._hyperparams['global_cost'] and type(self.cost) != list:
                 l, lx, lu, lxx, luu, lux = cost.eval(sample)
+                if self._hyperparams.get('fk_cost', False):
+                    l_tgt, _, _, _, _, _ = cost.eval(sample, wu=False)
+                    ctgt[n, :] = l_tgt
             else:
                 l, lx, lu, lxx, luu, lux = cost[cond].eval(sample)
+                if self._hyperparams.get('fk_cost', False):
+                    l_tgt, _, _, _, _, _ = cost[cond].eval(sample, wu=False)
+                    ctgt[n, :] = l_tgt
 
             # Compute the ground truth cost
             if self._hyperparams['ioc'] and n >= synN:
                 l_gt, _, _, _, _, _ = self.gt_cost[cond].eval(sample)
                 cgt[n, :] = l_gt
+                if self._hyperparams.get('fk_cost', False):
+                    l_fk, _, _, _, _, _ = self.fk_cost[cond].eval(sample)
+                    cfk[n, :] = l_fk
             cc[n, :] = l
             cs[n, :] = l
 
@@ -252,12 +274,17 @@ class Algorithm(object):
         else:
           traj_info = self.cur[cond].traj_info
           self.cur[cond].cs = cs[synN:]  # True value of cost.
+          if self._hyperparams.get('fk_cost', False):
+            self.cur[cond].ctgt = ctgt[synN:]
+            
         traj_info.cc = np.mean(cc, 0)  # Constant term (scalar).
         traj_info.cv = np.mean(cv, 0)  # Linear term (vector).
         traj_info.Cm = np.mean(Cm, 0)  # Quadratic term (matrix).
 
         if self._hyperparams['ioc']:
             self.cur[cond].cgt = cgt[synN:]
+            if self._hyperparams.get('fk_cost', False):
+                self.cur[cond].cfk = cfk[synN:]
 
 
     def _advance_iteration_variables(self, store_prev=False):

@@ -79,7 +79,7 @@ class CostIOCTF(Cost):
         ATA = weighted_array.T.dot(weighted_array)
         return ATA
 
-    def eval(self, sample):
+    def eval(self, sample, wu=True):
         """
         Evaluate cost function and derivatives on a sample.
         Args:
@@ -101,7 +101,11 @@ class CostIOCTF(Cost):
         lux = np.zeros((T, dU, dX))
 
         tq_norm = np.sum(self._hyperparams['wu'] * (sample_u ** 2), axis=1, keepdims=True)
-        l[:] = np.squeeze(self.run([self.outputs['test_loss']], test_obs=obs, test_torque_norm=tq_norm)[0])
+        if wu:
+            l[:] = np.squeeze(self.run([self.outputs['test_loss']], test_obs=obs, test_torque_norm=tq_norm)[0])
+        else:
+            l[:] = np.squeeze(self.run([self.outputs['test_preu_loss']], test_obs=obs, test_torque_norm=tq_norm)[0])
+
 
         if self.approximate_lxx:
             lx, dfdx = self.compute_lx_dfdx(obs)

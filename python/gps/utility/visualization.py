@@ -1,4 +1,5 @@
 from gps.proto.gps_pb2 import END_EFFECTOR_POINTS, RGB_IMAGE
+from gps.utility.general_utils import flatten_lists
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -225,3 +226,27 @@ def compare_experiments(mean_dists_1_dict, mean_dists_2_dict, success_rates_1_di
     plt.savefig(exp_dir + hyperparams_compare['plot']['success_plot_name'])
 
     plt.close()
+
+
+def plot_cost_3d(gps, sample_lists, costfns):
+    """
+    Plot the visualization of costs of samples versus its two end-effector coordinates.
+    For reacher specifically. 
+    Args:
+        sample_lists: a list of SampleList
+        costfns: a list of cost functions
+    """
+    samples = flatten_lists([sample_list.get_samples() for sample_list in sample_lists])
+    costs = np.zeros(len(costfns), len(samples))
+    end_effector_points = zip(*[samples.get(END_EFFECTOR_POINTS)[:2] for sample in samples])
+    for i in xrange(len(costfns)):
+        costs[i, :] = np.array([costfns[i].eval(sample) for sample in samples])
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    for i in xrange(len(costfns)):
+        ax.scatter(list(end_effector_points[0]), list(end_effector_points[1]), costs[i, :])
+    plt.title('costs versus end_effectors')
+    plt.savefig(gps._data_files_dir + 'costs.png')
+    save_dict = {'costs': costs, 'end_effector_points': end_effector_points}
+    gps.data_logger.pickle(gps._data_files_dir + 'cost_eepts.pkl', save_dict)
+

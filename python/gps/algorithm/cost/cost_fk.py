@@ -20,7 +20,7 @@ class CostFK(Cost):
         config.update(hyperparams)
         Cost.__init__(self, config)
 
-    def eval(self, sample):
+    def eval(self, sample, use_jacobian=True):
         """
         Evaluate forward kinematics (end-effector penalties) cost.
         Temporary note: This implements the 'joint' penalty type from
@@ -51,7 +51,7 @@ class CostFK(Cost):
         tgt = self._hyperparams['target_end_effector']
         pt = sample.get(END_EFFECTOR_POINTS)
         dist = pt - tgt
-        if self._hyperparams.get('use_jacobian', True):
+        if self._hyperparams.get('use_jacobian', True) and use_jacobian:
             # TODO - These should be partially zeros so we're not double
             #        counting.
             #        (see pts_jacobian_only in matlab costinfos code)
