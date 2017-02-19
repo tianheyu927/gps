@@ -14,14 +14,25 @@ def logsumexp(x, reduction_indices=None):
     _log = tf.log(_partition)+max_val
     return _log
 
+def variable_summaries(var, name):
+  """Attach a lot of summaries to a Tensor."""
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.scalar_summary('mean/' + name, mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.scalar_summary('stddev/' + name, stddev)
+    tf.scalar_summary('max/' + name, tf.reduce_max(var))
+    tf.scalar_summary('min/' + name, tf.reduce_min(var))
+    tf.histogram_summary(name, var)
 
 def safe_get(name, *args, **kwargs):
     """ Same as tf.get_variable, except flips on reuse_variables automatically """
     try:
-        return tf.get_variable(name, *args, **kwargs)
+        return tf.get_variable(name, *args, **kwargs), True
     except ValueError:
         tf.get_variable_scope().reuse_variables()
-        return tf.get_variable(name, *args, **kwargs)
+        return tf.get_variable(name, *args, **kwargs), False
 
 def init_weights(shape, name=None):
     weights = np.random.normal(scale=0.01, size=shape).astype('f')
@@ -146,7 +157,7 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
 
     # init logZ or Z to 1, only learn the bias
     # (also might be good to reduce lr on bias)
-    logZ = safe_get('Wdummy', initializer=tf.ones(1))
+    logZ, _ = safe_get('Wdummy', initializer=tf.ones(1))
     Z = tf.exp(logZ) # TODO: What does this do?
 
     # TODO - removed loss weights, changed T, batching, num samples
@@ -171,7 +182,7 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
 def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
                              demo_batch_size=5, sample_batch_size=5, phase=None, ioc_loss='ICML',
                              Nq=1, smooth_reg_weight=0.0, mono_reg_weight=0.0, gp_reg_weight=0.0,
-                             multi_obj_supervised_wt=1.0, learn_wu=False, batch_norm=False, decay=0.9):
+                             multi_obj_supervised_wt=1.0, learn_wu=False, batch_norm=False, decay=0.9, idx=0):
 
     inputs = {}
     inputs['demo_obs'] = demo_obs = tf.placeholder(tf.float32, shape=(demo_batch_size, T, dim_input))
@@ -191,23 +202,23 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
 
     inputs['test_obs_single'] = test_obs_single = tf.placeholder(tf.float32, shape=(dim_input), name='test_obs_single')
     inputs['test_torque_single'] = test_torque_single = tf.placeholder(tf.float32, shape=(1), name='test_torque_u_single')
-
-    demo_cost_preu, demo_costs, demo_u_costs = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
-                                batch_norm=batch_norm, is_training=True, decay=decay)
-    sample_cost_preu, sample_costs, sample_u_costs = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
-                                batch_norm=batch_norm, is_training=True, decay=decay)
-    sup_cost_preu, sup_costs, _ = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
-                                batch_norm=batch_norm, is_training=True, decay=decay)
-    test_preu_cost, test_cost, _  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
-                                batch_norm=batch_norm, is_training=False, decay=decay)
+    print "idx: %d" % idx
+    demo_cost_preu, demo_costs, demo_u_costs, _ = nn_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=True, decay=decay, idx=idx)
+    sample_cost_preu, sample_costs, sample_u_costs, _ = nn_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=True, decay=decay, idx=idx)
+    sup_cost_preu, sup_costs, _, _ = nn_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=True, decay=decay, idx=idx, is_sup=True)
+    test_preu_cost, test_cost, _, _  = nn_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu, dim_hidden=dim_hidden,
+                                batch_norm=batch_norm, is_training=False, decay=decay, idx=idx)
 
     # Build a differentiable test cost by feeding each timestep individually
     test_obs_single = tf.expand_dims(test_obs_single, 0)
     test_torque_single = tf.expand_dims(test_torque_single, 0)
     test_feat_single = compute_feats(test_obs_single, num_hidden=num_hidden, dim_hidden=dim_hidden, batch_norm=batch_norm,
-                                    is_training=False, decay=decay)
-    test_cost_single_preu, _, _ = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden,
-                                    learn_wu=learn_wu, batch_norm=batch_norm, is_training=False, decay=decay)
+                                    is_training=False, decay=decay, idx=idx)
+    test_cost_single_preu, _, _, A = nn_forward(test_obs_single, test_torque_single, num_hidden=num_hidden, dim_hidden=dim_hidden,
+                                    learn_wu=learn_wu, batch_norm=batch_norm, is_training=False, decay=decay, idx=idx)
     test_cost_single = tf.squeeze(test_cost_single_preu)
 
     sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
@@ -234,18 +245,22 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
         demo_slope = tf.slice(slope_next, begin=[0,0,0], size=[demo_batch_size, -1, -1])
         slope_reshape = tf.reshape(demo_slope, shape=[-1,1])
         mono_reg = l2_mono_loss(slope_reshape)*mono_reg_weight
+        tf.scalar_summary('mono_reg', mono_reg)
     else:
         mono_reg = 0
 
     # init logZ or Z to 1, only learn the bias
     # (also might be good to reduce lr on bias)
-    logZ = safe_get('Wdummy', initializer=tf.ones(1))
+    logZ, _ = safe_get('Wdummy', initializer=tf.ones(1))
     Z = tf.exp(logZ) # TODO: What does this do?
 
     # TODO - removed loss weights, changed T, batching, num samples
     # demo cond, num demos, etc.
     ioc_loss = icml_loss(demo_costs, sample_costs, demo_imp_weight, sample_imp_weight, Z)
+    tf.scalar_summary('ioc_loss (no reg)', ioc_loss)
     ioc_loss += mono_reg
+    tf.scalar_summary('ioc_loss', ioc_loss)
+    merged = tf.merge_all_summaries()
 
     outputs = {
         'multiobj_loss': sup_loss+ioc_loss,
@@ -259,12 +274,14 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
         'test_preu_loss': test_preu_cost,
         'test_loss_single': test_cost_single,
         'test_feat_single': test_feat_single,
+        'weight': A,
+        'summary_merged': merged,
     }
     return inputs, outputs
 
 
 def compute_feats(net_input, num_hidden=1, dim_hidden=42, batch_norm=False,
-                    is_training=True, decay=0.9):
+                    is_training=True, decay=0.9, idx=0, is_sup=False):
     len_shape = len(net_input.get_shape())
     if  len_shape == 3:
         batch_size, T, dinput = net_input.get_shape()
@@ -273,15 +290,19 @@ def compute_feats(net_input, num_hidden=1, dim_hidden=42, batch_norm=False,
 
     # Reshape into 2D matrix for matmuls
     net_input = tf.reshape(net_input, [-1, dinput.value])
-    with tf.variable_scope('cost_forward'):
+    with tf.variable_scope('g_%d/cost_forward' % idx):
         layer = net_input
         for i in range(num_hidden-1):
             with tf.variable_scope('layer_%d' % i):
                 # W = safe_get('W', shape=(dim_hidden, layer.get_shape()[1].value))
                 # b = safe_get('b', shape=(dim_hidden))
-                W = init_weights((dim_hidden, layer.get_shape()[1].value), name='W')
-                b = init_bias((dim_hidden), name='b')
+                W, init = init_weights((dim_hidden, layer.get_shape()[1].value), name='W')
+                b, _ = init_bias((dim_hidden), name='b')
                 layer = tf.matmul(layer, W, transpose_b=True, name='mul_layer'+str(i)) + b
+                if is_training and not is_sup and init:
+                    variable_summaries(W, 'g_%d/cost_forward/layer_%d/W' % (idx, i))
+                    variable_summaries(b, 'g_%d/cost_forward/layer_%d/b' % (idx, i))
+                    tf.histogram_summary('g_%d/cost_forward/layer_%d/pre_activation' % (idx, i), layer)
             if batch_norm:
                 with tf.variable_scope('bn_layer_%d' % i) as vs:
                     if is_training:
@@ -296,10 +317,16 @@ def compute_feats(net_input, num_hidden=1, dim_hidden=42, batch_norm=False,
                             scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
             else:
                 layer = tf.nn.relu(layer)
+            if is_training and not is_sup and init:
+                tf.histogram_summary('g_%d/cost_forward/layer_%d/activation' % (idx, i), layer)
 
-        Wfeat = init_weights((dim_hidden, layer.get_shape()[1].value), name='Wfeat')
-        bfeat = init_bias((dim_hidden), name='bfeat')
+        Wfeat, init_feat = init_weights((dim_hidden, layer.get_shape()[1].value), name='Wfeat')
+        bfeat, _ = init_bias((dim_hidden), name='bfeat')
         feat = tf.matmul(layer, Wfeat, transpose_b=True, name='mul_feat')+bfeat
+        if is_training and not is_sup and init_feat:
+            variable_summaries(Wfeat, 'g_%d/cost_forward/Wfeat' % idx)
+            variable_summaries(bfeat, 'g_%d/cost_forward/bfeat' % idx)
+            tf.histogram_summary('g_%d/cost_forward/mul_feat' % idx, feat)
 
     if len_shape == 3:
         feat = tf.reshape(feat, [batch_size.value, T.value, dim_hidden])
@@ -310,24 +337,27 @@ def compute_feats(net_input, num_hidden=1, dim_hidden=42, batch_norm=False,
 
 
 def nn_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False,
-                batch_norm=False, is_training=True, decay=0.9):
+                batch_norm=False, is_training=True, decay=0.9, idx=0, is_sup=False):
     # Reshape into 2D matrix for matmuls
     u_input = tf.reshape(u_input, [-1, 1])
 
     feat = compute_feats(net_input, num_hidden=num_hidden, dim_hidden=dim_hidden,
-                            batch_norm=batch_norm, is_training=is_training, decay=decay)
+                            batch_norm=batch_norm, is_training=is_training, decay=decay, idx=idx, is_sup=is_sup)
     feat = tf.reshape(feat, [-1, dim_hidden])
 
-    with tf.variable_scope('cost_forward'):
+    with tf.variable_scope('g_%d/cost_forward' % idx):
         # A = safe_get('Acost', shape=(dim_hidden, dim_hidden))
         # b = safe_get('bcost', shape=(dim_hidden))
-        A = init_weights((dim_hidden, dim_hidden), name='Acost')
-        b = init_bias((dim_hidden), name='bcost')
+        A, init = init_weights((dim_hidden, dim_hidden), name='Acost')
+        b, _ = init_bias((dim_hidden), name='bcost')
+        if is_training and not is_sup and init:
+            variable_summaries(A, 'g_%d/cost_forward/Acost' % idx)
+            variable_summaries(b, 'g_%d/cost_forward/bcost' % idx)
         Ax = tf.matmul(feat, A, transpose_b=True)+b
         AxAx = Ax*Ax
 
         # Calculate torque penalty
-        u_penalty = safe_get('wu', initializer=tf.constant(1.0), trainable=learn_wu)
+        u_penalty, _ = safe_get('wu', initializer=tf.constant(1.0), trainable=learn_wu)
         assert_shape(u_penalty, [])
         u_cost = u_input*u_penalty
 
@@ -342,8 +372,11 @@ def nn_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False,
         AxAx = tf.reshape(AxAx, [-1, dim_hidden])
         u_cost = tf.reshape(u_cost, [-1, 1])
     all_costs_preu = tf.reduce_sum(AxAx, reduction_indices=[-1], keep_dims=True)
+    if is_training and not is_sup and init:
+        tf.histogram_summary('wu', u_cost)
+        tf.histogram_summary('all_costs_no_torque', all_costs_preu)
     all_costs = all_costs_preu + u_cost
-    return all_costs_preu, all_costs, u_cost
+    return all_costs_preu, all_costs, u_cost, A
 
 
 def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, is_training=True, decay=0.9, id=0):
@@ -371,15 +404,15 @@ def compute_image_feats(img_input, num_filters=[15,15,15], batch_norm=False,
     # Store layers weight & bias
     with tf.variable_scope('conv_params'):
         weights = {
-            'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
-            'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
-            'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1')[0], # 5x5 conv, 1 input, 32 outputs
+            'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2')[0], # 5x5 conv, 32 inputs, 64 outputs
+            'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3')[0], # 5x5 conv, 32 inputs, 64 outputs
         }
 
         biases = {
-            'bc1': init_bias([num_filters[0]], name='bc1'),
-            'bc2': init_bias([num_filters[1]], name='bc2'),
-            'bc3': init_bias([num_filters[2]], name='bc3'),
+            'bc1': init_bias([num_filters[0]], name='bc1')[0],
+            'bc2': init_bias([num_filters[1]], name='bc2')[0],
+            'bc3': init_bias([num_filters[2]], name='bc3')[0],
         }
 
     conv_layer_0 = conv2d(img=img_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, is_training=is_training, decay=decay, id=0)
@@ -451,13 +484,13 @@ def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=Fal
     feat = tf.reshape(return_feat, [-1, dim_hidden])
 
     with tf.variable_scope('cost_forward'):
-        A = safe_get('Acost', shape=(dim_hidden, dim_hidden))
-        b = safe_get('bcost', shape=(dim_hidden))
+        A, _ = safe_get('Acost', shape=(dim_hidden, dim_hidden))
+        b, _ = safe_get('bcost', shape=(dim_hidden))
         Ax = tf.matmul(feat, A, transpose_b=True)+b
         AxAx = Ax*Ax
 
         # Calculate torque penalty
-        u_penalty = safe_get('wu', initializer=tf.constant(1.0), trainable=learn_wu)
+        u_penalty, _ = safe_get('wu', initializer=tf.constant(1.0), trainable=learn_wu)
         assert_shape(u_penalty, [])
         u_cost = u_input*u_penalty
 

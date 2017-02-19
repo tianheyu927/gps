@@ -281,12 +281,15 @@ class AgentMuJoCo(Agent):
             # record a gif of sample.
             images = new_sample.get(RGB_IMAGE)
             size = list(new_sample.get(RGB_IMAGE_SIZE))
+            # import pdb; pdb.set_trace()
             images = images.reshape([-1]+size)
-            images = np.transpose(images, [0,2,3,1])
+            images = np.transpose(images, [0,3,2,1]) #[0,2,3,1]
             LOGGER.debug('Saving gif sample to :%s', record_gif)
             if record_gif_fps is None:
                 record_gif_fps = 1./self._hyperparams['dt']
             imageio.mimsave(record_gif, images, fps=record_gif_fps)
+            new_sample.reset(RGB_IMAGE)
+            new_sample.reset(RGB_IMAGE_SIZE)
 
         new_sample.set(ACTION, U)
         if self._hyperparams['record_reward']:

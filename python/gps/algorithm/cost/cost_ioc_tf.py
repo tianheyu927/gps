@@ -158,14 +158,14 @@ class CostIOCTF(Cost):
         d_sampler = BatchSampler([demoO, demo_torque_norm, d_log_iw])
         s_sampler = BatchSampler([sampleO, sample_torque_norm, s_log_iw])
         loss_history = []
-        if M > 1:
-            idx = np.random.randint(M)
+        idx = np.random.randint(M)
+        writer = tf.train.SummaryWriter('%s/outer_iter_%d' % (self._hyperparams['summary_dir'], itr), self.graph)
         for i, (d_batch, s_batch) in enumerate(
                 izip(d_sampler.with_replacement(low=num_demo/M*idx, high=num_demo/M*(idx+1), \
                                                 batch_size=self.demo_batch_size), \
                     s_sampler.with_replacement(low=num_samp/M*idx, high=num_samp/M*(idx+1), \
                                                 batch_size=self.sample_batch_size))):
-            ioc_loss, grad = self.run([self.ioc_loss, self.ioc_optimizer],
+            ioc_loss, grad, summary = self.run([self.ioc_loss, self.ioc_optimizer, self.summary_merged],
                                       demo_obs=d_batch[0],
                                       demo_torque_norm=d_batch[1],
                                       demo_iw = d_batch[2],
@@ -176,20 +176,16 @@ class CostIOCTF(Cost):
             if i%200 == 0:
                 LOGGER.debug("Iteration %d loss: %f", i, ioc_loss)
                 loss_history.append(ioc_loss)
-                # demo_costs, demo_u_costs = self.run([self.demo_costs, self.demo_u_costs],
-                #                                 demo_obs=d_batch[0],
-                #                                 demo_torque_norm=d_batch[1])
-                # sample_costs, sample_u_costs = self.run([self.sample_costs, self.sample_u_costs],
-                #                                 sample_obs=s_batch[0],
-                #                                 sample_torque_norm=s_batch[1])
+                # TODO: add gradients to summary
+                writer.add_summary(summary, i)
             if i > self._hyperparams['iterations']:
                 break
-        import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
 
-        plt.figure(2)
-        plt.plot(200*np.arange(self._hyperparams['iterations']/200 + 1), loss_history)
-        plt.savefig(self._hyperparams['data_files_dir'] + 'cost_loss_iter_%2d' % itr + '.png')
-        plt.close(2)
+        # plt.figure(2)
+        # plt.plot(200*np.arange(self._hyperparams['iterations']/200 + 1), loss_history)
+        # plt.savefig(self._hyperparams['data_files_dir'] + 'cost_loss_iter_%2d' % itr + '.png')
+        # plt.close(2)
 
     def _init_solver(self, sample_batch_size=None):
         """ Helper method to initialize the solver. """
@@ -213,7 +209,12 @@ class CostIOCTF(Cost):
         network_arch_params['learn_wu'] = self._hyperparams['learn_wu']
         network_arch_params['batch_norm'] = self._hyperparams['batch_norm']
         network_arch_params['decay'] = self._hyperparams.get('decay', 0.9)
+        network_arch_params['idx'] = self._hyperparams.get('random_seed', 0)
+        if self._hyperparams['random_seed'] != self._hyperparams.get('global_random_seed', 0):
+            np.random.seed(self._hyperparams['random_seed'])
         inputs, outputs = construct_nn_cost_net_tf(**network_arch_params)
+        if self._hyperparams['random_seed'] != self._hyperparams.get('global_random_seed', 0):
+            np.random.seed(self._hyperparams.get('global_random_seed', 0))
         self.outputs = outputs
 
         self.input_dict = inputs
@@ -223,6 +224,7 @@ class CostIOCTF(Cost):
         self.demo_u_costs = outputs['demo_u_costs']
         self.sample_costs = outputs['sample_costs']
         self.sample_u_costs = outputs['sample_u_costs']
+        self.weight = outputs['weight'] # for testing
 
         optimizer = tf.train.AdamOptimizer(learning_rate=self._hyperparams['lr'])
         self.ioc_optimizer = optimizer.minimize(self.ioc_loss)
@@ -234,6 +236,9 @@ class CostIOCTF(Cost):
         self.dldxx = jacobian(self.dldx, obs_single)
         self.dfdx = jacobian(outputs['test_feat_single'][0], obs_single)
 
+        # Summary for tensorboard
+        self.summary_merged = outputs['summary_merged']
+        
         self.saver = tf.train.Saver()
 
         self.session = tf.Session()
@@ -274,4 +279,3 @@ class CostIOCTF(Cost):
             f.write(state['wts'])
             f.seek(0)
             self.restore_model(f.name)
-

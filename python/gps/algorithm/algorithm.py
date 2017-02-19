@@ -86,6 +86,11 @@ class Algorithm(object):
             self._hyperparams['traj_opt']
         )
 
+        if type(hyperparams['cost']) == list:
+            self.num_costs = len(hyperparams['cost'])
+        else:
+            self.num_costs = 1
+
         if self._hyperparams['global_cost']:
             if type(hyperparams['cost']) == list:
                 self.cost = [
@@ -94,7 +99,6 @@ class Algorithm(object):
             else:
                 self.cost = self._hyperparams['cost']['type'](self._hyperparams['cost'])
         else:
-            self.num_costs = self._hyperparams.get('num_costs', self.M)
             if self.num_costs == self.M:
                 self.cost = [
                     self._hyperparams['cost']['type'](self._hyperparams['cost'])
@@ -103,32 +107,35 @@ class Algorithm(object):
             else:
                 self.cost = [
                     self._hyperparams['cost'][i]['type'](self._hyperparams['cost'][i])
-                    for i in range(self.M)
+                    for i in range(self.num_costs)
                 ]
         if type(self._hyperparams['cost']) is dict and self._hyperparams['cost'].get('agent', False):
             del self._hyperparams['cost']['agent']
+
+        if hyperparams.get('fk_cost', False):
+            if type(hyperparams['fk_cost']) == list:
+                self.fk_cost = [
+                    self._hyperparams['fk_cost'][i]['type'](self._hyperparams['fk_cost'][i])
+                    for i in range(self.M)
+                ]
+            else:
+                self.fk_cost = [
+                        self._hyperparams['fk_cost']['type'](self._hyperparams['fk_cost'])
+                        for i in range(self.M)
+                    ]
 
         if self._hyperparams['ioc']:
             if type(hyperparams['gt_cost']) == list:
                 self.gt_cost = [
                     self._hyperparams['gt_cost'][i]['type'](self._hyperparams['gt_cost'][i])
                     for i in range(self.M)
-                ]
-                if hyperparams.get('fk_cost', False):
-                    self.fk_cost = [
-                        self._hyperparams['fk_cost'][i]['type'](self._hyperparams['fk_cost'][i])
-                        for i in range(self.M)
-                    ]
+                ]        
             else:
                 self.gt_cost = [
                     self._hyperparams['gt_cost']['type'](self._hyperparams['gt_cost'])
                     for _ in range(self.M)
                 ]
-                if hyperparams.get('fk_cost', False):
-                    self.fk_cost = [
-                        self._hyperparams['fk_cost']['type'](self._hyperparams['fk_cost'])
-                        for i in range(self.M)
-                    ]
+                    
         self.base_kl_step = self._hyperparams['kl_step']
 
     @abc.abstractmethod
@@ -193,6 +200,7 @@ class Algorithm(object):
         T, dX, dU = self.T, self.dX, self.dU
 
         synN = self._hyperparams['synthetic_cost_samples']
+        LOGGER.debug('Number of synthetic cost samples is %d', synN)
         if synN > 0:
             agent = self.cur[cond].sample_list.get_samples()[0].agent
             X, U, _ = self._traj_samples(cond, synN)
@@ -217,8 +225,8 @@ class Algorithm(object):
         Cm = np.zeros((N, T, dX+dU, dX+dU))
         if self._hyperparams['ioc']:
             cgt = np.zeros((N, T))
-            if self._hyperparams.get('fk_cost', False):
-                cfk = np.zeros((N, T))
+        if self._hyperparams.get('fk_cost', False):
+            cfk = np.zeros((N, T))
         for n in range(N):
             sample = all_samples[n]
             # Get costs.
@@ -234,28 +242,31 @@ class Algorithm(object):
 
             if self._hyperparams['global_cost'] and type(self.cost) != list:
                 l, lx, lu, lxx, luu, lux = cost.eval(sample)
-                if self._hyperparams.get('fk_cost', False):
+                if self._hyperparams.get('fk_cost', False) and self._hyperparams['ioc']:
                     l_tgt, _, _, _, _, _ = cost.eval(sample, wu=False)
                     ctgt[n, :] = l_tgt
             else:
-                if self.num_costs == M:
+                if self.num_costs == self.M:
                     l, lx, lu, lxx, luu, lux = cost[cond].eval(sample)
-                    if self._hyperparams.get('fk_cost', False):
+                    if self._hyperparams.get('fk_cost', False) and self._hyperparams['ioc']:
                         l_tgt, _, _, _, _, _ = cost[cond].eval(sample, wu=False)
                         ctgt[n, :] = l_tgt
                 else:
                     l, lx, lu, lxx, luu, lux = cost[0].eval(sample)
-                    if self._hyperparams.get('fk_cost', False):
+                    if self._hyperparams.get('fk_cost', False) and self._hyperparams['ioc']:
                         l_tgt, _, _, _, _, _ = cost[0].eval(sample, wu=False)
                         ctgt[n, :] = l_tgt
+
+            # Compute the fk cost
+            if self._hyperparams.get('fk_cost', False):
+                l_fk, _, _, _, _, _ = self.fk_cost[cond].eval(sample)
+                cfk[n, :] = l_fk
 
             # Compute the ground truth cost
             if self._hyperparams['ioc'] and n >= synN:
                 l_gt, _, _, _, _, _ = self.gt_cost[cond].eval(sample)
                 cgt[n, :] = l_gt
-                if self._hyperparams.get('fk_cost', False):
-                    l_fk, _, _, _, _, _ = self.fk_cost[cond].eval(sample)
-                    cfk[n, :] = l_fk
+
             cc[n, :] = l
             cs[n, :] = l
 
@@ -287,7 +298,7 @@ class Algorithm(object):
         else:
           traj_info = self.cur[cond].traj_info
           self.cur[cond].cs = cs[synN:]  # True value of cost.
-          if self._hyperparams.get('fk_cost', False):
+          if self._hyperparams.get('fk_cost', False) and self._hyperparams['ioc']:
             self.cur[cond].ctgt = ctgt[synN:]
             
         traj_info.cc = np.mean(cc, 0)  # Constant term (scalar).
@@ -296,8 +307,8 @@ class Algorithm(object):
 
         if self._hyperparams['ioc']:
             self.cur[cond].cgt = cgt[synN:]
-            if self._hyperparams.get('fk_cost', False):
-                self.cur[cond].cfk = cfk[synN:]
+        if self._hyperparams.get('fk_cost', False):
+            self.cur[cond].cfk = cfk[synN:]
 
 
     def _advance_iteration_variables(self, store_prev=False):
@@ -460,19 +471,20 @@ class Algorithm(object):
                     self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
                                     self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count, M=M)
             else:
-                for i in xrange(num_costs):
-                    sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
-                    sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
-                    sampleO_arr[:, :, :4] = 0.0
-                    sampleO_arr[:, :, -6:] = 0.0
-                    samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
-                    # TODO - this is a weird hack that is wrong, and has been in the code for awhile.
-                    demoO = np.vstack((self.demoO for i in xrange(M)))
-                    demoO[:, :, :4] = 0.0
-                    demoO[:, :, -6:] = 0.0
-                    demoU = np.vstack((self.demoU for i in xrange(M)))
-                    demos_logiw_arr = np.hstack([demos_logiw[i] for i in xrange(M)]).reshape((-1, 1)) #demos_logiw[0].reshape((-1, 1))
-                    self.cost[i].update(demoU, demoO, demos_logiw_arr, sampleU_arr,
+                sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
+                sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
+                # Just use end-effector to train cost (for visualizing cost only)
+                sampleO_arr[:, :, :4] = 0.0
+                sampleO_arr[:, :, -6:] = 0.0
+                samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
+                # TODO - this is a weird hack that is wrong, and has been in the code for awhile.
+                demoO = np.vstack((self.demoO for i in xrange(M)))
+                demoO[:, :, :4] = 0.0
+                demoO[:, :, -6:] = 0.0
+                demoU = np.vstack((self.demoU for i in xrange(M)))
+                demos_logiw_arr = np.hstack([demos_logiw[i] for i in xrange(M)]).reshape((-1, 1)) #demos_logiw[0].reshape((-1, 1))
+                for m in xrange(self.num_costs):
+                    self.cost[m].update(demoU, demoO, demos_logiw_arr, sampleU_arr,
                                                                 sampleO_arr, samples_logiw_arr, itr=self.iteration_count, M=M)
         else:
             sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))

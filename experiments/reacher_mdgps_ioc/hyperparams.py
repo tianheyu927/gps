@@ -79,14 +79,16 @@ common = {
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
     # 'data_files_dir': EXP_DIR + 'data_files_8_demo1_%d/' % SEED,
-    'data_files_dir': EXP_DIR + 'data_files_LG_demo%d_%d/' % (NUM_DEMOS, SEED),
+    # 'data_files_dir': EXP_DIR + 'data_files_LG_demo%d_cost_%d/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_LG_demo%d_cost_%d/' % (NUM_DEMOS, SEED),
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
     # 'demo_controller_file': DEMO_DIR + 'data_files_8/algorithm_itr_09.pkl',
-    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_11.pkl', #11 for 1 condition
+    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_14.pkl', #11 for 1 condition
     'nn_demo': False, # Use neural network demonstrations. For experiment only
-    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_LG_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    # 'LG_demo_file': os.path.join(EXP_DIR, 'data_files_LG_demo%d_cost_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_LG_demo%d_cost_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
     'NN_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
     'conditions': TOTAL_CONDITIONS,
     'train_conditions': range(TRAIN_CONDITIONS),
@@ -154,8 +156,8 @@ algorithm = {
     'max_ent_traj': 1.0,
     'num_demos': NUM_DEMOS,
     'synthetic_cost_samples': 0,
-    'global_cost': False, #True
-    'num_costs': 3,
+    'global_cost': True, #False
+    'num_costs': 1,
     'demo_var_mult': 1.0,
     'conditions': common['conditions'],  # NON IOC STUFF HERE
     'iterations': 15, #20
@@ -212,12 +214,44 @@ algorithm['fk_cost'] = fk_cost_1
 algorithm['gt_cost'] = [{
     'type': CostSum,
     'costs': [torque_cost_1[i], fk_cost_1[i]],
-    'weights': [0.5, 1.0],
+    'weights': [2.0, 1.0],
 }  for i in range(common['conditions'])]
 
-algorithm['cost'] = [{
+# algorithm['cost'] = [{
+#     'type': CostIOCTF,
+#     'wu': 2000.0 / PR2_GAINS, # for nn, this is 200
+#     # 'wu' : 0.0,
+#     'network_params': {
+#         'obs_include': agent['obs_include'],
+#         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+#         'obs_image_data': [],
+#         'sensor_dims': SENSOR_DIMS,
+#     },
+#     'T': agent['T'],
+#     'dO': 16,
+#     'iterations': 5000, # TODO - do we need 5k?
+#     'demo_batch_size': 5,
+#     'sample_batch_size': 5,
+#     'num_hidden': 3,
+#     'dim_hidden': 40,
+#     'ioc_loss': algorithm['ioc'],
+#     'mono_reg_weight': 0.0,
+#     'batch_norm': False,
+#     'decay': 0.99,
+#     'approximate_lxx': False,
+#     'random_seed': i, #SEED
+#     'global_random_seed': SEED,
+#     'data_files_dir': common['data_files_dir'],
+#     'summary_dir': common['data_files_dir'] + 'cost_summary_%d/' % i,
+# } for i in xrange(algorithm['num_costs'])]
+
+# for i in xrange(algorithm['num_costs']):
+#     if not os.path.exists(algorithm['cost'][i]['summary_dir']):
+#         os.makedirs(algorithm['cost'][i]['summary_dir'])
+
+algorithm['cost'] = {
     'type': CostIOCTF,
-    'wu': 500.0 / PR2_GAINS, # for nn, this is 200
+    'wu': 2000.0 / PR2_GAINS, # for nn, this is 200
     # 'wu' : 0.0,
     'network_params': {
         'obs_include': agent['obs_include'],
@@ -230,15 +264,21 @@ algorithm['cost'] = [{
     'iterations': 5000, # TODO - do we need 5k?
     'demo_batch_size': 5,
     'sample_batch_size': 5,
-    'num_hidden': 4,
-    'dim_hidden': 50,
+    'num_hidden': 3,
+    'dim_hidden': 40,
     'ioc_loss': algorithm['ioc'],
+    # 'mono_reg_weight': 0.0,
     'batch_norm': False,
     'decay': 0.99,
     'approximate_lxx': False,
-    'random_seed': i, #SEED
+    'random_seed': 0, #SEED
+    'global_random_seed': SEED,
     'data_files_dir': common['data_files_dir'],
-} for i in xrange(algorithm['num_costs'])]
+    'summary_dir': common['data_files_dir'] + 'cost_summary/',
+}
+
+if not os.path.exists(algorithm['cost']['summary_dir']):
+    os.makedirs(algorithm['cost']['summary_dir'])
 
 #algorithm['init_traj_distr'] = {
 #    'type': init_demo,
@@ -310,6 +350,10 @@ config = {
     'verbose_trials': 1,
     'verbose_policy_trials': 1,
     'common': common,
+    # 'record_gif': {
+    #     'gif_dir': os.path.join(common['data_files_dir'], 'gifs'),
+    #     'gifs_per_condition': 1,
+    # },
     'agent': agent,
     'demo_agent': demo_agent,
     'gui_on': True,

@@ -53,6 +53,14 @@ class Sample(object):
             self._X[t, :].fill(np.nan)
             self._obs[t, :].fill(np.nan)
 
+    def reset(self, sensor_name, t=None):
+        """ Reset trajectory data for a particular sensor. Mainly aim to not save images. """
+        if sensor_name in self._data:
+            if t is None:
+                self._data[sensor_name] = None
+            else:
+                self._data[sensor_name][t, :].fill(np.nan)
+
     def get(self, sensor_name, t=None):
         """ Get trajectory data for a particular sensor. """
         if self._feat_stale and IMAGE_FEAT == sensor_name:

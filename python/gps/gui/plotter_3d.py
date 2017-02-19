@@ -65,7 +65,7 @@ class Plotter3D:
             zs[np.any(np.c_[zs < zlim[0], zs > zlim[1]], axis=1)] = np.nan
 
         # Create and add plot
-        if np.any(zs):
+        if zlim[0] != zlim[1]:
             plot = self._axarr[i].plot(xs, ys, zs=zs, linestyle=linestyle,
                     linewidth=linewidth, marker=marker, markersize=markersize,
                     markeredgewidth=markeredgewidth, color=color, alpha=alpha,

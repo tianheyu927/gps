@@ -41,6 +41,7 @@ NUM_DEMO_PLOTS = 5
 # Needed for typechecks
 from gps.algorithm.algorithm_badmm import AlgorithmBADMM
 from gps.algorithm.algorithm_mdgps import AlgorithmMDGPS
+from gps.algorithm.algorithm_traj_opt import AlgorithmTrajOpt
 from gps.algorithm.behavior_cloning import BehaviorCloning
 
 class GPSTrainingGUI(object):
@@ -369,7 +370,8 @@ class GPSTrainingGUI(object):
         controller entropies, and initial/final KL divergences for BADMM.
         """
         self.set_output_text(self._hyperparams['experiment_name'])
-        if isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, AlgorithmBADMM) or isinstance(algorithm, BehaviorCloning):
+        if isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, AlgorithmBADMM) or \
+            isinstance(algorithm, BehaviorCloning) or isinstance(algorithm, AlgorithmTrajOpt):
             condition_titles = '%3s | %8s %12s' % ('', '', '')
             # itr_data_fields  = '%3s | %8s %12s' % ('itr', 'avg_cost', 'avg_pol_cost')
             itr_data_fields  = '%3s | %8s %12s' % ('itr', 'avg_cost', 'avg_fk_cost')
@@ -394,7 +396,8 @@ class GPSTrainingGUI(object):
             if isinstance(algorithm, AlgorithmBADMM):
                 condition_titles += ' %8s %8s %8s' % ('', '', '')
                 itr_data_fields  += ' %8s %8s %8s' % ('pol_cost', 'kl_div_i', 'kl_div_f')
-            elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning):
+            elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning) or \
+                    isinstance(algorithm, AlgorithmTrajOpt):
                 condition_titles += ' %8s' % ('')
                 # itr_data_fields  += ' %8s' % ('pol_cost')
                 itr_data_fields  += ' %8s' % ('fk_cost')
@@ -412,7 +415,8 @@ class GPSTrainingGUI(object):
         else:
             avg_cost = 'N/A'
         pol_costs = [-123 for _ in range(algorithm.M)]
-        if pol_sample_lists is not None:
+        # if pol_sample_lists is not None:
+        if algorithm._hyperparams.get('fk_cost', False):
             # test_idx = algorithm._hyperparams['test_conditions']
             # # import pdb; pdb.set_trace()
             # # pol_sample_lists is a list of singletons
@@ -472,7 +476,8 @@ class GPSTrainingGUI(object):
                 kl_div_i = algorithm.cur[m].pol_info.init_kl.mean()
                 kl_div_f = algorithm.cur[m].pol_info.prev_kl.mean()
                 itr_data += ' %8.2f %8.2f %8.2f' % (pol_costs[m], kl_div_i, kl_div_f)
-            elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning):
+            elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning) or \
+                 isinstance(algorithm, AlgorithmTrajOpt):
                 # TODO: Change for test/train better.
                 # if test_idx == algorithm._hyperparams['train_conditions']:
                 #     itr_data += ' %8.2f' % (pol_costs[m])

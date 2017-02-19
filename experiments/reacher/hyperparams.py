@@ -51,7 +51,8 @@ pos_body_offset = []
 # for _ in range(CONDITIONS):
 #     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
-pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
+# pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
+pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 # pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
 #                     np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
 #                     np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
@@ -61,7 +62,7 @@ common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files/',
+    'data_files_dir': EXP_DIR + 'data_files_easy/',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'conditions': CONDITIONS,
@@ -133,6 +134,8 @@ fk_cost_1 = [{
     'alpha': 1e-5,
     'evalnorm': evall1l2term,
 } for i in range(common['conditions'])]
+
+algorithm['fk_cost'] = fk_cost_1
 
 algorithm['cost'] = [{
     'type': CostSum,
@@ -230,6 +233,10 @@ config = {
     'verbose_trials': 1,
     'verbose_policy_trials': 0,
     'common': common,
+    'record_gif': {
+        'gif_dir': os.path.join(common['data_files_dir'], 'gifs'),
+        'gifs_per_condition': 1,
+    },
     'agent': agent,
     'gui_on': True,
     'algorithm': algorithm,

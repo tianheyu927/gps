@@ -70,8 +70,9 @@ class CostFK(Cost):
             self._hyperparams['l2'], self._hyperparams['alpha']
         )
         # Add to current terms.
-        sample.agent.pack_data_x(lx, ls, data_types=[JOINT_ANGLES])
-        sample.agent.pack_data_x(lxx, lss,
-                                 data_types=[JOINT_ANGLES, JOINT_ANGLES])
+        if sample.agent:
+            sample.agent.pack_data_x(lx, ls, data_types=[JOINT_ANGLES])
+            sample.agent.pack_data_x(lxx, lss,
+                                     data_types=[JOINT_ANGLES, JOINT_ANGLES])
 
         return l, lx, lu, lxx, luu, lux

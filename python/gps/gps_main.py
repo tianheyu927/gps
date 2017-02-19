@@ -26,7 +26,7 @@ from gps.utility.general_utils import disable_caffe_logs, Timer, mkdir_p
 from gps.utility.demo_utils import eval_demos_xu, compute_distance_cost_plot, compute_distance_cost_plot_xu, \
                                     measure_distance_and_success_peg, get_demos, extract_samples
 from gps.utility.visualization import get_comparison_hyperparams, compare_experiments, \
-                                        compare_samples_curve, visualize_samples
+                                        compare_samples_curve, visualize_samples, plot_cost_3d
 
 
 class GPSMain(object):
@@ -146,8 +146,8 @@ class GPSMain(object):
                     self._log_data(itr, traj_sample_lists, pol_sample_lists)
                 else:
                     self._log_data(itr, traj_sample_lists)
-        if self.using_ioc() and not self.algorithm['global_cost'] and self.num_costs < self.algorithm['conditions']:
-            self.plot_cost()
+        # if self.using_ioc() and not self.algorithm._hyperparams['global_cost'] and self.algorithm.num_costs != self.algorithm.M:
+        #     self.plot_cost()
         self._end()
         return None
 
@@ -430,16 +430,16 @@ class GPSMain(object):
                 sample_target_losses = None
                 demo_true_losses = None
                 sample_true_losses = None
-                sample_losses = self.algorithm.cur[4].cs
+                sample_losses = self.algorithm.cur[0].cs
                 if sample_losses is None:
-                    sample_losses = self.algorithm.prev[4].cs
+                    sample_losses = self.algorithm.prev[0].cs
                 if self.algorithm._hyperparams.get('fk_cost', False):
-                    sample_target_losses = self.algorithm.cur[4].ctgt
-                    sample_true_losses = self.algorithm.cur[4].cfk
+                    sample_target_losses = self.algorithm.cur[0].ctgt
+                    sample_true_losses = self.algorithm.cur[0].cfk
                     if sample_true_losses is None:
-                        sample_true_losses = 1000.0*self.algorithm.prev[4].cfk
+                        sample_true_losses = 1000.0*self.algorithm.prev[0].cfk
                     if sample_target_losses is None:
-                        sample_target_losses = self.algorithm.prev[4].ctgt
+                        sample_target_losses = self.algorithm.prev[0].ctgt
                 if sample_losses.shape[0] < NUM_DEMO_PLOTS:
                     sample_losses = np.tile(sample_losses, [NUM_DEMO_PLOTS, 1])[:NUM_DEMO_PLOTS]
                 elif sample_losses.shape[0] > NUM_DEMO_PLOTS:
@@ -502,7 +502,7 @@ class GPSMain(object):
     def plot_cost(self):
         algorithm = self.algorithm
         sample_lists = algorithm.sample_list
-        plot_cost_3d(self, sample_list, algorithm.cost)
+        plot_cost_3d(self, sample_lists, algorithm.cost)
 
     def _end(self):
         """ Finish running and exit. """
@@ -679,17 +679,18 @@ def main():
         accuracy_history = {num_demo:[] for num_demo in num_demos}
         for seed in seeds:
             for num_demo in num_demos:
-                np.random.seed(seed)
-                random.seed(seed)
+                # np.random.seed(seed)
+                # random.seed(seed)
                 hyperparams = imp.load_source('hyperparams', hyperparams_file)
-                hyperparams.seed = seed
-                hyperparams.num_demos = num_demo
-                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_%d/' % (num_demo, seed)
+                # hyperparams.seed = seed
+                # hyperparams.num_demos = num_demo
+                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_LG_demo%d_cost_%d/' % (num_demo, seed)
                 # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
-                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_%d' % (num_demo, seed), 'demos_LG.pkl')
+                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_LG_demo%d_cost_%d' % (num_demo, seed), 'demos_LG.pkl')
                 hyperparams.config['algorithm']['num_demos'] = num_demo
-                hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['LG_demo_file']
-                # hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
+                # hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['LG_demo_file']
+                hyperparams.config['algorithm']['cost']['random_seed'] = seed
+                hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
                 hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
                 current_itr = 0 #19 for ioc
                 gps = GPSMain(hyperparams.config, test_pol=True)
@@ -703,8 +704,15 @@ def main():
         compare_samples_curve(gps, measure, agent_config, three_dim=False, weight_varying=True, experiment='reacher')
     elif visualize:
         gps = GPSMain(hyperparams.config)
-        agent_config = gps._hyperparams['agent']
-        visualize_samples(gps, visualize, agent_config, experiment='reacher')
+        algorithm = gps.data_logger.unpickle(gps._data_files_dir + 'algorithm_itr_14.pkl')
+        sample_lists = algorithm.sample_list
+        print "number of samples: %d" % sample_lists[0].num_samples()
+        costs = algorithm.cost
+        costs.extend(algorithm.fk_cost)
+        plot_cost_3d(gps, sample_lists, costs)
+        plt.close('all')
+        # agent_config = gps._hyperparams['agent']
+        # visualize_samples(gps, visualize, agent_config, experiment='reacher')
     elif compare:
         mean_dists_1_dict, mean_dists_2_dict, success_rates_1_dict, \
             success_rates_2_dict = {}, {}, {}, {}
@@ -725,7 +733,7 @@ def main():
                                 success_rates_2_dict, gps._hyperparams['algorithm']['iterations'], \
                                 exp_dir, hyperparams_compare.config, hyperparams.config)
     elif args.multiple:
-        seeds = [0, 1, 2]
+        seeds = [1, 2]
         num_demos = [20]
         for seed in seeds:
             for num_demo in num_demos:
@@ -734,14 +742,15 @@ def main():
                 hyperparams = imp.load_source('hyperparams', hyperparams_file)
                 hyperparams.seed = seed
                 hyperparams.num_demos = num_demo
-                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_%d/' % (num_demo, seed)
+                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_demo%d_cost_%d/' % (num_demo, seed)
                 # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
                 # use exp dir to run bc alone. change to ioc_dir if comparing to ioc
-                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_%d' % (num_demo, seed), 'demos_LG.pkl')
+                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_demo%d_cost_%d' % (num_demo, seed), 'demos_LG.pkl')
                 hyperparams.config['algorithm']['num_demos'] = num_demo
                 # hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['LG_demo_file']
-                hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
+                # hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
                 hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
+                hyperparams.config['algorithm']['cost']['global_random_seed'] = seed
                 if not os.path.exists(hyperparams.config['common']['data_files_dir']):
                     os.makedirs(hyperparams.config['common']['data_files_dir'])
                 gps = GPSMain(hyperparams.config)
@@ -750,12 +759,12 @@ def main():
     else:
         gps = GPSMain(hyperparams.config)
         if hyperparams.config['gui_on']:
-            run_gps = threading.Thread(
-                target=lambda: gps.run(itr_load=resume_training_itr)
-            )
-            run_gps.daemon = True
-            run_gps.start()
-
+            # run_gps = threading.Thread(
+            #     target=lambda: gps.run(itr_load=resume_training_itr)
+            # )
+            # run_gps.daemon = True
+            # run_gps.start()
+            gps.run(itr_load=resume_training_itr)
             plt.ioff()
             plt.show()
         else:

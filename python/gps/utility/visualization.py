@@ -2,6 +2,7 @@ from gps.proto.gps_pb2 import END_EFFECTOR_POINTS, RGB_IMAGE
 from gps.utility.general_utils import flatten_lists
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import seaborn as sns
 from mpl_toolkits.mplot3d import Axes3D
 import logging
@@ -236,17 +237,122 @@ def plot_cost_3d(gps, sample_lists, costfns):
         sample_lists: a list of SampleList
         costfns: a list of cost functions
     """
-    samples = flatten_lists([sample_list.get_samples() for sample_list in sample_lists])
-    costs = np.zeros(len(costfns), len(samples))
-    end_effector_points = zip(*[samples.get(END_EFFECTOR_POINTS)[:2] for sample in samples])
-    for i in xrange(len(costfns)):
-        costs[i, :] = np.array([costfns[i].eval(sample) for sample in samples])
+    # samples = flatten_lists([sample_lists[key].get_samples() for key in sample_lists])
+    samples = sample_lists[max(sample_lists.keys())].get_samples()
+    # import pdb; pdb.set_trace()
+    T = samples[0].get_X().shape[0]
+    costs = np.zeros((len(costfns), len(samples)*T))
+    eepts_x = np.hstack([sample.get(END_EFFECTOR_POINTS)[:, 0] for sample in samples])
+    eepts_y = np.hstack([sample.get(END_EFFECTOR_POINTS)[:, 1] for sample in samples])
+    target_eepts = samples[0].get(END_EFFECTOR_POINTS)[0, 3:5] # Assuming one condition
+    # fk cost only
+    for i in xrange(len(costfns)-1):
+        costs[i, :] = np.hstack([costfns[i].eval(sample, wu=False)[0] for sample in samples])
+    costs[-1, :] = np.hstack([costfns[-1].eval(sample)[0] for sample in samples])
+    vmax = np.amax([np.sort(costs[i, :])[-6] for i in xrange(len(costfns)-1)])
+    vmin = np.amin([np.sort(costs[i, :])[0] for i in xrange(len(costfns)-1)])
     fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    for i in xrange(len(costfns)):
-        ax.scatter(list(end_effector_points[0]), list(end_effector_points[1]), costs[i, :])
-    plt.title('costs versus end_effectors')
-    plt.savefig(gps._data_files_dir + 'costs.png')
-    save_dict = {'costs': costs, 'end_effector_points': end_effector_points}
+    # ax = fig.gca(projection='3d')
+    # colors = ['g', 'b', 'k']
+    # shape = ['^', 'o', 'D']
+    print "num of cost functions: %d" % len(costfns)
+    # eepts_x, eepts_y = np.meshgrid(eepts_x, eepts_y)
+    # for i in xrange(len(costfns)):
+    #     ax.plot_surface(eepts_x, eepts_y, costs[i, :], color=colors[i])
+    # ax.scatter(target_eepts[0], target_eepts[1], 0, color='r')
+    # plt.title('costs versus end effectors')
+    # plt.savefig(gps._data_files_dir + 'costs_diff.png')
+    # ax = fig.add_subplot(111, projection='3d')    # plt.pcolormesh(eepts_x, eepts_y, costs[0, :], cmap='RdBu')
+    mask = costs[0, :].argsort()[:-5]
+    print mask
+    plt.scatter(eepts_x[mask], eepts_y[mask], c=costs[0, :][mask], cmap=cm.coolwarm, vmin=vmin, vmax=vmax,
+                       linewidth=0)
+    print target_eepts
+    # plt.scatter(target_eepts[0], target_eepts[1], 'ko')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.title('learned cost 0 versus end effectors')
+    plt.savefig(gps._data_files_dir + 'cost_0.png')
+    
+    plt.figure()
+    mask = costs[1, :].argsort()[:-5]
+    print mask
+    plt.scatter(eepts_x[mask], eepts_y[mask], c=costs[1, :][mask], cmap=cm.coolwarm, vmin=vmin, vmax=vmax,
+                       linewidth=0)
+    print target_eepts
+    # plt.scatter(target_eepts[0], target_eepts[1], 'ko')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.title('learned cost 1 versus end effectors')
+    plt.savefig(gps._data_files_dir + 'cost_1.png')
+
+    plt.figure()
+    mask = costs[2, :].argsort()[:-5]
+    print mask
+    plt.scatter(eepts_x[mask], eepts_y[mask], c=costs[2, :][mask], cmap=cm.coolwarm, vmin=vmin, vmax=vmax,
+                       linewidth=0)
+    print target_eepts
+    # plt.scatter(target_eepts[0], target_eepts[1], 'ko')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.title('learned cost 2 versus end effectors')
+    plt.savefig(gps._data_files_dir + 'cost_2.png')
+
+    fig0 = plt.figure()
+    # ax0 = fig0.gca(projection='3d')
+    # surf0 = ax0.plot_surface(eepts_x, eepts_y, costs[3, :])
+    # plt.pcolormesh(eepts_x, eepts_y, costs[3, :], cmap='RdBu')
+    gt_mask = costs[3, :].argsort()[:-5]
+    print mask
+    plt.scatter(eepts_x[gt_mask], eepts_y[gt_mask], c=costs[3, :][gt_mask], cmap=cm.coolwarm,
+                       linewidth=0)
+    print target_eepts
+    # plt.scatter(target_eepts[0], target_eepts[1], 'ko')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.title('gt costs versus end effectors')
+    plt.savefig(gps._data_files_dir + 'gt_cost.png')
+    
+    fig1 = plt.figure()
+    # ax1 = fig1.gca(projection='3d')
+    # surf1 = ax1.plot_surface(eepts_x, eepts_y, costs[0, :] - costs[1, :])    # plt.pcolormesh(eepts_x, eepts_y, costs[0, :] - costs[1, :], cmap='RdBu')
+    plt.scatter(eepts_x, eepts_y, c=costs[0, :] - costs[1, :], cmap=cm.coolwarm,
+                       linewidth=0)
+    print target_eepts
+    # plt.scatter(target_eepts[0], target_eepts[1], 'ko')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.title('cost diff between 0 and 1 versus end effectors')
+    plt.savefig(gps._data_files_dir + 'costs_diff_01.png')
+    
+    fig2 = plt.figure()    # plt.pcolormesh(eepts_x, eepts_y, costs[0, :] - costs[2, :], cmap='RdBu')
+    plt.scatter(eepts_x, eepts_y, c=costs[0, :] - costs[2, :], cmap=cm.coolwarm,
+                       linewidth=0)
+    print target_eepts
+    # plt.scatter(target_eepts[0], target_eepts[1], 'ko')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.title('cost diff between 0 and 2 versus end effectors')
+    plt.savefig(gps._data_files_dir + 'costs_diff_02.png')
+    
+    fig3 = plt.figure()
+    # ax3 = fig3.add_subplot(111, projection='3d')    # plt.pcolormesh(eepts_x, eepts_y, costs[1, :] - costs[2, :], cmap='RdBu')
+    plt.scatter(eepts_x, eepts_y, c=costs[1, :] - costs[2, :], cmap=cm.coolwarm,
+                       linewidth=0)
+    print target_eepts
+    # plt.scatter(target_eepts[0], target_eepts[1], 'ko')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.colorbar()
+    plt.title('cost diff between 1 and 2 versus end effectors')
+    plt.savefig(gps._data_files_dir + 'costs_diff_12.png')
+    # plt.savefig(gps._data_files_dir + 'costs_2d.png')
+    save_dict = {'costs': costs, 'eepts_x': eepts_x, 'eepts_y': eepts_y, 'target_eepts': target_eepts}
     gps.data_logger.pickle(gps._data_files_dir + 'cost_eepts.pkl', save_dict)
 

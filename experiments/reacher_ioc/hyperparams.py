@@ -49,13 +49,13 @@ DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
 
 pos_body_offset = []
 demo_pos_body_offset = []
-DEMO_CONDITIONS = 4
-CONDITIONS = 4
+DEMO_CONDITIONS = 1
+CONDITIONS = 1
 
-np.random.seed(14)
-for _ in range(DEMO_CONDITIONS):
-    demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
-pos_body_offset = demo_pos_body_offset
+# np.random.seed(14)
+# for _ in range(DEMO_CONDITIONS):
+#     demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+# pos_body_offset = demo_pos_body_offset
 
 #CONDITIONS = 20
 #np.random.seed(15)
@@ -73,7 +73,7 @@ pos_body_offset = demo_pos_body_offset
 #TEST_CONDITIONS = 9
 #TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 
-#demo_pos_body_offset = []
+demo_pos_body_offset = []
 #for _ in range(DEMO_CONDITIONS):
 #    demo_pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
@@ -83,26 +83,34 @@ pos_body_offset = demo_pos_body_offset
 
 #CONDITIONS = 1 #TRAIN_CONDITIONS
 #pos_body_offset = [pos_body_offset[1]]
-#pos_body_offset = []
-#pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+pos_body_offset = []
+pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
+demo_pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
+# pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+# demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 
+SEED = 0
+NUM_DEMOS = 20
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files/',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
     'nn_demo': False,
-    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_11.pkl',
+    # 'data_files_dir': EXP_DIR + 'data_files_demo%d_cost_%d_easy/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_demo%d_cost_%d_both/' % (NUM_DEMOS, SEED),
     'conditions': CONDITIONS,
+    # 'demo_controller_file': DEMO_DIR + 'data_files_easy/algorithm_itr_14.pkl', #11 for 1 condition
+    'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_14.pkl', #11 for 1 condition
     #'train_conditions': range(TRAIN_CONDITIONS),
     #'test_conditions': range(TRAIN_CONDITIONS, TOTAL_CONDITIONS),
     'demo_conditions': DEMO_CONDITIONS,
-    'NN_demo_file': EXP_DIR + 'data_files/pol_demos.pkl',
-    'LG_demo_file': EXP_DIR + 'data_files/lg_demos.pkl',
+    # 'LG_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_cost_%d_easy' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_cost_%d_both' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'NN_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
 }
 
 if not os.path.exists(common['data_files_dir']):
@@ -157,55 +165,58 @@ demo_agent = {
 }
 
 
-#algorithm = {
-#    'type': AlgorithmTrajOpt,
-#    'ioc' : 'ICML',
-#    'max_ent_traj': 0.001,
-#    'conditions': common['conditions'],
-#    #'train_conditions': common['train_conditions'],
-#    #'test_conditions': common['test_conditions'],
-#    'kl_step': 0.5,
-#    'min_step_mult': 0.05,
-#    'max_step_mult': 2.0,
-#    'demo_cond': demo_agent['conditions'],
-#    'num_demos': 2,
-#    'demo_var_mult': 1.0,
-#    'synthetic_cost_samples': 100,
-#    'iterations': 15,
-#    'plot_dir': EXP_DIR,
-#    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])])
-#                            for i in xrange(CONDITIONS)],
-#    #'demo_conditions': [],
-#}
-
 algorithm = {
-    'type': AlgorithmMDGPS,
-    'ioc' : 'ICML',
-    'sample_on_policy': True,
-    'max_ent_traj': 1.0,
-    'conditions': common['conditions'],
-    'policy_sample_mode': 'replace',
-    #'train_conditions': common['train_conditions'],
-    #'test_conditions': common['test_conditions'],
-    'kl_step': 0.5,
-    'min_step_mult': 0.05,
-    'max_step_mult': 2.0,
-    'demo_cond': demo_agent['conditions'],
-    'num_demos': 2,
-    'demo_var_mult': 1.0,
-    'synthetic_cost_samples': 100,
-    'iterations': 15,
-    'plot_dir': EXP_DIR,
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])])
-                            for i in xrange(CONDITIONS)],
-    #'demo_conditions': [],
-    'global_cost': True,
+   'type': AlgorithmTrajOpt,
+   'ioc' : 'ICML',
+   'num_costs': 3,
+   'max_ent_traj': 1.0,
+   'conditions': common['conditions'],
+   'global_cost': False, #False
+   #'train_conditions': common['train_conditions'],
+   #'test_conditions': common['test_conditions'],
+   'kl_step': 0.5,
+   'min_step_mult': 0.2,
+   'max_step_mult': 2.0,
+   'demo_cond': demo_agent['conditions'],
+   'num_demos': NUM_DEMOS,
+   'demo_var_mult': 1.0,
+   'synthetic_cost_samples': 0,
+   'iterations': 15,
+   'plot_dir': EXP_DIR,
+   'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])])
+                           for i in xrange(CONDITIONS)],
+   #'demo_conditions': [],
 }
+
+# algorithm = {
+#     'type': AlgorithmMDGPS,
+#     'ioc' : 'ICML',
+#     'sample_on_policy': True,
+#     'max_ent_traj': 1.0,
+#     'conditions': common['conditions'],
+#     'policy_sample_mode': 'replace',
+#     'num_costs': 3,
+#     'global_cost': False,
+#     #'train_conditions': common['train_conditions'],
+#     #'test_conditions': common['test_conditions'],
+#     'kl_step': 0.5,
+#     'min_step_mult': 0.05,
+#     'max_step_mult': 2.0,
+#     'demo_cond': demo_agent['conditions'],
+#     'num_demos': 2,
+#     'demo_var_mult': 1.0,
+#     'synthetic_cost_samples': 0,
+#     'iterations': 15,
+#     'plot_dir': EXP_DIR,
+#     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])])
+#                             for i in xrange(CONDITIONS)],
+#     #'demo_conditions': [],
+# }
 
 PR2_GAINS = np.array([1.0, 1.0])
 torque_cost_1 = [{
     'type': CostAction,
-    'wu': 1 / PR2_GAINS,
+    'wu': 1.0 / PR2_GAINS,
 } for i in range(common['conditions'])]
 
 
@@ -219,7 +230,7 @@ fk_cost_1 = [{
     'evalnorm': evall1l2term,
 } for i in range(common['conditions'])]
 
-
+algorithm['fk_cost'] = fk_cost_1
 
 state_cost = [{
     'type': CostState,
@@ -234,18 +245,17 @@ state_cost = [{
 } for i in range(common['conditions'])]
 
 
-gt_costs = [{
+algorithm['gt_cost'] = [{
     'type': CostSum,
     'costs': [torque_cost_1[i], fk_cost_1[i]],
     'weights': [2.0, 1.0],
 }  for i in range(common['conditions'])]
 
-algorithm['gt_cost'] = gt_costs[0]
 
-
-algorithm['cost'] = {
+algorithm['cost'] = [{
     'type': CostIOCTF,
-    'wu': 2000.0 / PR2_GAINS,
+    'wu': 2000.0 / PR2_GAINS, # for nn, this is 200
+    # 'wu' : 0.0,
     'network_params': {
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
@@ -254,41 +264,56 @@ algorithm['cost'] = {
     },
     'T': agent['T'],
     'dO': 16,
-    'iterations': 1000, # TODO - do we need 5k?
+    'iterations': 5000, # TODO - do we need 5k?
     'demo_batch_size': 5,
     'sample_batch_size': 5,
+    'num_hidden': 3,
+    'dim_hidden': 40,
     'ioc_loss': algorithm['ioc'],
-}
+    # 'mono_reg_weight': 0.0,
+    'batch_norm': False,
+    'decay': 0.99,
+    'approximate_lxx': False,
+    'random_seed': i, #SEED
+    'global_random_seed': SEED,
+    'data_files_dir': common['data_files_dir'],
+    'summary_dir': common['data_files_dir'] + 'cost_summary_%d/' % i,
+} for i in xrange(algorithm['num_costs'])]
 
+for i in xrange(algorithm['num_costs']):
+    if not os.path.exists(algorithm['cost'][i]['summary_dir']):
+        os.makedirs(algorithm['cost'][i]['summary_dir'])
 
-#algorithm['cost'] = {
-#    'type': CostIOCSupervised,
-#    'weight_dir': common['data_files_dir'],
-#    'agent': demo_agent,
-#    'gt_cost': gt_costs,
-#    'demo_file': os.path.join(common['data_files_dir'], 'demos_nn_MaxEnt_4_cond_z_0.05_noise_seed1.pkl'),
-#    'finetune': False,
-#
-#    'wu': 1 / PR2_GAINS,
-#    'T': agent['T'],
-#    'dO': 16,
-#    'iterations': 1000,
-#    'init_iterations': 10000,
-#    'demo_batch_size': 5,
-#    'sample_batch_size': 5,
-#    'ioc_loss': algorithm['ioc'],
-#    'smooth_reg_weight': 0.0,
-#    'mono_reg_weight': 100.0,
-#    'learn_wu': False,
-#}
+# algorithm['cost'] = {
+#     'type': CostIOCTF,
+#     'wu': 2000.0 / PR2_GAINS, # for nn, this is 200
+#     # 'wu' : 0.0,
+#     'network_params': {
+#         'obs_include': agent['obs_include'],
+#         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+#         'obs_image_data': [],
+#         'sensor_dims': SENSOR_DIMS,
+#     },
+#     'T': agent['T'],
+#     'dO': 16,
+#     'iterations': 2000, # TODO - do we need 5k?
+#     'demo_batch_size': 5,
+#     'sample_batch_size': 5,
+#     'num_hidden': 3,
+#     'dim_hidden': 40,
+#     'ioc_loss': algorithm['ioc'],
+#     # 'mono_reg_weight': 0.0,
+#     'batch_norm': False,
+#     'decay': 0.99,
+#     'approximate_lxx': False,
+#     'random_seed': SEED, #SEED
+#     'global_random_seed': SEED,
+#     'data_files_dir': common['data_files_dir'],
+#     'summary_dir': common['data_files_dir'] + 'cost_summary/',
+# }
 
-
-"""
-algorithm['cost'] = {
-    'type': CostIOCWrapper,
-    'wrapped_cost': algorithm['gt_cost']
-}
-"""
+# if not os.path.exists(algorithm['cost']['summary_dir']):
+#     os.makedirs(algorithm['cost']['summary_dir'])
 
 
 
@@ -336,20 +361,20 @@ algorithm['traj_opt'] = {
 #    'weights_file_prefix': common['data_files_dir'] + 'policy',
 #}
 
-algorithm['policy_opt'] = {
-    'type': PolicyOptTf,
-    'network_params': {
-        'obs_include': agent['obs_include'],
-        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
-        'obs_image_data': [],
-        'sensor_dims': SENSOR_DIMS,
-    },
-    'network_model': example_tf_network,
-    #'fc_only_iterations': 5000,
-    #'init_iterations': 1000,
-    'iterations': 1000,  # was 100
-    'weights_file_prefix': EXP_DIR + 'policy',
-}
+# algorithm['policy_opt'] = {
+#     'type': PolicyOptTf,
+#     'network_params': {
+#         'obs_include': agent['obs_include'],
+#         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+#         'obs_image_data': [],
+#         'sensor_dims': SENSOR_DIMS,
+#     },
+#     'network_model': example_tf_network,
+#     #'fc_only_iterations': 5000,
+#     #'init_iterations': 1000,
+#     'iterations': 1000,  # was 100
+#     'weights_file_prefix': EXP_DIR + 'policy',
+# }
 
 
 algorithm['policy_prior'] = {
@@ -365,12 +390,16 @@ config = {
     'verbose_trials': 1,
     #'verbose_policy_trials': 5,
     'common': common,
+    'record_gif': {
+        'gif_dir': os.path.join(common['data_files_dir'], 'gifs'),
+        'gifs_per_condition': 1,
+    },
     'agent': agent,
     'demo_agent': demo_agent,
     'gui_on': True,
     'algorithm': algorithm,
     'conditions': common['conditions'],
-    'random_seed': 1,
+    'random_seed': SEED,
 }
 
 common['info'] = generate_experiment_info(config)
