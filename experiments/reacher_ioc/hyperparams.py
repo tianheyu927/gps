@@ -88,6 +88,8 @@ pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
 demo_pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
 # pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
 # demo_pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+# pos_body_offset.append(np.array([-0.2, 0.2, 0.0]))
+# demo_pos_body_offset.append(np.array([-0.2, 0.2, 0.0]))
 
 SEED = 0
 NUM_DEMOS = 20
@@ -101,15 +103,15 @@ common = {
     'demo_exp_dir': DEMO_DIR,
     'nn_demo': False,
     # 'data_files_dir': EXP_DIR + 'data_files_demo%d_cost_%d_easy/' % (NUM_DEMOS, SEED),
-    'data_files_dir': EXP_DIR + 'data_files_demo%d_cost_%d_both/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_sym_demo%d_cost_%d/' % (NUM_DEMOS, SEED),
     'conditions': CONDITIONS,
-    # 'demo_controller_file': DEMO_DIR + 'data_files_easy/algorithm_itr_14.pkl', #11 for 1 condition
     'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_14.pkl', #11 for 1 condition
+    # 'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_14.pkl', #11 for 1 condition
     #'train_conditions': range(TRAIN_CONDITIONS),
     #'test_conditions': range(TRAIN_CONDITIONS, TOTAL_CONDITIONS),
     'demo_conditions': DEMO_CONDITIONS,
     # 'LG_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_cost_%d_easy' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
-    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_cost_%d_both' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_sym_demo%d_cost_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
     'NN_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
 }
 
@@ -168,7 +170,7 @@ demo_agent = {
 algorithm = {
    'type': AlgorithmTrajOpt,
    'ioc' : 'ICML',
-   'num_costs': 3,
+   'num_costs': 3, #1
    'max_ent_traj': 1.0,
    'conditions': common['conditions'],
    'global_cost': False, #False
@@ -185,6 +187,7 @@ algorithm = {
    'plot_dir': EXP_DIR,
    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ agent['pos_body_offset'][i], np.array([0., 0., 0.])])
                            for i in xrange(CONDITIONS)],
+    'sym_demos': True,
    #'demo_conditions': [],
 }
 
@@ -264,7 +267,7 @@ algorithm['cost'] = [{
     },
     'T': agent['T'],
     'dO': 16,
-    'iterations': 5000, # TODO - do we need 5k?
+    'iterations': 2000, # TODO - do we need 5k?
     'demo_batch_size': 5,
     'sample_batch_size': 5,
     'num_hidden': 3,

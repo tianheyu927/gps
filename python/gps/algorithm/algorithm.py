@@ -99,10 +99,10 @@ class Algorithm(object):
             else:
                 self.cost = self._hyperparams['cost']['type'](self._hyperparams['cost'])
         else:
-            if self.num_costs == self.M:
+            if type(hyperparams['cost']) != list:
                 self.cost = [
                     self._hyperparams['cost']['type'](self._hyperparams['cost'])
-                    for _ in range(self.M)
+                    for _ in range(self.num_costs)
                 ]
             else:
                 self.cost = [
@@ -458,7 +458,7 @@ class Algorithm(object):
         # Transform dictionaries to arrays
         M = len(self.prev)
         Md = self._hyperparams['demo_M']
-        assert Md == 1
+        # assert Md == 1
         samples_logiw = {i: samples_logiw[i].reshape((-1, 1)) for i in xrange(M)}
         demos_logiw = {i: demos_logiw[i].reshape((-1, 1)) for i in xrange(M)}
         # TODO - make these changes in other algorithm objects too.
@@ -468,19 +468,20 @@ class Algorithm(object):
                     if type(self.demoX) is list:
                         self.cost[i].update(self.demoU[i], self.demoO[i], demos_logiw[i], self.sample_list[i].get_U(),
                                     self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
-                    self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
-                                    self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count, M=M)
+                    else:
+                        self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
+                                        self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
             else:
                 sampleU_arr = np.vstack((self.sample_list[i].get_U() for i in xrange(M)))
                 sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
                 # Just use end-effector to train cost (for visualizing cost only)
-                sampleO_arr[:, :, :4] = 0.0
-                sampleO_arr[:, :, -6:] = 0.0
+                # sampleO_arr[:, :, :4] = 0.0
+                # sampleO_arr[:, :, -6:] = 0.0
                 samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
                 # TODO - this is a weird hack that is wrong, and has been in the code for awhile.
                 demoO = np.vstack((self.demoO for i in xrange(M)))
-                demoO[:, :, :4] = 0.0
-                demoO[:, :, -6:] = 0.0
+                # demoO[:, :, :4] = 0.0
+                # demoO[:, :, -6:] = 0.0
                 demoU = np.vstack((self.demoU for i in xrange(M)))
                 demos_logiw_arr = np.hstack([demos_logiw[i] for i in xrange(M)]).reshape((-1, 1)) #demos_logiw[0].reshape((-1, 1))
                 for m in xrange(self.num_costs):
@@ -491,11 +492,15 @@ class Algorithm(object):
             sampleO_arr = np.vstack((self.sample_list[i].get_obs() for i in xrange(M)))
             samples_logiw_arr = np.hstack([samples_logiw[i] for i in xrange(M)]).reshape((-1, 1))
             # TODO - this is a weird hack that is wrong, and has been in the code for awhile.
-            demoO = np.vstack((self.demoO for i in xrange(M)))
-            demoU = np.vstack((self.demoU for i in xrange(M)))
             demos_logiw_arr =  np.hstack([demos_logiw[i] for i in xrange(M)]).reshape((-1, 1)) #demos_logiw[0].reshape((-1, 1))
+            if type(self.demoO) is list:
+                demoO = np.vstack((self.demoO[i] for i in xrange(M)))
+                demoU = np.vstack((self.demoU[i] for i in xrange(M)))
+            else:
+                demoO = np.vstack((self.demoO for i in xrange(M)))
+                demoU = np.vstack((self.demoU for i in xrange(M)))
             self.cost.update(demoU, demoO, demos_logiw_arr, sampleU_arr,
-                                                        sampleO_arr, samples_logiw_arr, itr=self.iteration_count, M=M)
+                            sampleO_arr, samples_logiw_arr, itr=self.iteration_count, M=M)
 
 
     def importance_weights(self):
@@ -513,7 +518,7 @@ class Algorithm(object):
         samples_logprob, demos_logprob = {}, {}
         # number of demo distributions
         Md = self._hyperparams['demo_M']  # always 1 # Trying M conditions for demos
-        # assert Md == M
+        LOGGER.debug("Number of demo conditions is %d", Md)
         demos_logiw, samples_logiw = {}, {}
         if type(self.demoX) is list:
             demoU = {i: self.demoU[i] for i in xrange(M)}
@@ -551,8 +556,9 @@ class Algorithm(object):
                 samples_logprob[i] = np.zeros((itr + 1, self.T, (self.N / M) * itr + init_samples))
                 demos_logprob[i] = np.zeros((itr + 1, self.T, demoX[i].shape[0]))
             else:
-                samples_logprob[i] = np.zeros((itr + Md + 1, self.T, (self.N / M) * itr + init_samples))
-                demos_logprob[i] = np.zeros((itr + Md + 1, self.T, demoX[i].shape[0]))
+                # (itr+1) sample distributions plus 1 demo distribution
+                samples_logprob[i] = np.zeros((itr + 1 + 1, self.T, (self.N / M) * itr + init_samples)) # for multiple demo conditions
+                demos_logprob[i] = np.zeros((itr + 1 + 1, self.T, demoX[i].shape[0]))
 
 
             sample_i_X = self.sample_list[i].get_X()
@@ -569,37 +575,46 @@ class Algorithm(object):
                                                         np.sum(np.log(np.diag(traj.chol_pol_covar[t, :, :])))
             # Evaluate sample prob under demo distribution.
             if self._hyperparams['ioc'] == 'ICML':
-                for m in xrange(Md):
-                    for j in range(sample_i_X.shape[0]):
-                        for t in xrange(self.T - 1):
-                            diff = self.demo_traj[m].k[t, :] + \
-                                    self.demo_traj[m].K[t, :, :].dot(sample_i_X[j, t, :]) - sample_i_U[j, t, :]
-                            samples_logprob[i][itr + 1 + m, t, j] = -0.5 * np.sum(diff * (self.demo_traj[m].inv_pol_covar[t, :, :].dot(diff))) - \
-                                                        np.sum(np.log(np.diag(self.demo_traj[m].chol_pol_covar[t, :, :])))
+                for j in range(sample_i_X.shape[0]):
+                    for t in xrange(self.T - 1):
+                        if Md == 1:
+                            diff = self.demo_traj[0].k[t, :] + \
+                                    self.demo_traj[0].K[t, :, :].dot(sample_i_X[j, t, :]) - sample_i_U[j, t, :]
+                            samples_logprob[i][itr + 1, t, j] = -0.5 * np.sum(diff * (self.demo_traj[0].inv_pol_covar[t, :, :].dot(diff))) - \
+                                                        np.sum(np.log(np.diag(self.demo_traj[0].chol_pol_covar[t, :, :])))
+                        else:
+                            diff = self.demo_traj[i].k[t, :] + \
+                                    self.demo_traj[i].K[t, :, :].dot(sample_i_X[j, t, :]) - sample_i_U[j, t, :]
+                            samples_logprob[i][itr + 1, t, j] = -0.5 * np.sum(diff * (self.demo_traj[i].inv_pol_covar[t, :, :].dot(diff))) - \
+                                                        np.sum(np.log(np.diag(self.demo_traj[i].chol_pol_covar[t, :, :])))
             # Sum over the distributions and time.
             samples_logiw[i] = logsum(np.sum(samples_logprob[i], 1), 0)
 
         # Assume only one condition for the demos.
-        # assert Md == 1; idx = 0
+        # assert Md == M; # Assume the number of demo conditions are the same as training conditions
         for i in xrange(M):  # NOTE before this was xrange(1)
             # Evaluate demo prob. under sample distributions.
-            idx = i
             for itr_i in xrange(itr + 1):
                 traj = self.traj_distr[itr_i][i]
-                for j in xrange(demoX[idx].shape[0]):
+                for j in xrange(demoX[i].shape[0]):
                     for t in xrange(self.T - 1):
                         diff = traj.k[t, :] + \
-                                traj.K[t, :, :].dot(demoX[idx][j, t, :]) - demoU[idx][j, t, :]
+                                traj.K[t, :, :].dot(demoX[i][j, t, :]) - demoU[i][j, t, :]
                         demos_logprob[i][itr_i, t, j] = -0.5 * np.sum(diff * (traj.inv_pol_covar[t, :, :].dot(diff))) - \
                                                         np.sum(np.log(np.diag(traj.chol_pol_covar[t, :, :])))
             # Evaluate demo prob. under demo distributions.
             if self._hyperparams['ioc'] == 'ICML':
-                for m in xrange(Md):
-                    for j in range(demoX[idx].shape[0]):
-                        for t in xrange(self.T - 1):
-                            diff = self.demo_traj[m].k[t, :] + \
-                                    self.demo_traj[m].K[t, :, :].dot(demoX[idx][j, t, :]) - demoU[idx][j, t, :]
-                            demos_logprob[i][itr + 1 + m, t, j] = -0.5 * np.sum(diff * (self.demo_traj[m].inv_pol_covar[t, :, :].dot(diff)), 0) - \
-                                                            np.sum(np.log(np.diag(self.demo_traj[m].chol_pol_covar[t, :, :])))
+                for j in range(demoX[i].shape[0]):
+                    for t in xrange(self.T - 1):
+                        if Md == 1:
+                            diff = self.demo_traj[0].k[t, :] + \
+                                    self.demo_traj[0].K[t, :, :].dot(demoX[i][j, t, :]) - demoU[i][j, t, :]
+                            demos_logprob[i][itr + 1, t, j] = -0.5 * np.sum(diff * (self.demo_traj[0].inv_pol_covar[t, :, :].dot(diff)), 0) - \
+                                                        np.sum(np.log(np.diag(self.demo_traj[0].chol_pol_covar[t, :, :])))
+                        else:
+                            diff = self.demo_traj[i].k[t, :] + \
+                                self.demo_traj[i].K[t, :, :].dot(demoX[i][j, t, :]) - demoU[i][j, t, :]
+                            demos_logprob[i][itr + 1, t, j] = -0.5 * np.sum(diff * (self.demo_traj[i].inv_pol_covar[t, :, :].dot(diff)), 0) - \
+                                                        np.sum(np.log(np.diag(self.demo_traj[i].chol_pol_covar[t, :, :])))
             demos_logiw[i] = logsum(np.sum(demos_logprob[i], 1), 0)
         return demos_logiw, samples_logiw

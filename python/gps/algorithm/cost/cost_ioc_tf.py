@@ -159,6 +159,9 @@ class CostIOCTF(Cost):
         s_sampler = BatchSampler([sampleO, sample_torque_norm, s_log_iw])
         loss_history = []
         idx = np.random.randint(M)
+        LOGGER.debug('Number of conditions is %d', M)
+        LOGGER.debug('Number of samples is %d', num_samp)
+        LOGGER.debug('Number of demos is %d', num_demo)
         writer = tf.train.SummaryWriter('%s/outer_iter_%d' % (self._hyperparams['summary_dir'], itr), self.graph)
         for i, (d_batch, s_batch) in enumerate(
                 izip(d_sampler.with_replacement(low=num_demo/M*idx, high=num_demo/M*(idx+1), \
@@ -209,7 +212,7 @@ class CostIOCTF(Cost):
         network_arch_params['learn_wu'] = self._hyperparams['learn_wu']
         network_arch_params['batch_norm'] = self._hyperparams['batch_norm']
         network_arch_params['decay'] = self._hyperparams.get('decay', 0.9)
-        network_arch_params['idx'] = self._hyperparams.get('random_seed', 0)
+        network_arch_params['idx'] = self._hyperparams.get('idx', 0)
         if self._hyperparams['random_seed'] != self._hyperparams.get('global_random_seed', 0):
             np.random.seed(self._hyperparams['random_seed'])
         inputs, outputs = construct_nn_cost_net_tf(**network_arch_params)

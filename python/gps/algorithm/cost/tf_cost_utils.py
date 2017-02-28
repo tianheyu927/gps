@@ -553,7 +553,9 @@ def l2_mono_loss(slope):
     #for i in range(batch_size):
     #    _temp[i] = np.maximum(0.0, bottom_data[i] + offset)
     _temp = tf.nn.relu(bottom_data+offset)
-    loss = tf.nn.l2_loss(_temp)# _temp*_temp).sum() / batch_size
+    # Note that l2 loss doesn't normalize in tensorflow.
+    # loss = tf.nn.l2_loss(_temp)# _temp*_temp).sum() / batch_size
+    loss = tf.reduce_mean(tf.mul(_temp, _temp))
     return loss
 
 

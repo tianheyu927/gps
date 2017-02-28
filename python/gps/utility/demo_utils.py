@@ -73,7 +73,7 @@ def eval_demos_xu(agent, demoX, demoU, costfn, n=-1, gt=False, wu=True):
         sample = Sample(agent)
         sample.set_XU(demoX[demo_idx], demoU[demo_idx])
         if type(costfn) is list:
-            costfn = costfn[0] #4
+            costfn = costfn[4] #0
         if gt:
             l, _, _, _, _, _ = costfn.eval(sample, use_jacobian=False)
             l *= 1000.0

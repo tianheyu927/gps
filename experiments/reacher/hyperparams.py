@@ -52,7 +52,8 @@ pos_body_offset = []
 #     pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
 
 # pos_body_offset.append(np.array([-0.2, 0.1, 0.0]))
-pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+# pos_body_offset.append(np.array([-0.1, 0.2, 0.0]))
+pos_body_offset.append(np.array([-0.2, 0.2, 0.0]))
 # pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
 #                     np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
 #                     np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
@@ -62,7 +63,7 @@ common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files_easy/',
+    'data_files_dir': EXP_DIR + 'data_files_easy_1/',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'conditions': CONDITIONS,

@@ -239,7 +239,6 @@ def plot_cost_3d(gps, sample_lists, costfns):
     """
     # samples = flatten_lists([sample_lists[key].get_samples() for key in sample_lists])
     samples = sample_lists[max(sample_lists.keys())].get_samples()
-    # import pdb; pdb.set_trace()
     T = samples[0].get_X().shape[0]
     costs = np.zeros((len(costfns), len(samples)*T))
     eepts_x = np.hstack([sample.get(END_EFFECTOR_POINTS)[:, 0] for sample in samples])
@@ -249,8 +248,9 @@ def plot_cost_3d(gps, sample_lists, costfns):
     for i in xrange(len(costfns)-1):
         costs[i, :] = np.hstack([costfns[i].eval(sample, wu=False)[0] for sample in samples])
     costs[-1, :] = np.hstack([costfns[-1].eval(sample)[0] for sample in samples])
-    vmax = np.amax([np.sort(costs[i, :])[-6] for i in xrange(len(costfns)-1)])
+    vmax = np.amax([np.sort(costs[i, :])[-1001] for i in xrange(len(costfns)-1)])
     vmin = np.amin([np.sort(costs[i, :])[0] for i in xrange(len(costfns)-1)])
+    # import pdb; pdb.set_trace()
     fig = plt.figure()
     # ax = fig.gca(projection='3d')
     # colors = ['g', 'b', 'k']
@@ -263,7 +263,7 @@ def plot_cost_3d(gps, sample_lists, costfns):
     # plt.title('costs versus end effectors')
     # plt.savefig(gps._data_files_dir + 'costs_diff.png')
     # ax = fig.add_subplot(111, projection='3d')    # plt.pcolormesh(eepts_x, eepts_y, costs[0, :], cmap='RdBu')
-    mask = costs[0, :].argsort()[:-5]
+    mask = costs[0, :].argsort()[:-1000]
     print mask
     plt.scatter(eepts_x[mask], eepts_y[mask], c=costs[0, :][mask], cmap=cm.coolwarm, vmin=vmin, vmax=vmax,
                        linewidth=0)
@@ -276,7 +276,7 @@ def plot_cost_3d(gps, sample_lists, costfns):
     plt.savefig(gps._data_files_dir + 'cost_0.png')
     
     plt.figure()
-    mask = costs[1, :].argsort()[:-5]
+    mask = costs[1, :].argsort()[:-1000]
     print mask
     plt.scatter(eepts_x[mask], eepts_y[mask], c=costs[1, :][mask], cmap=cm.coolwarm, vmin=vmin, vmax=vmax,
                        linewidth=0)
@@ -289,7 +289,7 @@ def plot_cost_3d(gps, sample_lists, costfns):
     plt.savefig(gps._data_files_dir + 'cost_1.png')
 
     plt.figure()
-    mask = costs[2, :].argsort()[:-5]
+    mask = costs[2, :].argsort()[:-1000]
     print mask
     plt.scatter(eepts_x[mask], eepts_y[mask], c=costs[2, :][mask], cmap=cm.coolwarm, vmin=vmin, vmax=vmax,
                        linewidth=0)
@@ -305,7 +305,7 @@ def plot_cost_3d(gps, sample_lists, costfns):
     # ax0 = fig0.gca(projection='3d')
     # surf0 = ax0.plot_surface(eepts_x, eepts_y, costs[3, :])
     # plt.pcolormesh(eepts_x, eepts_y, costs[3, :], cmap='RdBu')
-    gt_mask = costs[3, :].argsort()[:-5]
+    gt_mask = costs[3, :].argsort()[:-1000]
     print mask
     plt.scatter(eepts_x[gt_mask], eepts_y[gt_mask], c=costs[3, :][gt_mask], cmap=cm.coolwarm,
                        linewidth=0)

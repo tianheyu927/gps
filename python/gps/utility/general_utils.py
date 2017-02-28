@@ -204,6 +204,15 @@ class BatchSampler(object):
             batch = [data[batch_idx] for data in self.data]
             yield batch
 
+    def without_replacement(self, batch_size=10, low=0, high=float('inf')):
+        sampling_range = range(low, min(self.num_data, high))
+        assert len(sampling_range) >= batch_size, "Batch Size too large! Number of data %d, batch size %d" % \
+                                                    (len(sampling_range), batch_size)
+        while True:
+            batch_idx = np.random.choice(sampling_range, size=batch_size, replace=False)
+            batch = [data[batch_idx] for data in self.data]
+            yield batch
+
     def iterate(self, batch_size=10, epochs=float('inf'), shuffle=True):
         raise NotImplementedError()
 

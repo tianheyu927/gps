@@ -85,6 +85,7 @@ class GenDemo(object):
 
             M = agent_config['conditions']
             N = self._hyperparams['algorithm']['num_demos']
+            demo_M = self._hyperparams['algorithm']['demo_M']
             if not self.nn_demo:
                 controllers = {}
 
@@ -233,7 +234,8 @@ class GenDemo(object):
                     filtered_demo_conditions.append(demo_idx_conditions[i])
 
                 print 'Num demos:', len(filtered_demos)
-                shuffle(filtered_demos)
+                if demo_M != M:
+                    shuffle(filtered_demos)
                 for demo in filtered_demos: demo.reset_agent(ioc_agent)
                 demo_list =  SampleList(filtered_demos)
                 demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs(),
