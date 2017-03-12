@@ -24,9 +24,9 @@ from gps.utility.data_logger import DataLogger, open_zip
 from gps.sample.sample_list import SampleList
 from gps.utility.general_utils import disable_caffe_logs, Timer, mkdir_p
 from gps.utility.demo_utils import eval_demos_xu, compute_distance_cost_plot, compute_distance_cost_plot_xu, \
-                                    measure_distance_and_success_peg, get_demos, extract_samples
+                                    measure_distance_and_success_peg, get_demos, extract_samples, cluster_demos
 from gps.utility.visualization import get_comparison_hyperparams, compare_experiments, \
-                                        compare_samples_curve, visualize_samples, plot_cost_3d
+                                        compare_samples_curve, visualize_samples, plot_cost_3d, compare_samples
 
 
 class GPSMain(object):
@@ -68,48 +68,13 @@ class GPSMain(object):
 
         config['algorithm']['agent'] = self.agent
 
-        if (self.using_ioc() or self.using_bc()) and not test_pol:
-            with Timer('loading demos'):
-                demos = get_demos(self)
-                M = config['common']['conditions']
-                if 'demo_conditions' in demos.keys() and 'failed_conditions' in demos.keys():
-                    self.algorithm.demo_conditions = demos['demo_conditions']
-                    self.algorithm.failed_conditions = demos['failed_conditions']
-                if config['algorithm'].get('demo_M', 1) > 1 and 'demo_conditions' in demos.keys():
-                    self.algorithm.demoX = []
-                    self.algorithm.demoU = []
-                    self.algorithm.demoO = []
-                    for m in xrange(M):
-                        self.algorithm.demoX.append(demos['demoX'][self.algorithm.demo_conditions==m, :, :])
-                        self.algorithm.demoU.append(demos['demoU'][self.algorithm.demo_conditions==m, :, :])
-                        self.algorithm.demoO.append(demos['demoO'][self.algorithm.demo_conditions==m, :, :])
-                else:
-                    if self._hyperparams['algorithm']['demo_M'] != M:
-                        self.algorithm.demoX = demos['demoX']
-                        self.algorithm.demoU = demos['demoU']
-                        self.algorithm.demoO = demos['demoO']
-                    else:
-                        N = self._hyperparams['algorithm']['num_demos']
-                        self.algorithm.demoX = [demos['demoX'][(i*N):((i+1)*N)] for i in xrange(M)]
-                        self.algorithm.demoU = [demos['demoU'][(i*N):((i+1)*N)] for i in xrange(M)]
-                        self.algorithm.demoO = [demos['demoO'][(i*N):((i+1)*N)] for i in xrange(M)]
-                    if self._hyperparams.get('sym_demos', False):
-                        demoX_sym = demos['demoX'].copy()
-                        demoU_sym = demos['demoU'].copy()
-                        demoO_sym = demos['demoO'].copy()
-                        invert_x_idx = [0, 1, 3, 5, 8]
-                        demoX_sym[:, :, invert_x_idx] *= -1.0
-                        demoO_sym[:, :, invert_x_idx] *= -1.0
-                        demoU_sym[:, :, 1] *= -1.0
-                        self.algorithm.demoX = np.vstack((self.algorithm.demoX, demoX_sym))
-                        self.algorithm.demoO = np.vstack((self.algorithm.demoO, demoO_sym))
-                        self.algorithm.demoU = np.vstack((self.algorithm.demoU, demoU_sym))
-                        np.random.shuffle(self.algorithm.demoX)
-                        np.random.shuffle(self.algorithm.demoO)
-                        np.random.shuffle(self.algorithm.demoU)
-        else:
-            with Timer('init algorithm'):
-                self.algorithm = config['algorithm']['type'](config['algorithm'])
+        if not test_pol:
+            if (self.using_ioc() or self.using_bc()):
+                with Timer('loading demos'):
+                    demos = get_demos(self)
+            else:
+                with Timer('init algorithm'):
+                    self.algorithm = config['algorithm']['type'](config['algorithm'])
 
 
     def run(self, itr_load=None):
@@ -140,6 +105,7 @@ class GPSMain(object):
                         if itr == 0:
                             for i in range(self.algorithm._hyperparams['init_samples']):
                                 self._take_sample(itr, cond, i)
+
                         else:
                             for i in range(self._hyperparams['num_samples']):
                                 self._take_sample(itr, cond, i)
@@ -149,7 +115,12 @@ class GPSMain(object):
                         self.agent.get_samples(cond, -self._hyperparams['num_samples'])
                         for cond in self._train_idx
                     ]
-
+                    if self.algorithm._hyperparams.get('demo_clusters', 0) > 0 and type(self.algorithm.demoX) is list:
+                        if itr == 0:
+                            self.algorithm.demo_clusters = cluster_demos(traj_sample_lists, self.algorithm.demoX, \
+                                self.algorithm._hyperparams.get('demo_clusters', 0))
+                    else:
+                        self.algorithm.demo_clusters = None
                 # clear samples
                 self.agent.clear_samples()
 
@@ -182,7 +153,7 @@ class GPSMain(object):
             testing: the flag that marks whether we test the policy for untrained cond
         Returns: None
         """
-        target_positions = self.algorithm._hyperparams['target_end_effector']
+        target_positions = self._hyperparams['algorithm']['target_end_effector']
         algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl' % itr
         print 'Loading algorithm file.'
         self.algorithm = self.data_logger.unpickle(algorithm_file)
@@ -463,28 +434,28 @@ class GPSMain(object):
                 sample_target_losses = None
                 demo_true_losses = None
                 sample_true_losses = None
-                sample_losses = self.algorithm.cur[4].cs
+                sample_losses = self.algorithm.cur[0].cs
                 if sample_losses is None:
-                    sample_losses = self.algorithm.prev[4].cs
+                    sample_losses = self.algorithm.prev[0].cs
                 if self.algorithm._hyperparams.get('fk_cost', False):
-                    sample_target_losses = self.algorithm.cur[4].ctgt
-                    sample_true_losses = self.algorithm.cur[4].cfk
+                    sample_target_losses = self.algorithm.cur[0].ctgt
+                    sample_true_losses = self.algorithm.cur[0].cfk
                     if sample_true_losses is None:
-                        sample_true_losses = 1000.0*self.algorithm.prev[4].cfk
+                        sample_true_losses = 1000.0*self.algorithm.prev[0].cfk
                     if sample_target_losses is None:
-                        sample_target_losses = self.algorithm.prev[4].ctgt
+                        sample_target_losses = self.algorithm.prev[0].ctgt
                 if sample_losses.shape[0] < NUM_DEMO_PLOTS:
                     sample_losses = np.tile(sample_losses, [NUM_DEMO_PLOTS, 1])[:NUM_DEMO_PLOTS]
                 elif sample_losses.shape[0] > NUM_DEMO_PLOTS:
                     sample_losses = sample_losses[:NUM_DEMO_PLOTS]
                 if type(self.algorithm.demoX) is list:
-                    demo_losses = eval_demos_xu(self.agent, self.algorithm.demoX[4], self.algorithm.demoU[4], self.algorithm.cost, n=NUM_DEMO_PLOTS)
+                    demo_losses = eval_demos_xu(self.agent, self.algorithm.demoX[0], self.algorithm.demoU[0], self.algorithm.cost, n=NUM_DEMO_PLOTS)
                 else:
                     demo_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.cost, n=NUM_DEMO_PLOTS)
                 if self.algorithm._hyperparams.get('fk_cost', False):
                     if type(self.algorithm.demoX) is list:
-                        demo_true_losses = eval_demos_xu(self.agent, self.algorithm.demoX[4], self.algorithm.demoU[4], self.algorithm.fk_cost, n=NUM_DEMO_PLOTS, gt=True)
-                        demo_target_losses = eval_demos_xu(self.agent, self.algorithm.demoX[4], self.algorithm.demoU[4], self.algorithm.cost, n=NUM_DEMO_PLOTS, wu=False)
+                        demo_true_losses = eval_demos_xu(self.agent, self.algorithm.demoX[0], self.algorithm.demoU[0], self.algorithm.fk_cost, n=NUM_DEMO_PLOTS, gt=True)
+                        demo_target_losses = eval_demos_xu(self.agent, self.algorithm.demoX[0], self.algorithm.demoU[0], self.algorithm.cost, n=NUM_DEMO_PLOTS, wu=False)
                     else:
                         demo_true_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.fk_cost, n=NUM_DEMO_PLOTS, gt=True)
                         demo_target_losses = eval_demos_xu(self.agent, self.algorithm.demoX, self.algorithm.demoU, self.algorithm.cost, n=NUM_DEMO_PLOTS, wu=False)
@@ -517,7 +488,7 @@ class GPSMain(object):
                 return
 
         if True:
-            if (itr+1) % 5 == 0 or itr == 0:
+            if (itr+1) % 5 == 0 or itr == 0 or itr == self.algorithm._hyperparams['iterations']-1:
                 with Timer('saving algorithm file'):
                     self.algorithm.demo_policy = None
                     copy_alg = copy.copy(self.algorithm)
@@ -715,22 +686,24 @@ def main():
             gps.test_policy(itr=current_itr, N=test_policy_N, testing=args.extendtesting, eval_pol_gt=args.eval)
     elif args.test_multiple:
         seeds = [0, 1, 2]
-        num_demos = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+        num_demos = [1, 5, 10, 15, 20, 25]
         accuracy_history = {num_demo:[] for num_demo in num_demos}
         for seed in seeds:
             for num_demo in num_demos:
-                # np.random.seed(seed)
-                # random.seed(seed)
+                np.random.seed(seed)
+                random.seed(seed)
                 hyperparams = imp.load_source('hyperparams', hyperparams_file)
-                # hyperparams.seed = seed
-                # hyperparams.num_demos = num_demo
-                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_LG_demo%d_cost_%d/' % (num_demo, seed)
+                hyperparams.seed = seed
+                hyperparams.num_demos = num_demo
+                hyperparams.config.pop('record_gif', None)
+                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_demo%d_%d/' % (num_demo, seed)
                 # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
-                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_LG_demo%d_cost_%d' % (num_demo, seed), 'demos_LG.pkl')
+                hyperparams.config['common']['NN_demo_file'] = os.path.join(exp_dir, 'data_files_8_demo%d_%d/' % (num_demo, seed), 'demos_NN.pkl')
                 hyperparams.config['algorithm']['num_demos'] = num_demo
-                # hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['LG_demo_file']
-                hyperparams.config['algorithm']['cost']['random_seed'] = seed
-                hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
+                hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['NN_demo_file']
+                # hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
+                # hyperparams.config['algorithm']['cost']['random_seed'] = seed
+                hyperparams.config['algorithm']['policy_opt']['random_seed'] = seed
                 hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
                 current_itr = 0 #19 for ioc
                 gps = GPSMain(hyperparams.config, test_pol=True)
@@ -743,16 +716,17 @@ def main():
         agent_config = gps._hyperparams['agent']
         compare_samples_curve(gps, measure, agent_config, three_dim=False, weight_varying=True, experiment='reacher')
     elif visualize:
-        gps = GPSMain(hyperparams.config)
-        algorithm = gps.data_logger.unpickle(gps._data_files_dir + 'algorithm_itr_14.pkl')
-        sample_lists = algorithm.sample_list
-        print "number of samples: %d" % sample_lists[0].num_samples()
-        costs = algorithm.cost
-        costs.extend(algorithm.fk_cost)
-        plot_cost_3d(gps, sample_lists, costs)
-        plt.close('all')
-        # agent_config = gps._hyperparams['agent']
+        gps = GPSMain(hyperparams.config, test_pol=True)
+        # algorithm = gps.data_logger.unpickle(gps._data_files_dir + 'algorithm_itr_14.pkl')
+        # sample_lists = algorithm.sample_list
+        # print "number of samples: %d" % sample_lists[0].num_samples()
+        # costs = algorithm.cost
+        # costs.extend(algorithm.fk_cost)
+        # plot_cost_3d(gps, sample_lists, costs)
+        # plt.close('all')
+        agent_config = gps._hyperparams['unlabeled_agent']
         # visualize_samples(gps, visualize, agent_config, experiment='reacher')
+        compare_samples(gps, visualize, agent_config, experiment='reacher')
     elif compare:
         mean_dists_1_dict, mean_dists_2_dict, success_rates_1_dict, \
             success_rates_2_dict = {}, {}, {}, {}
@@ -782,12 +756,15 @@ def main():
                 hyperparams = imp.load_source('hyperparams', hyperparams_file)
                 hyperparams.seed = seed
                 hyperparams.num_demos = num_demo
-                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_local_cost_all_demo_mono_5000_%d/' % (num_demo, seed)
+                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d/' % (num_demo, seed)
+                # hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_demo%d_%d/' % (num_demo, seed)
                 # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
                 # use exp dir to run bc alone. change to ioc_dir if comparing to ioc
-                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_local_cost_all_demo_mono_5000_%d/' % (num_demo, seed), 'demos_LG.pkl')
+                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d/' % (num_demo, seed), 'demos_LG.pkl')
+                # hyperparams.config['common']['NN_demo_file'] = os.path.join(exp_dir, 'data_files_8_demo%d_%d/' % (num_demo, seed), 'demos_NN.pkl')
                 hyperparams.config['algorithm']['num_demos'] = num_demo
-                # hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['LG_demo_file']
+                hyperparams.config['algorithm']['policy_opt']['random_seed'] = seed
+                # hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['NN_demo_file'] #LG
                 hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
                 if not os.path.exists(hyperparams.config['common']['data_files_dir']):
                     os.makedirs(hyperparams.config['common']['data_files_dir'])

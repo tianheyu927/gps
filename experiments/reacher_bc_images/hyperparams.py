@@ -16,24 +16,33 @@ from gps.algorithm.policy_opt.policy_cloning_tf import PolicyCloningTf
 from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
+from gps.algorithm.policy_opt.tf_model_example import multi_modal_network, multi_modal_network_fp
 
 from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
-        END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, RGB_IMAGE, RGB_IMAGE_SIZE, ACTION
+        END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, RGB_IMAGE, RGB_IMAGE_SIZE, ACTION, \
+        END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT
 from gps.gui.config import generate_experiment_info
+
+IMAGE_WIDTH = 80
+IMAGE_HEIGHT = 64
+IMAGE_CHANNELS = 3
 
 SENSOR_DIMS = {
     JOINT_ANGLES: 2,
     JOINT_VELOCITIES: 2,
     END_EFFECTOR_POINTS: 6,
     END_EFFECTOR_POINT_VELOCITIES: 6,
+    END_EFFECTOR_POINTS_NO_TARGET: 3,
+    END_EFFECTOR_POINT_VELOCITIES_NO_TARGET: 3,
     ACTION: 2,
+    RGB_IMAGE: IMAGE_WIDTH*IMAGE_HEIGHT*IMAGE_CHANNELS,
+    RGB_IMAGE_SIZE: 3,
+    # IMAGE_FEAT: 30,  # affected by num_filters set below.
 }
 
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
-# DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-IOC_DIR = BASE_DIR + '/../experiments/reacher_mdgps_ioc/'
-DEMO_DIR = BASE_DIR + '/../experiments/reacher/'
+DEMO_DIR = BASE_DIR + '/../experiments/reacher_images/'
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
@@ -73,22 +82,22 @@ test_pos_body_offset = [np.array([-0.05, 0.18, 0.0]), np.array([-0.15, 0.18, 0.0
                     np.array([-0.15, -0.02, 0.0]), np.array([-0.05, -0.02, 0.0]),
                     np.array([0.02, -0.02, 0.0]), np.array([0.02, 0.05, 0.0])]
 
-SEED = 2
+SEED = 0
 NUM_DEMOS = 20
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files_8_LG_demo%d_%d/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_8_demo%d_%d/' % (NUM_DEMOS, SEED),
     # 'data_files_dir': EXP_DIR + 'data_files_LG_demo5_%d/' % SEED,
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
-    'demo_controller_file': DEMO_DIR + 'data_files_8/algorithm_itr_14.pkl',
-    'nn_demo': False, # Use neural network demonstrations. For experiment only
-    'LG_demo_file': os.path.join(IOC_DIR, 'data_files_8_LG_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
-    'NN_demo_file': os.path.join(IOC_DIR, 'data_files_8_demo20_%d' % SEED, 'demos_NN.pkl'),
+    'demo_controller_file': DEMO_DIR + 'data_files_8/algorithm_itr_19.pkl',
+    'nn_demo': True, # Use neural network demonstrations. For experiment only
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_8_LG_demo_%d_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'NN_demo_file': os.path.join(EXP_DIR, 'data_files_8_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
     'conditions': TOTAL_CONDITIONS,
     'train_conditions': range(TRAIN_CONDITIONS),
     'test_conditions': range(TRAIN_CONDITIONS, TOTAL_CONDITIONS),
@@ -106,21 +115,24 @@ agent = {
     'randomly_sample_bodypos': False,
     'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
+    'modify_cost_on_sample': False,
     'pos_body_offset': pos_body_offset,
     'pos_body_idx': np.array([4]),
     'conditions': common['conditions'],
     'T': 50,
+    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+    'target_idx': np.array(list(range(3,6))),
+    'meta_include': [RGB_IMAGE_SIZE],
+    'image_width': IMAGE_WIDTH,
+    'image_height': IMAGE_HEIGHT,
+    'image_channels': IMAGE_CHANNELS,
     'sensor_dims': SENSOR_DIMS,
-    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
-            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
-            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
-    'meta_include': [],
-    'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
+    'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
+    'record_reward': True,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ pos_body_offset[i], np.array([0., 0., 0.])])
-                            for i in xrange(TOTAL_CONDITIONS)],
-    'success_upper_bound': 0.05,                
-    'render': True,
+        for i in range(TOTAL_CONDITIONS)],
 }
 
 unlabeled_agent = {
@@ -132,46 +144,57 @@ unlabeled_agent = {
     'randomly_sample_bodypos': False,
     'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
+    'modify_cost_on_sample': False,
     'pos_body_offset': test_pos_body_offset,
     'pos_body_idx': np.array([4]),
     'conditions': len(test_pos_body_offset),
     'T': 50,
+    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+    'target_idx': np.array(list(range(3,6))),
+    'meta_include': [RGB_IMAGE_SIZE],
+    'image_width': IMAGE_WIDTH,
+    'image_height': IMAGE_HEIGHT,
+    'image_channels': IMAGE_CHANNELS,
     'sensor_dims': SENSOR_DIMS,
-    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
-            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
-            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
-    'meta_include': [],
-    'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ test_pos_body_offset[i], np.array([0., 0., 0.])])
-                            for i in xrange(len(test_pos_body_offset))],
+    'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
+    'record_reward': True,
     'success_upper_bound': 0.05,
-    'render': True,
-} 
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ test_pos_body_offset[i], np.array([0., 0., 0.])])
+        for i in range(len(test_pos_body_offset))],
+}
 
 demo_agent = {
     'type': AgentMuJoCo,
     'filename': './mjc_models/reacher_img.xml',
+    'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
     'substeps': 5,
+    'randomly_sample_bodypos': False,
+    'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
+    'prohibited_ranges_bodypos':[ [None, None, None, None] ],
+    'modify_cost_on_sample': False,
     'pos_body_offset': demo_pos_body_offset,
     'pos_body_idx': np.array([4]),
     'conditions': DEMO_CONDITIONS,
-    'T': agent['T'],
+    'T': 50,
+    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+    'target_idx': np.array(list(range(3,6))),
+    'meta_include': [RGB_IMAGE_SIZE],
+    'image_width': IMAGE_WIDTH,
+    'image_height': IMAGE_HEIGHT,
+    'image_channels': IMAGE_CHANNELS,
     'sensor_dims': SENSOR_DIMS,
-    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
-            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
-            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
-    'meta_include': [],
-    'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
+    'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
+    'record_reward': True,
+    'success_upper_bound': 0.04,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i], np.array([0., 0., 0.])])
-                            for i in xrange(DEMO_CONDITIONS)],
-    'success_upper_bound': 0.01,
-    'render': True,
+        for i in range(DEMO_CONDITIONS)],
 }
-
 
 algorithm = {
     'type': BehaviorCloning,
@@ -180,6 +203,7 @@ algorithm = {
     'conditions': common['conditions'],
     'iterations': 1, # must be 1
     'demo_var_mult': 1.0,
+    'demo_M': 1,
     'num_demos': NUM_DEMOS,
     'agent_pos_body_idx': agent['pos_body_idx'],
     'agent_pos_body_offset': agent['pos_body_offset'],
@@ -211,6 +235,7 @@ algorithm['cost'] = [{
     'weights': [2.0, 1.0],
 }  for i in range(common['conditions'])]
 
+# algorithm['fk_cost'] = fk_cost_1
 
 # Cost function
 #torque_cost = {
@@ -248,27 +273,31 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningTf,
     'network_params': {
+        'num_filters': [15, 15, 15],
         'obs_include': agent['obs_include'],
-        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
+        'obs_image_data': [RGB_IMAGE],
+        'image_width': IMAGE_WIDTH,
+        'image_height': IMAGE_HEIGHT,
+        'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'bc': True,
-        'n_layers': 3,
-        'dim_hidden': 50,
     },
-    'network_model': example_tf_network,
-    # 'fc_only_iterations': 5000,
-    # 'init_iterations': 1000,
-    'batch_norm': False,
-    'decay': 0.99,
-    'lr': 1e-3,
-    'batch_size': 25,
-    'iterations': 1000,  # was 100
+    'network_model': multi_modal_network_fp,
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': demo_agent,
-    'weights_file_prefix': common['data_files_dir'] + 'policy',
+    'batch_norm': False,
+    'decay': 0.99,
+    'lr': 7.5e-4,
+    # 'batch_size': 30,
+    'fc_only_iterations': 8000,
+    'init_iterations': 3000, #1000
+    'iterations': 3000,  # 1000
     'random_seed': SEED,
+    'plot_dir': common['data_files_dir'],
+    'uses_vision': True,
+    'weights_file_prefix': EXP_DIR + 'policy',
 }
-
 
 config = {
     'iterations': algorithm['iterations'],

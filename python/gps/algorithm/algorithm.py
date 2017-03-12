@@ -77,6 +77,9 @@ class Algorithm(object):
                 self._hyperparams['init_traj_distr'], self._cond_idx[m]
             )
             init_traj_distr['condition'] = m
+            if self._hyperparams['demo_M'] == self.M and self.M != 1:
+                init_traj_distr['init_demo_x'] = self._hyperparams['init_demo_x'][m]
+                init_traj_distr['init_demo_u'] = self._hyperparams['init_demo_u'][m]
             self.cur[m].traj_distr = init_traj_distr['type'](init_traj_distr)
             if not self._hyperparams['policy_eval']:
                 self.traj_distr[self.iteration_count].append(self.cur[m].traj_distr)
@@ -240,11 +243,17 @@ class Algorithm(object):
                 else:
                     cost = self.gt_cost
 
-            if self._hyperparams['global_cost'] and type(self.cost) != list:
-                l, lx, lu, lxx, luu, lux = cost.eval(sample)
-                if self._hyperparams.get('fk_cost', False) and self._hyperparams['ioc']:
-                    l_tgt, _, _, _, _, _ = cost.eval(sample, wu=False)
-                    ctgt[n, :] = l_tgt
+            if self._hyperparams['global_cost']:
+                if type(self.cost) != list:
+                    l, lx, lu, lxx, luu, lux = cost.eval(sample)
+                    if self._hyperparams.get('fk_cost', False) and self._hyperparams['ioc']:
+                        l_tgt, _, _, _, _, _ = cost.eval(sample, wu=False)
+                        ctgt[n, :] = l_tgt
+                else:
+                    l, lx, lu, lxx, luu, lux = cost[cond].eval(sample)
+                    if self._hyperparams.get('fk_cost', False) and self._hyperparams['ioc']:
+                        l_tgt, _, _, _, _, _ = cost[cond].eval(sample, wu=False)
+                        ctgt[n, :] = l_tgt
             else:
                 if self.num_costs == self.M:
                     l, lx, lu, lxx, luu, lux = cost[cond].eval(sample)
@@ -338,13 +347,14 @@ class Algorithm(object):
         self.traj_info[self.iteration_count] = []
         self.kl_div[self.iteration_count] = []
         self.dists_to_target[self.iteration_count] = []
-        if self._hyperparams['global_cost'] and self._hyperparams['ioc']:
-            with Timer('Algorithm._advance_iteration_variables cost_copy'):
-                self.previous_cost = self.cost.copy()
-        elif self.num_costs == self.M:
-            self.previous_cost = []
-        else:
-            self.previous_cost = [self.cost[i].copy() for i in xrange(self.num_costs)]
+        if self._hyperparams['ioc']:
+            if self._hyperparams['global_cost']:
+                with Timer('Algorithm._advance_iteration_variables cost_copy'):
+                    self.previous_cost = self.cost.copy()
+            elif self.num_costs == self.M:
+                self.previous_cost = []
+            else:
+                self.previous_cost = [self.cost[i].copy() for i in xrange(self.num_costs)]
         for m in range(self.M):
             self.cur[m].traj_info = TrajectoryInfo()
             self.cur[m].traj_info.dynamics = copy.deepcopy(self.prev[m].traj_info.dynamics)
@@ -452,7 +462,7 @@ class Algorithm(object):
         """ Update the cost objective in each iteration. """
 
         # Estimate the importance weights for fusion distributions.
-        demos_logiw, samples_logiw = self.importance_weights()
+        clustered_demoU, clustered_demoX, clustered_demoO, demos_logiw, samples_logiw = self.importance_weights()
 
         # Update the learned cost
         # Transform dictionaries to arrays
@@ -466,7 +476,7 @@ class Algorithm(object):
             if self.num_costs == self.M:
                 for i in xrange(M):
                     if type(self.demoX) is list:
-                        self.cost[i].update(self.demoU[i], self.demoO[i], demos_logiw[i], self.sample_list[i].get_U(),
+                        self.cost[i].update(clustered_demoU[i], clustered_demoO[i], demos_logiw[i], self.sample_list[i].get_U(),
                                     self.sample_list[i].get_obs(), samples_logiw[i], itr=self.iteration_count)
                     else:
                         self.cost[i].update(self.demoU, self.demoO, demos_logiw[i], self.sample_list[i].get_U(),
@@ -521,9 +531,14 @@ class Algorithm(object):
         LOGGER.debug("Number of demo conditions is %d", Md)
         demos_logiw, samples_logiw = {}, {}
         if type(self.demoX) is list:
-            demoU = {i: self.demoU[i] for i in xrange(M)}
-            demoO = {i: self.demoO[i] for i in xrange(M)}
-            demoX = {i: self.demoX[i] for i in xrange(M)}
+            if self.demo_clusters is None:
+                demoU = {i: self.demoU[i] for i in xrange(M)}
+                demoO = {i: self.demoO[i] for i in xrange(M)}
+                demoX = {i: self.demoX[i] for i in xrange(M)}
+            else:
+                demoU = {i:np.vstack((self.demoU[j] for j in self.demo_clusters[i])) for i in xrange(M)}
+                demoO = {i:np.vstack((self.demoO[j] for j in self.demo_clusters[i])) for i in xrange(M)}
+                demoX = {i:np.vstack((self.demoX[j] for j in self.demo_clusters[i])) for i in xrange(M)}
         else:
             demoU = {i: self.demoU for i in xrange(M)}
             demoO = {i: self.demoO for i in xrange(M)}
@@ -617,4 +632,4 @@ class Algorithm(object):
                             demos_logprob[i][itr + 1, t, j] = -0.5 * np.sum(diff * (self.demo_traj[i].inv_pol_covar[t, :, :].dot(diff)), 0) - \
                                                         np.sum(np.log(np.diag(self.demo_traj[i].chol_pol_covar[t, :, :])))
             demos_logiw[i] = logsum(np.sum(demos_logprob[i], 1), 0)
-        return demos_logiw, samples_logiw
+        return demoU, demoX, demoO, demos_logiw, samples_logiw

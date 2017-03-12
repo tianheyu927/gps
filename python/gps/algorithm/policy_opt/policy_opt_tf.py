@@ -32,13 +32,20 @@ class PolicyOptTf(PolicyOpt):
 
         self.tf_iter = 0
         self.graph = tf.Graph()
-        self._sess = tf.Session(graph=self.graph)
         self.checkpoint_file = self._hyperparams['checkpoint_prefix']
         self.batch_size = self._hyperparams['batch_size']
         self.device_string = "/cpu:0"
         if self._hyperparams['use_gpu'] == 1:
-            self.gpu_device = self._hyperparams['gpu_id']
-            self.device_string = "/gpu:" + str(self.gpu_device)
+            if not self._hyperparams.get('uses_vision', False):
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.08)
+                tf_config = tf.ConfigProto(gpu_options=gpu_options)
+                self._sess = tf_Session(graph=graph, config=tf_config)
+            else:
+                self.gpu_device = self._hyperparams['gpu_id']
+                self.device_string = "/gpu:" + str(self.gpu_device)
+                self._sess = tf.Session(graph=self.graph)
+        else:
+            self._sess = tf.Session(graph=self.graph)
         self.act_op = None  # mu_hat
         self.feat_op = None # features
         self.image_op = None # image
@@ -189,8 +196,11 @@ class PolicyOptTf(PolicyOpt):
         batches_per_epoch = np.floor(N*T / self.batch_size)
         idx = range(N*T)
         average_loss = 0
+        conv_loss_history = []
+        # conv_val_loss_history = []
         loss_history = []
         val_loss_history = []
+        plot_dir = self._hyperparams.get('plot_dir', '/home/kevin/gps/')
         np.random.shuffle(idx)
 
         #if iter_count != None and iter_count > 0:
@@ -216,13 +226,20 @@ class PolicyOptTf(PolicyOpt):
                 train_loss = self.solver(feed_dict, self._sess, device_string=self.device_string, use_fc_solver=True)
                 average_loss += train_loss
 
-                if (i+1) % 500 == 0:
+                if (i+1) % 200 == 0:
                     LOGGER.debug('tensorflow iteration %d, average loss %f',
-                                    i, average_loss / 500)
+                                    i, average_loss / 200)
                     print('supervised fc_only tf loss is ' + str((average_loss)))
                     average_loss = 0
-            average_loss = 0
+                    if behavior_clone:
+                        conv_loss_history.append(train_loss)
 
+            if behavior_clone:
+                plt.figure()
+                plt.plot(200*(np.arange(self._hyperparams['fc_only_iterations']/200)+1), conv_loss_history, color='red', linestyle='-')
+                plt.savefig(plot_dir + 'conv_loss_history.png')
+                plt.show()
+            
         if fc_only and self._hyperparams['fc_only_iterations'] > 0:
             TOTAL_ITERS = 0
         elif iter_count != None and iter_count == 0:
@@ -255,12 +272,14 @@ class PolicyOptTf(PolicyOpt):
                         val_feed_dict = {self.obs_tensor: test_obs,
                                         self.action_tensor: test_acts}
                         with tf.device(self.device_string):
-                            val_loss_history.append(self.run(self.loss_scalar, feed_dict=val_feed_dict))
+                            val_loss_history.append(self.batch_size*2*self.run(self.loss_scalar, feed_dict=val_feed_dict)/test_obs.shape[0])
         if behavior_clone:
             plt.figure()
             plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), loss_history, color='red', linestyle='-')
-            # plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), val_loss_history, color='blue', linestyle=':')
-            plt.savefig('/home/kevin/gps/loss_history.png')
+            if test_obs is not None:
+                plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), val_loss_history, color='blue', linestyle=':')
+            plot_dir = self._hyperparams.get('plot_dir', '/home/kevin/gps/')
+            plt.savefig(plot_dir + 'loss_history.png')
             plt.show()
         feed_dict = {self.obs_tensor: obs}
         num_values = obs.shape[0]

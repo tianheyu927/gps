@@ -399,8 +399,10 @@ class GPSTrainingGUI(object):
             elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning) or \
                     isinstance(algorithm, AlgorithmTrajOpt):
                 condition_titles += ' %8s' % ('')
-                # itr_data_fields  += ' %8s' % ('pol_cost')
-                itr_data_fields  += ' %8s' % ('fk_cost')
+                if algorithm._hyperparams.get('fk_cost', False):
+                    itr_data_fields  += ' %8s' % ('fk_cost')
+                else:
+                    itr_data_fields  += ' %8s' % ('pol_cost')
         self.append_output_text(condition_titles)
         self.append_output_text(itr_data_fields)
 
@@ -415,30 +417,30 @@ class GPSTrainingGUI(object):
         else:
             avg_cost = 'N/A'
         pol_costs = [-123 for _ in range(algorithm.M)]
-        # if pol_sample_lists is not None:
-        if algorithm._hyperparams.get('fk_cost', False):
-            # test_idx = algorithm._hyperparams['test_conditions']
-            # # import pdb; pdb.set_trace()
-            # # pol_sample_lists is a list of singletons
-            # samples = [sl[0] for sl in pol_sample_lists]
-            # if not eval_pol_gt:
-            #     if 'global_cost' in algorithm._hyperparams and algorithm._hyperparams['global_cost'] and \
-            #             type(algorithm.cost) != list:
-            #         pol_costs = [np.sum(algorithm.cost.eval(s)[0])
-            #                 for s in samples]
-            #     else:
-            #         pol_costs = [np.sum(algorithm.cost[idx].eval(s)[0])
-            #                 for s, idx in zip(samples, test_idx)]
-            # else:
-            #     assert algorithm._hyperparams['ioc']
-            #     pol_costs = [np.sum(algorithm.gt_cost[idx].eval(s)[0])
-            #             for s, idx in zip(samples, test_idx)]
-            # if not algorithm._hyperparams.get('bc', False):
-            #     itr_data = '%3d | %8.2f %12.2f' % (itr, avg_cost, np.mean(pol_costs))
-            # else:
-            #     itr_data = '%3d | %8s %12.2f' % (itr, avg_cost, np.mean(pol_costs))
+        if algorithm._hyperparams.get('fk_cost', False) and not algorithm._hyperparams.get('bc', False):
             fk_costs = [np.mean(np.sum(algorithm.prev[m].cfk, axis=1)) for m in range(algorithm.M)]
             itr_data = '%3d | %8.2f %12.2f' % (itr, avg_cost, np.mean(fk_costs))
+        elif pol_sample_lists is not None:
+            test_idx = algorithm._hyperparams['test_conditions']
+            # import pdb; pdb.set_trace()
+            # pol_sample_lists is a list of singletons
+            samples = [sl[0] for sl in pol_sample_lists]
+            if not eval_pol_gt:
+                if 'global_cost' in algorithm._hyperparams and algorithm._hyperparams['global_cost'] and \
+                        type(algorithm.cost) != list:
+                    pol_costs = [np.sum(algorithm.cost.eval(s)[0])
+                            for s in samples]
+                else:
+                    pol_costs = [np.sum(algorithm.cost[idx].eval(s)[0])
+                            for s, idx in zip(samples, test_idx)]
+            else:
+                assert algorithm._hyperparams['ioc']
+                pol_costs = [np.sum(algorithm.gt_cost[idx].eval(s)[0])
+                        for s, idx in zip(samples, test_idx)]
+            if not algorithm._hyperparams.get('bc', False):
+                itr_data = '%3d | %8.2f %12.2f' % (itr, avg_cost, np.mean(pol_costs))
+            else:
+                itr_data = '%3d | %8s %12.2f' % (itr, avg_cost, np.mean(pol_costs))
         else:
             test_idx = None
             itr_data = '%3d | %8.2f' % (itr, avg_cost)
@@ -479,11 +481,12 @@ class GPSTrainingGUI(object):
             elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, BehaviorCloning) or \
                  isinstance(algorithm, AlgorithmTrajOpt):
                 # TODO: Change for test/train better.
-                # if test_idx == algorithm._hyperparams['train_conditions']:
-                #     itr_data += ' %8.2f' % (pol_costs[m])
-                # else:
-                #     itr_data += ' %8s' % ("N/A")
-                itr_data += ' %8.2f' % (fk_costs[m])
+                if algorithm._hyperparams.get('fk_cost', False): 
+                    itr_data += ' %8.2f' % (fk_costs[m])
+                elif test_idx == algorithm._hyperparams['train_conditions']:
+                    itr_data += ' %8.2f' % (pol_costs[m])
+                else:
+                    itr_data += ' %8s' % ("N/A")
         self.append_output_text(itr_data)
 
     def _update_feature_visualization(self, image, feature_points):

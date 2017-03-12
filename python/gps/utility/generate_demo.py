@@ -80,12 +80,15 @@ class GenDemo(object):
             # Roll out the demonstrations from controllers
             var_mult = self._hyperparams['algorithm'].get('demo_var_mult', 1.0)
             T = self.algorithms[0].T
-            demos = []
-            demo_idx_conditions = []  # Stores conditions for each demo
 
             M = agent_config['conditions']
             N = self._hyperparams['algorithm']['num_demos']
             demo_M = self._hyperparams['algorithm']['demo_M']
+            if demo_M != M or M == 1:
+                demos = []
+            else:
+                demos = {i:[] for i in xrange(M)}
+            demo_idx_conditions = []  # Stores conditions for each demo
             if not self.nn_demo:
                 controllers = {}
 
@@ -103,8 +106,11 @@ class GenDemo(object):
                             verbose=(j < self._hyperparams['verbose_trials']), noisy=True,
                             save = True
                         )
-                        demos.append(demo)
-                        demo_idx_conditions.append(i)
+                        if demo_M != M or M == 1:
+                            demos.append(demo)
+                            demo_idx_conditions.append(i)
+                        else:
+                            demos[i].append(demo)
             else:
                 all_pos_body_offsets = []
                 # Gather demos.
@@ -116,8 +122,11 @@ class GenDemo(object):
                                 pol, i, # Should be changed back to controller if using linearization
                                 verbose=(j < self._hyperparams['verbose_trials']), noisy=True
                                 )
-                            demos.append(demo)
-                            demo_idx_conditions.append(i)
+                            if demo_M != M or M == 1:
+                                demos.append(demo)
+                                demo_idx_conditions.append(i)
+                            else:
+                                demos[i].append(demo)
 
             # Filter failed demos
             if agent_config.get('filter_demos', False): # USED FOR PR2
@@ -160,57 +169,60 @@ class GenDemo(object):
                               'demoConditions': demo_idx_conditions}
 
             # Filter out worst (M - good_conds) demos.
-            elif agent_config['type']==AgentMuJoCo and agent_config.get('filename', False) == './mjc_models/pr2_arm3d.xml':
-                target_position = agent_config['target_end_effector'][:3]
-                dists_to_target = np.zeros(M*N)
-                good_indices = []
-                failed_indices = []
-                success_thresh = agent_config['success_upper_bound']
-                for i in xrange(M):
-                    if type(agent_config['target_end_effector']) is list:
-                        target_position = agent_config['target_end_effector'][i][:3]
-                    else:
-                        target_position = agent_config['target_end_effector'][:3]
-                    for j in xrange(N):
-                        demo_end_effector = demos[i*N + j].get(END_EFFECTOR_POINTS)
-                        dists_to_target[i*N + j] = np.sqrt(np.sum((demo_end_effector[:, :3] - target_position.reshape(1, -1))**2, axis = 1))[-1]
-                        if dists_to_target[i*N + j] > success_thresh:
-                            failed_indices.append(i)
-                good_indices = [i for i in xrange(M) if i not in failed_indices]
-                good_indices = [i for i in xrange(len(demos)) if i not in failed_indices]
-                self._hyperparams['algorithm']['demo_cond'] = len(good_indices)
-                filtered_demos, demo_conditions, failed_conditions = []
-                for i in good_indices:
-                    filtered_demos.append(demos[i])
-                    demo_conditions.append(all_pos_body_offsets[i])
-                for i in xrange(M):
-                    if i not in good_indices:
-                        failed_conditions.append(all_pos_body_offsets[i])
-                shuffle(filtered_demos)
-                for demo in filtered_demos: demo.reset_agent(ioc_agent)
-                demo_list =  SampleList(filtered_demos)
-                demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs(), \
-                                    'demo_conditions': demo_conditions, 'failed_conditions': failed_conditions}
-                import matplotlib.pyplot as plt
-                from matplotlib.patches import Rectangle
+            # elif agent_config['type']==AgentMuJoCo and agent_config.get('filename', False) == './mjc_models/pr2_arm3d.xml':
+            #     target_position = agent_config['target_end_effector'][:3]
+            #     dists_to_target = np.zeros(M*N)
+            #     good_indices = []
+            #     failed_indices = []
+            #     success_thresh = agent_config['success_upper_bound']
+            #     for i in xrange(M):
+            #         if type(agent_config['target_end_effector']) is list:
+            #             target_position = agent_config['target_end_effector'][i][:3]
+            #         else:
+            #             target_position = agent_config['target_end_effector'][:3]
+            #         for j in xrange(N):
+            #             demo_end_effector = demos[i*N + j].get(END_EFFECTOR_POINTS)
+            #             dists_to_target[i*N + j] = np.sqrt(np.sum((demo_end_effector[:, :3] - target_position.reshape(1, -1))**2, axis = 1))[-1]
+            #             if dists_to_target[i*N + j] > success_thresh:
+            #                 failed_indices.append(i)
+            #     good_indices = [i for i in xrange(M) if i not in failed_indices]
+            #     good_indices = [i for i in xrange(len(demos)) if i not in failed_indices]
+            #     self._hyperparams['algorithm']['demo_cond'] = len(good_indices)
+            #     filtered_demos, demo_conditions, failed_conditions = []
+            #     for i in good_indices:
+            #         filtered_demos.append(demos[i])
+            #         demo_conditions.append(all_pos_body_offsets[i])
+            #     for i in xrange(M):
+            #         if i not in good_indices:
+            #             failed_conditions.append(all_pos_body_offsets[i])
+            #     shuffle(filtered_demos)
+            #     for demo in filtered_demos: demo.reset_agent(ioc_agent)
+            #     demo_list =  SampleList(filtered_demos)
+            #     demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs(), \
+            #                         'demo_conditions': demo_conditions, 'failed_conditions': failed_conditions}
+            #     import matplotlib.pyplot as plt
+            #     from matplotlib.patches import Rectangle
 
-                plt.close()
-                fig = plt.figure()
-                ax = Axes3D(fig)
-                demo_conditions_zip = zip(*demo_conditions)
-                failed_conditions_zip = zip(*failed_conditions)
-                ax.scatter(demo_conditions_zip[0], demo_conditions_zip[1], demo_conditions_zip[2], c='g', marker='o')
-                ax.scatter(failed_conditions_zip[0], failed_conditions_zip[1], failed_conditions_zip[2], c='r', marker='x')
-                box = ax.get_position()
-                ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height*0.9])
-                ax.legend(['demo_cond', 'failed_demo'], loc='upper center', bbox_to_anchor=(0.5, -0.05), \
-                                    shadow=True, ncol=2)
-                plt.title("Distribution of demo conditions")
-                plt.savefig(self._data_files_dir + 'distribution_of_demo_conditions_MaxEnt_z_0.05.png')
-                plt.close()
+            #     plt.close()
+            #     fig = plt.figure()
+            #     ax = Axes3D(fig)
+            #     demo_conditions_zip = zip(*demo_conditions)
+            #     failed_conditions_zip = zip(*failed_conditions)
+            #     ax.scatter(demo_conditions_zip[0], demo_conditions_zip[1], demo_conditions_zip[2], c='g', marker='o')
+            #     ax.scatter(failed_conditions_zip[0], failed_conditions_zip[1], failed_conditions_zip[2], c='r', marker='x')
+            #     box = ax.get_position()
+            #     ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height*0.9])
+            #     ax.legend(['demo_cond', 'failed_demo'], loc='upper center', bbox_to_anchor=(0.5, -0.05), \
+            #                         shadow=True, ncol=2)
+            #     plt.title("Distribution of demo conditions")
+            #     plt.savefig(self._data_files_dir + 'distribution_of_demo_conditions_MaxEnt_z_0.05.png')
+            #     plt.close()
             elif agent_config['type']==AgentMuJoCo and \
-                ('reacher' in agent_config.get('exp_name', []) or 'pointmass' in agent_config.get('exp_name', [])):
+                ('reacher' in agent_config.get('exp_name', []) or 'pointmass' in agent_config.get('exp_name', []) or\
+                    'peg' in agent_config.get('exp_name', [])):
                 dists = []; failed_indices = []
+                if demo_M == M or M == 1:
+                    failed_indices = {i:[] for i in xrange(demo_M)}
                 success_thresh = agent_config['success_upper_bound'] # for reacher
                 for m in range(M):
                     if type(agent_config['target_end_effector']) is list:
@@ -219,27 +231,47 @@ class GenDemo(object):
                         target_position = agent_config['target_end_effector'][:3]
                     for i in range(N):
                       index = m*N + i
-                      demo = demos[index]
-                      demo_ee = demos[index].get(END_EFFECTOR_POINTS)
-                      dists.append(np.min(np.sqrt(np.sum((demo_ee[:, :3] - target_position.reshape(1, -1))**2, axis = 1))))
-                      if dists[index] >= success_thresh: #agent_config['success_upper_bound']:
-                        failed_indices.append(index)
-                # import pdb; pdb.set_trace()
-                good_indices = [i for i in xrange(len(demos)) if i not in failed_indices]
-                self._hyperparams['algorithm']['demo_cond'] = len(good_indices)
-                filtered_demos = []
-                filtered_demo_conditions = []
-                for i in good_indices:
-                    filtered_demos.append(demos[i])
-                    filtered_demo_conditions.append(demo_idx_conditions[i])
-
-                print 'Num demos:', len(filtered_demos)
-                if demo_M != M:
+                      if demo_M != M or M == 1:
+                          demo = demos[index]
+                          demo_ee = demo.get(END_EFFECTOR_POINTS)
+                          dists.append(np.min(np.sqrt(np.sum((demo_ee[:, :3] - target_position.reshape(1, -1))**2, axis = 1))))
+                          if dists[index] >= success_thresh: #agent_config['success_upper_bound']:
+                            failed_indices.append(index)
+                      else:
+                          demo = demos[m][i]
+                          demo_ee = demo.get(END_EFFECTOR_POINTS)
+                          dists.append(np.min(np.sqrt(np.sum((demo_ee[:, :3] - target_position.reshape(1, -1))**2, axis = 1))))
+                          if dists[i] >= success_thresh: #agent_config['success_upper_bound']:
+                            failed_indices[m].append(i)
+                if demo_M != M or M == 1:
+                    good_indices = [i for i in xrange(len(demos)) if i not in failed_indices]
+                    self._hyperparams['algorithm']['demo_cond'] = len(good_indices)
+                    filtered_demos = []
+                    filtered_demo_conditions = []
+                    for i in good_indices:
+                        filtered_demos.append(demos[i])
+                        filtered_demo_conditions.append(demo_idx_conditions[i])
+    
+                    print 'Num demos:', len(filtered_demos)
                     shuffle(filtered_demos)
-                for demo in filtered_demos: demo.reset_agent(ioc_agent)
-                demo_list =  SampleList(filtered_demos)
-                demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs(),
-                              'demoConditions': filtered_demo_conditions} #, \
+                    for demo in filtered_demos: demo.reset_agent(ioc_agent)
+                    demo_list =  SampleList(filtered_demos)
+                    demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs(),
+                                  'demoConditions': filtered_demo_conditions} #, \
+                else:
+                    filtered_demos = {i:[] for i in xrange(demo_M)}
+                    filtered_demo_conditions = []
+                    for m in xrange(M):
+                        for j in xrange(N):
+                            if j not in failed_indices[m]:
+                                demos[m][j].reset_agent(ioc_agent)
+                                filtered_demos[m].append(demos[m][j])
+                        filtered_demo_conditions.append(m)
+                        shuffle(filtered_demos[m])
+                    print "Num demos:", sum(len(filtered_demos[m]) for m in xrange(M))
+                    demo_list = [SampleList(filtered_demos[m]) for m in xrange(demo_M)]
+                    demo_store = {'demoX': [demo_list[m].get_X() for m in xrange(demo_M)], 'demoU': [demo_list[m].get_U() for m in xrange(demo_M)], \
+                                    'demoO': [demo_list[m].get_obs() for m in xrange(demo_M)], 'demoConditions': filtered_demo_conditions}
             else:
                 shuffle(demos)
                 for demo in demos: demo.reset_agent(ioc_agent)

@@ -70,9 +70,20 @@ demo_pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
                     np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
                     np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
                     np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])]
+test_pos_body_offset = [np.array([-0.05, 0.18, 0.0]), np.array([-0.15, 0.18, 0.0]),
+                    np.array([-0.15, 0.02, 0.0]), np.array([-0.05, 0.02, 0.0]),
+                    np.array([-0.02, 0.15, 0.0]), np.array([-0.18, 0.15, 0.0]),
+                    np.array([-0.18, 0.05, 0.0]), np.array([-0.02, 0.05, 0.0]),
+                    np.array([0.02, 0.15, 0.0]), np.array([0.02, 0.22, 0.0]),
+                    np.array([-0.05, 0.22, 0.0]), np.array([-0.15, 0.22, 0.0]),
+                    np.array([-0.22, 0.22, 0.0]), np.array([-0.22, 0.15, 0.0]),
+                    np.array([-0.22, 0.05, 0.0]), np.array([-0.22, -0.02, 0.0]),
+                    np.array([-0.15, -0.02, 0.0]), np.array([-0.05, -0.02, 0.0]),
+                    np.array([0.02, -0.02, 0.0]), np.array([0.02, 0.05, 0.0])]
 
 SEED = 0
 NUM_DEMOS = 20
+DEMO_CLUSTERS = 2
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -80,7 +91,7 @@ common = {
     'experiment_dir': EXP_DIR,
     # 'data_files_dir': EXP_DIR + 'data_files_8_demo1_%d/' % SEED,
     # 'data_files_dir': EXP_DIR + 'data_files_LG_demo%d_cost_%d/' % (NUM_DEMOS, SEED),
-    'data_files_dir': EXP_DIR + 'data_files_8_LG_demo%d_local_cost_all_demo_%d/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d/' % (NUM_DEMOS, SEED),
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
@@ -88,7 +99,7 @@ common = {
     'demo_controller_file': DEMO_DIR + 'data_files_8/algorithm_itr_14.pkl', #11 for 1 condition
     'nn_demo': False, # Use neural network demonstrations. For experiment only
     # 'LG_demo_file': os.path.join(EXP_DIR, 'data_files_LG_demo%d_cost_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
-    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_8_LG_demo%d_local_cost_all_demo_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
     'NN_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
     'conditions': TOTAL_CONDITIONS,
     'train_conditions': range(TRAIN_CONDITIONS),
@@ -124,6 +135,32 @@ agent = {
     'render': True,
 }
 
+unlabeled_agent = {
+    'type': AgentMuJoCo,
+    'filename': './mjc_models/reacher_img.xml',
+    'x0': np.zeros(4),
+    'dt': 0.05,
+    'substeps': 5,
+    'randomly_sample_bodypos': False,
+    'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
+    'prohibited_ranges_bodypos':[ [None, None, None, None] ],
+    'pos_body_offset': test_pos_body_offset,
+    'pos_body_idx': np.array([4]),
+    'conditions': len(test_pos_body_offset),
+    'T': 50,
+    'sensor_dims': SENSOR_DIMS,
+    'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
+            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
+            END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+    'meta_include': [],
+    'camera_pos': np.array([0., 0., 3., 0., 0., 0.]),
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ test_pos_body_offset[i], np.array([0., 0., 0.])])
+                            for i in xrange(len(test_pos_body_offset))],
+    'success_upper_bound': 0.05,
+    'render': True,
+} 
+
 demo_agent = {
     'type': AgentMuJoCo,
     'filename': './mjc_models/reacher_img.xml',
@@ -158,8 +195,9 @@ algorithm = {
     'synthetic_cost_samples': 0,
     'global_cost': False, #True
     'num_costs': common['conditions'], #1
-    'demo_M': common['conditions'], #1
+    'demo_M': common['conditions'],
     'demo_var_mult': 1.0,
+    'demo_clusters': DEMO_CLUSTERS,
     'conditions': common['conditions'],  # NON IOC STUFF HERE
     'iterations': 20, #20
     'ioc_maxent_iter': 20,
@@ -230,13 +268,13 @@ algorithm['cost'] = [{
     },
     'T': agent['T'],
     'dO': 16,
-    'iterations': 5000, # TODO - do we need 5k?
+    'iterations': 3000, # TODO - do we need 5k?
     'demo_batch_size': 5, #5
     'sample_batch_size': 5, #5
-    'num_hidden': 3,
+    'num_hidden': 0, #3
     'dim_hidden': 40,
     'ioc_loss': algorithm['ioc'],
-    'mono_reg_weight': 5000.0, # before normalizing, this is 100
+    'mono_reg_weight': 1000.0, # before normalizing, this is 100
     'batch_norm': False,
     'decay': 0.99,
     'approximate_lxx': False,
@@ -354,14 +392,16 @@ config = {
     'common': common,
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs'),
+        'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs'),
         'gifs_per_condition': 1,
     },
     'agent': agent,
+    'unlabeled_agent': unlabeled_agent,
     'demo_agent': demo_agent,
     'gui_on': True,
     'algorithm': algorithm,
     'conditions': common['conditions'],
-    'random_seed': 1,
+    'random_seed': SEED,
 }
 
 common['info'] = generate_experiment_info(config)

@@ -19,6 +19,144 @@ import scipy.io
 TRIALS = 20
 THRESH = {'reacher': 0.05, 'pointmass': 0.1}
 
+def compare_samples(gps, N, agent_config, three_dim=False, weight_varying=False, experiment='reacher'):
+    """
+    Compare samples between IOC and demo policies and visualize them in a plot.
+    Args:
+        gps: GPS object.
+        N: number of samples taken from the policy for comparison
+        config: Configuration of the agent to sample.
+        three_dim: whether the plot is 3D or 2D.
+        weight_varying: whether the experiment is weight-varying or not.
+        experiment: whether the experiment is peg, reacher or pointmass.
+    """
+    assert N == 1
+    pol_iter = gps._hyperparams['algorithm']['iterations'] - 1
+    pol_iter = 14
+    # pol_iter = 13
+    algorithm = gps.data_logger.unpickle(gps._data_files_dir + 'algorithm_itr_%02d' % pol_iter + '.pkl')
+    if not weight_varying:
+        pos_body_offset = gps._hyperparams['agent']['pos_body_offset']
+    M = agent_config['conditions']
+    # if experiment == 'reacher' and not weight_varying: #reset body offsets
+    #     np.random.seed(101)
+    #     for m in range(M):
+    #         self.agent.reset_initial_body_offset(m)
+
+    pol = algorithm.policy_opt.policy
+    # pol_bc = algorithm_bc.policy_opt.policy
+    policies = [pol]
+    samples = {i: [] for i in xrange(len(policies))}
+    agent = agent_config['type'](agent_config)
+    if not weight_varying:
+        ioc_conditions = [agent_config['target_end_effector'][i][:3] for i in xrange(M)]
+    else:
+        ioc_conditions = [np.array([np.log10(agent_config['density_range'][i]), 0.]) \
+                            for i in xrange(M)]
+        print M
+        print len(agent_config['density_range'])
+    
+    from gps.utility.general_utils import mkdir_p
+
+    if 'record_gif' in gps._hyperparams:
+        gif_config = gps._hyperparams['record_gif']
+        gif_fps = gif_config.get('fps', None)
+        gif_dir = gif_config.get('test_gif_dir', gps._hyperparams['common']['data_files_dir'])
+        mkdir_p(gif_dir)
+    for i in xrange(M):
+        # Gather demos.
+        for j in xrange(N):
+            for k in xrange(len(samples)):
+                gif_name = os.path.join(gif_dir, 'pol%d_cond%d.gif' % (k, i))
+                sample = agent.sample(
+                    policies[k], i,
+                    verbose=(i < gps._hyperparams['verbose_trials']), noisy=True,
+                    record_gif=gif_name, record_gif_fps=gif_fps
+                    )
+                samples[k].append(sample)
+
+    dists_to_target = [np.zeros((M*N)) for i in xrange(len(samples))]
+    dists_diff = []
+    # all_success_conditions, only_ioc_conditions, only_demo_conditions, all_failed_conditions, \
+    #     percentages = [], [], [], [], []
+    success_conditions, failed_conditions, percentages = [], [], []
+    for i in xrange(len(samples[0])):
+        if experiment == 'reacher':
+            target_position = agent_config['target_end_effector'][i][:3]
+        for j in xrange(len(samples)):
+            sample_end_effector = samples[j][i].get(END_EFFECTOR_POINTS)
+            dists_to_target[j][i] = np.nanmin(np.sqrt(np.sum((sample_end_effector[:, :3] - target_position.reshape(1, -1))**2, axis = 1)), axis = 0)
+            # Just choose the last time step since it may become unstable after achieving the minimum point.
+            # import pdb; pdb.set_trace()
+            # dists_to_target[j][i] = np.sqrt(np.sum((sample_end_effector[:, :3] - target_position.reshape(1, -1))**2, axis = 1))[-1]
+        if dists_to_target[0][i] <= THRESH['reacher']:
+            success_conditions.append(ioc_conditions[i])
+        else:
+            failed_conditions.append(ioc_conditions[i])
+        # dists_diff.append(np.around(dists_to_target[0][i] - dists_to_target[1][i], decimals=2))
+    percentages.append(round(float(len(success_conditions))/len(ioc_conditions), 2))
+    percentages.append(round(float(len(failed_conditions))/len(ioc_conditions), 2))
+    from matplotlib.patches import Rectangle
+
+    plt.close('all')
+    fig = plt.figure(figsize=(8, 4))
+    ioc_conditions_zip = zip(*ioc_conditions)
+    success_zip = zip(*success_conditions)
+    failed_zip = zip(*failed_conditions)
+
+    if three_dim:
+        ax = Axes3D(fig)
+        ax.scatter(all_success_zip[0], all_success_zip[1], all_success_zip[2], c='y', marker='o')
+        ax.scatter(all_failed_zip[0], all_failed_zip[1], all_failed_zip[2], c='r', marker='x')
+        ax.scatter(only_ioc_zip[0], only_ioc_zip[1], only_ioc_zip[2], c='g', marker='^')
+        ax.scatter(only_demo_zip[0], only_demo_zip[1], only_demo_zip[2], c='r', marker='v')
+        training_positions = zip(*pos_body_offset)
+        ax.scatter(training_positions[0], training_positions[1], training_positions[2], s=40, c='b', marker='*')
+        box = ax.get_position()
+    else:
+        subplt = plt.subplot()
+        subplt.scatter(success_zip[0], success_zip[1], c='g', marker='o', s=50, lw=0)
+        if len(failed_conditions) > 0:
+            subplt.scatter(failed_zip[0], failed_zip[1], c='r', marker='x', s=50)
+        for i in xrange(M*N):
+            subplt.annotate(repr(round(dists_to_target[0][i],2)), (ioc_conditions_zip[0][i], ioc_conditions_zip[1][i]))
+        # for i, txt in enumerate(dists_to_target[0]):
+        #     subplt.annotate(repr(round(txt,2)), (ioc_conditions_zip[0][i], 0.5))
+        # for i, txt in enumerate(dists_to_target[1]):
+        #     subplt.annotate(repr(round(txt,2)), (ioc_conditions_zip[0][i], 0.0))
+        # for i, txt in enumerate(dists_to_target[2]):
+        #     subplt.annotate(repr(round(txt,2)), (ioc_conditions_zip[0][i], -0.5))
+        ax = plt.gca()
+        ax.legend(['success: ' + repr(percentages[0]), 'failed: ' + repr(percentages[1])], \
+                    loc='upper center', bbox_to_anchor=(0.4, -0.05), shadow=True, ncol=3)
+        if experiment == 'peg':
+            ax.add_patch(Rectangle((-0.1, -0.1), 0.2, 0.2, fill = False, edgecolor = 'blue')) # peg
+        if experiment == 'reacher':
+            ax.add_patch(Rectangle((-0.1, -0.1), 0.2, 0.2, fill = False, edgecolor = 'blue'))
+        # for i in xrange(len(policies)):
+        #     subplt.annotate(pol_names[i], (ax.get_xticks()[0], yrange[i]), horizontalalignment='left')
+        # for i in xrange(len(policies)):
+            # subplt.annotate(repr(percentages[2*i]*100) + "%", (ax.get_xticks()[-1], yrange[i]), color='green')
+        # ax.xaxis.set_ticks_position('bottom')
+        # ax.yaxis.set_ticks_position('left')
+        # ax.spines['right'].set_visible(False)
+        # ax.spines['top'].set_visible(False)
+        # ax.spines['left'].set_visible(False)
+        # ax.tick_params(axis='y', which='both',length=0)
+    # ax.legend(['all_success: ' + repr(percentages[0]), 'all_failed: ' + repr(percentages[1]), 'only_ioc: ' + repr(percentages[2]), \
+    #                 'only_demo: ' + repr(percentages[3])], loc='upper center', bbox_to_anchor=(0.5, -0.05), \
+    #                 shadow=True, ncol=2)
+    # subplt.plot(all_success_zip[0], [x - 0.5 for x in all_success_zip[1]], c='y', marker='o')
+    # if len(all_failed_zip) > 0:
+    #     subplt.plot(all_failed_zip[0], [x - 0.5 for x in all_failed_zip[1]], c='r', marker='x')
+    # else:
+    #     subplt.plot([], [], c='r', marker='x')
+    # plt.title("Distribution of samples drawn from various policies of 2-link arm task")
+    plt.title("Reacher with multiple conditions")
+    plt.savefig(gps._data_files_dir + 'reacher_multiple.png')
+    plt.close('all')
+
+
 def compare_samples_curve(gps, N, agent_config, three_dim=True, weight_varying=False, experiment='peg'):
     """
     Compare samples between IOC and demo policies and visualize them in a plot.

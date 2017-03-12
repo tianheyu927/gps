@@ -27,15 +27,13 @@ class PolicyCloningTf(PolicyOptTf):
         demo_file = hyperparams['demo_file']
 
         if hyperparams.get('agent', False):
-            train_samples, test_samples = self.extract_supervised_data(demo_agent, demo_file)
-            if test_samples:
-                self.update(train_samples.get_obs(), train_samples.get_U(), 1.0, 1.0, test_obs=test_samples.get_obs(),\
-                            test_acts=test_samples.get_U(), behavior_clone=True)
+            trainO, trainU, testO, testU = self.extract_supervised_data(demo_agent, demo_file)
+            if testO is not None:
+                self.update(trainO, trainU, 1.0, 1.0, test_obs=testO,\
+                            test_acts=testU, behavior_clone=True)
             else:
-                self.update(train_samples.get_obs(), train_samples.get_U(), 1.0, 1.0, test_obs=None,\
+                self.update(trainO, trainU, 1.0, 1.0, test_obs=None,\
                             test_acts=None, behavior_clone=True)
-            self.sup_samples = train_samples
-            self.sup_test_samples = test_samples
 
         self.demo_agent = None  # don't pickle agent
         if self._hyperparams.get('agent', False):
@@ -44,17 +42,16 @@ class PolicyCloningTf(PolicyOptTf):
 
     def extract_supervised_data(self, demo_agent, demo_file):
         X, U, O, cond = extract_demos(demo_file)
-        N = X.shape[0]
+        N = O.shape[0]
         print "Number of demos: %d" % N
         n_test = N/5 # number of demos for testing
         if n_test != 0:
-            testX = X[-n_test:]
+            testO = O[-n_test:]
             testU = U[-n_test:]
-            X = X[:-n_test]
+            O = O[:-n_test]
             U = U[:-n_test]
-            test_samples = xu_to_sample_list(demo_agent, testX, testU)
         else:
-            test_samples = None
-        train_samples = xu_to_sample_list(demo_agent, X, U)
-        
-        return train_samples, test_samples
+            testO = None
+            testU = None
+
+        return O, U, testO, testU

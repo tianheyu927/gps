@@ -76,7 +76,7 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
                              demo_batch_size=5, sample_batch_size=5, phase=None, ioc_loss='ICML',
                              Nq=1, smooth_reg_weight=0.0, mono_reg_weight=0.0, gp_reg_weight=0.0,
                              multi_obj_supervised_wt=1.0, learn_wu=False, x_idx=None, img_idx=None,
-                              num_filters=[15,15,15], batch_norm=False, decay=0.9):
+                              num_filters=[15,15,15], batch_norm=False, decay=0.9, idx=0):
     """ Construct cost net with images and robot config.
     Args:
         ...
@@ -109,16 +109,16 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
 
     demo_cost_preu, _, _, demo_costs = nn_vis_forward(demo_obs, demo_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu,
                                                     dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters,
-                                                    batch_norm=batch_norm, is_training=True, decay=decay)
+                                                    batch_norm=batch_norm, is_training=True, decay=decay, idx=idx)
     sample_cost_preu, _, _, sample_costs = nn_vis_forward(sample_obs, sample_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu,
                                                     dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters,
-                                                    batch_norm=batch_norm, is_training=True, decay=decay)
+                                                    batch_norm=batch_norm, is_training=True, decay=decay, idx=idx)
     sup_cost_preu, _, _, sup_costs = nn_vis_forward(sup_obs, sup_torque_norm, num_hidden=num_hidden,learn_wu=learn_wu, dim_hidden=dim_hidden,
                                                     x_idx=x_idx, img_idx=img_idx, num_filters=num_filters, batch_norm=batch_norm,
-                                                    is_training=True, decay=decay)
+                                                    is_training=True, decay=decay, idx=idx, is_sup=True)
     _, test_imgfeat, _, test_cost  = nn_vis_forward(test_obs, test_torque_norm, num_hidden=num_hidden, learn_wu=learn_wu,
                                                     dim_hidden=dim_hidden, x_idx=x_idx, img_idx=img_idx, num_filters=num_filters,
-                                                    batch_norm=batch_norm, is_training=False, decay=decay)
+                                                    batch_norm=batch_norm, is_training=False, decay=decay, idx=idx)
 
     # Build a differentiable test cost by feeding each timestep individually
     test_obs_single = tf.expand_dims(test_obs_single, 0)
@@ -126,7 +126,8 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
 
     test_cost_single_preu, test_X_single, test_feat_single, _ = nn_vis_forward(test_obs_single, test_torque_single, num_hidden=num_hidden,
                                                                                 dim_hidden=dim_hidden, learn_wu=learn_wu, x_idx=x_idx,
-                                                                                img_idx=img_idx, batch_norm=batch_norm, is_training=True, decay=decay)
+                                                                                img_idx=img_idx, batch_norm=batch_norm, is_training=True, decay=decay,
+                                                                                idx=idx)
     test_cost_single = tf.squeeze(test_cost_single_preu)
 
     sup_loss = tf.nn.l2_loss(sup_costs - sup_cost_labels)*multi_obj_supervised_wt
@@ -146,7 +147,10 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
         # regularization
         """
         """
-        raise NotImplementedError("Smoothness reg not implemented")
+        smooth_reg = l2_smooth_loss(slope_prev, slope_next)*smooth_reg_weight
+        tf.scalar_summary('smooth_reg', smooth_reg)
+    else:
+        smooth_reg = 0
 
     if mono_reg_weight > 0:
         demo_slope = tf.slice(slope_next, begin=[0,0,0], size=[demo_batch_size, -1, -1])
@@ -163,10 +167,17 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     # TODO - removed loss weights, changed T, batching, num samples
     # demo cond, num demos, etc.
     ioc_loss = icml_loss(demo_costs, sample_costs, demo_imp_weight, sample_imp_weight, Z)
-    ioc_loss += mono_reg
+    tf.scalar_summary('ioc_loss (no reg)', ioc_loss)
+    ioc_loss += (mono_reg + smooth_reg)
+    tf.scalar_summary('ioc_loss', ioc_loss)
+    merged = tf.merge_all_summaries()
 
     outputs = {
         'multiobj_loss': sup_loss+ioc_loss,
+        'demo_costs': demo_costs,
+        'demo_u_costs': demo_u_costs,
+        'sample_costs': sample_costs,
+        'sample_u_costs': sample_u_costs,
         'sup_loss': sup_loss,
         'ioc_loss': ioc_loss,
         'test_loss': test_cost,
@@ -174,6 +185,8 @@ def multimodal_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
         'test_loss_single': test_cost_single,
         'test_X_single': test_X_single,
         'test_feat_single': test_feat_single,
+        'weight': A,
+        'summary_merged': merged,
     }
     return inputs, outputs
 
@@ -239,7 +252,10 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
         # regularization
         """
         """
-        raise NotImplementedError("Smoothness reg not implemented")
+        smooth_reg = l2_smooth_loss(slope_prev, slope_next)*smooth_reg_weight
+        tf.scalar_summary('smooth_reg', smooth_reg)
+    else:
+        smooth_reg = 0
 
     if mono_reg_weight > 0:
         demo_slope = tf.slice(slope_next, begin=[0,0,0], size=[demo_batch_size, -1, -1])
@@ -258,7 +274,7 @@ def construct_nn_cost_net_tf(num_hidden=3, dim_hidden=42, dim_input=27, T=100,
     # demo cond, num demos, etc.
     ioc_loss = icml_loss(demo_costs, sample_costs, demo_imp_weight, sample_imp_weight, Z)
     tf.scalar_summary('ioc_loss (no reg)', ioc_loss)
-    ioc_loss += mono_reg
+    ioc_loss += (mono_reg + smooth_reg)
     tf.scalar_summary('ioc_loss', ioc_loss)
     merged = tf.merge_all_summaries()
 
@@ -398,13 +414,14 @@ def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, is_training=True, 
         return layer
 
 def compute_image_feats(img_input, num_filters=[15,15,15], batch_norm=False,
-                        is_training=True, decay=0.9):
+                        is_training=True, decay=0.9, idx=0, is_sup=False):
     filter_size = 5
     num_channels=3
     # Store layers weight & bias
     with tf.variable_scope('conv_params'):
+        wc1, init = init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1') # 5x5 conv, 1 input, 32 outputs
         weights = {
-            'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1')[0], # 5x5 conv, 1 input, 32 outputs
+            'wc1': wc1,
             'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2')[0], # 5x5 conv, 32 inputs, 64 outputs
             'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3')[0], # 5x5 conv, 32 inputs, 64 outputs
         }
@@ -414,10 +431,19 @@ def compute_image_feats(img_input, num_filters=[15,15,15], batch_norm=False,
             'bc2': init_bias([num_filters[1]], name='bc2')[0],
             'bc3': init_bias([num_filters[2]], name='bc3')[0],
         }
+        if is_training and not is_sup and init:
+            for key, w in weights.iteritems():
+                variable_summaries(w, 'g_%d/conv_params/%s' % (idx, key))
+            for key, b in biases.iteritems():
+                variable_summaries(b, 'g_%d/conv_params/%s' % (idx, key))
 
     conv_layer_0 = conv2d(img=img_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, is_training=is_training, decay=decay, id=0)
     conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, is_training=is_training, decay=decay, id=1)
     conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, is_training=is_training, decay=decay, id=2)
+    if is_training and not is_sup and init:
+        tf.histogram_summary('conv_layer_0', conv_layer_0)
+        tf.histogram_summary('conv_layer_1', conv_layer_1)
+        tf.histogram_summary('conv_layer_2', conv_layer_2)
 
     _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
     num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
@@ -438,17 +464,23 @@ def compute_image_feats(img_input, num_filters=[15,15,15], batch_norm=False,
     # rearrange features to be [batch_size, num_fp, num_rows, num_cols]
     features = tf.reshape(tf.transpose(conv_layer_2, [0,3,1,2]),
                           [-1, num_rows*num_cols])
+    if is_training and not is_sup and init:
+        tf.histogram_summary('features', features)
     softmax = tf.nn.softmax(features)
+    if is_training and not is_sup and init:
+        tf.histogram_summary('softmax features', softmax)
 
     fp_x = tf.reduce_sum(tf.mul(x_map, softmax), [1], keep_dims=True)
     fp_y = tf.reduce_sum(tf.mul(y_map, softmax), [1], keep_dims=True)
 
     fp = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
+    if is_training and not is_sup and init:
+        tf.histogram_summary('fp features', fp)
     return fp
 
 
 def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=False, x_idx=None, img_idx=None,
-                   num_filters=[15,15,15], batch_norm=False, is_training=True, decay=0.9):
+                   num_filters=[15,15,15], batch_norm=False, is_training=True, idx=0, decay=0.9, is_sup=False):
 
     net_input = tf.transpose(net_input)
     x_input = tf.transpose(tf.gather(net_input, x_idx))
@@ -461,7 +493,7 @@ def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=Fal
     img_input = tf.transpose(img_input, perm=[0,3,2,1])
 
     img_feats = compute_image_feats(img_input, num_filters=num_filters, batch_norm=batch_norm,
-                                    is_training=is_training, decay=decay)
+                                    is_training=is_training, decay=decay, idx=idx, is_sup=is_sup)
     if len(x_input.get_shape()) == 3:
         img_feats = tf.reshape(img_feats, [int(x_input.get_shape()[0]), int(x_input.get_shape()[1]), -1])
 
@@ -480,12 +512,15 @@ def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=Fal
     u_input = tf.reshape(u_input, [-1, 1])
 
     return_feat = compute_feats(all_feat, num_hidden=num_hidden, dim_hidden=dim_hidden, batch_norm=batch_norm,
-                                is_training=is_training, decay=decay)
+                                is_training=is_training, decay=decay, idx=idx, is_sup=is_sup)
     feat = tf.reshape(return_feat, [-1, dim_hidden])
 
     with tf.variable_scope('cost_forward'):
-        A, _ = safe_get('Acost', shape=(dim_hidden, dim_hidden))
+        A, init = safe_get('Acost', shape=(dim_hidden, dim_hidden))
         b, _ = safe_get('bcost', shape=(dim_hidden))
+        if is_training and not is_sup and init:
+            variable_summaries(A, 'g_%d/cost_forward/Acost' % idx)
+            variable_summaries(b, 'g_%d/cost_forward/bcost' % idx)
         Ax = tf.matmul(feat, A, transpose_b=True)+b
         AxAx = Ax*Ax
 
@@ -506,6 +541,9 @@ def nn_vis_forward(net_input, u_input, num_hidden=1, dim_hidden=42, learn_wu=Fal
         u_cost = tf.reshape(u_cost, [-1, 1])
     all_costs_preu = tf.reduce_sum(AxAx, reduction_indices=[-1], keep_dims=True)
     all_costs = all_costs_preu + u_cost
+    if is_training and not is_sup and init:
+        tf.histogram_summary('wu', u_cost)
+        tf.histogram_summary('all_costs_no_torque', all_costs_preu)
     return all_costs_preu, return_imgfeat, return_feat, all_costs
 
 
@@ -557,6 +595,10 @@ def l2_mono_loss(slope):
     # loss = tf.nn.l2_loss(_temp)# _temp*_temp).sum() / batch_size
     loss = tf.reduce_mean(tf.mul(_temp, _temp))
     return loss
+
+def l2_smooth_loss(slope_prev, slope_next):
+    diff = slope_next - slope_prev
+    return tf.reduce_mean(tf.mul(diff, diff))
 
 
 def main():

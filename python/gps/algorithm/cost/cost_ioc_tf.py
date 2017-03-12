@@ -243,8 +243,10 @@ class CostIOCTF(Cost):
         self.summary_merged = outputs['summary_merged']
         
         self.saver = tf.train.Saver()
-
-        self.session = tf.Session()
+        # set gpu memory
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.04)
+        tf_config = tf.ConfigProto(gpu_options=gpu_options)
+        self.session = tf.Session(config=tf_config)
         self.session.run(tf.initialize_all_variables())
 
     def run(self, targets, **feeds):

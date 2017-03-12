@@ -46,7 +46,7 @@ SENSOR_DIMS = {
     ACTION: 2,
     RGB_IMAGE: IMAGE_WIDTH*IMAGE_HEIGHT*IMAGE_CHANNELS,
     RGB_IMAGE_SIZE: 3,
-    IMAGE_FEAT: 30,  # affected by num_filters set below.
+    # IMAGE_FEAT: 30,  # affected by num_filters set below.
 }
 
 PR2_GAINS = np.array([1.0, 1.0])
@@ -61,12 +61,18 @@ EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 #    pos_body_offset.append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1, 0]))
 
 # restrict to right triangle of space.
-CONDITIONS = 5
-pos_body_offset = [np.array([0.1,-0.1,0.0]),
-                   np.array([0.1,0.1,0.0]),
-                   np.array([0.1,0.3,0.0]),
-                   np.array([0.0,0.2,0.0]),
-                   np.array([0.0,0.0,0.0])]
+# CONDITIONS = 5
+# pos_body_offset = [np.array([0.1,-0.1,0.0]),
+#                    np.array([0.1,0.1,0.0]),
+#                    np.array([0.1,0.3,0.0]),
+#                    np.array([0.0,0.2,0.0]),
+#                    np.array([0.0,0.0,0.0])]
+
+CONDITIONS = 8
+pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
+                    np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
+                    np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
+                    np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])]
 
 # extrapolations
 #TEST_CONDITIONS = 5
@@ -79,12 +85,14 @@ pos_body_offset = [np.array([0.1,-0.1,0.0]),
 #all_pos_body_offset = pos_body_offset + test_pos_body_offset
 #TOTAL_CONDITIONS = TRAIN_CONDITIONS + TEST_CONDITIONS
 
+SEED = 0
+NUM_DEMOS = 20
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files/',
+    'data_files_dir': EXP_DIR + 'data_files_8/',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'conditions': CONDITIONS,
@@ -110,7 +118,7 @@ agent = {
     'conditions': common['conditions'],
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT],  # TODO - may want to include fp velocities.
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
     'target_idx': np.array(list(range(3,6))),
     'meta_include': [RGB_IMAGE_SIZE],
@@ -127,7 +135,7 @@ algorithm = {
     'type': AlgorithmMDGPS,
     'max_ent_traj': 0.001,
     'conditions': common['conditions'],
-    'iterations': 13,
+    'iterations': 20,
     'kl_step': 1.0, # TODO was 1.0
     'min_step_mult': 0.1, # TODO was 0.5, maybe try 0.1
     'max_step_mult': 3.0, # TODO was 3.0, maybe try 2.0
@@ -157,6 +165,8 @@ algorithm['policy_opt'] = {
     'fc_only_iterations': 5000,
     'init_iterations': 1000,
     'iterations': 1000,  # was 100
+    'random_seed': SEED,
+    'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',
 }
 
@@ -189,6 +199,8 @@ algorithm['cost'] = [{
     'costs': [torque_cost_1[i], fk_cost_1[i]],
     'weights': [2.0, 1.0],
 }  for i in range(common['conditions'])]
+
+algorithm['fk_cost'] = fk_cost_1
 
 algorithm['dynamics'] = {
     'type': DynamicsLRPrior,
@@ -223,6 +235,7 @@ config = {
     'agent': agent,
     'gui_on': True,
     'algorithm': algorithm,
+    'random_seed': SEED,
     'conditions': common['conditions'],
 }
 

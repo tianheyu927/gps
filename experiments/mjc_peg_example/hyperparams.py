@@ -33,16 +33,23 @@ PR2_GAINS = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 
 BASE_DIR = '/'.join(str.split(gps_filepath, '/')[:-2])
 EXP_DIR = BASE_DIR + '/../experiments/mjc_peg_example/'
+CONDITIONS = 1
+# pos_body_offset = [np.array([-0.05, -0.05, -0.05]), np.array([-0.05, -0.05, 0.05]), np.array([-0.05, 0.05, -0.05]),
+#                     np.array([-0.05, 0.05, 0.05]), np.array([0., 0., 0.]), np.array([0.05, -0.05, -0.05]),
+#                     np.array([0.05, -0.05, 0.05]), np.array([0.05, 0.05, -0.05]), np.array([0.05, 0.05, 0.05])]
 
+pos_body_offset = [np.array([-0.05, -0.05, -0.05])]
+
+SEED = 0
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files/',
+    'data_files_dir': EXP_DIR + 'data_files/', #data_files_9
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
-    'conditions': 1,
+    'conditions': CONDITIONS,
 }
 
 if not os.path.exists(common['data_files_dir']):
@@ -57,7 +64,7 @@ agent = {
     'substeps': 5,
     'conditions': common['conditions'],
     'pos_body_idx': np.array([1]),
-    'pos_body_offset': [np.array([0, 0.2, 0])],
+    'pos_body_offset': pos_body_offset,
     # 'pos_body_offset': [np.array([0, 0.2, 0]), np.array([0, 0.1, 0]),
     #                     np.array([0, -0.1, 0]), np.array([0, -0.2, 0])],
     # 'pos_body_offset': [np.array([-0.05, -0.05, -0.05]), np.array([-0.05, -0.05, 0.05]), np.array([-0.05, 0.05, -0.05]),
@@ -76,8 +83,8 @@ agent = {
 algorithm = {
     'type': AlgorithmTrajOpt,
     'conditions': common['conditions'],
-    'iterations': 12,
-    'max_ent_traj': 1.0,  # NOTE - this was not set to 1 when initial demos were generated
+    'iterations': 12, #12
+    'max_ent_traj': 0.001,  # NOTE - this was not set to 1 when initial demos were generated
     'agent_x0': agent['x0'],
     'agent_pos_body_idx': agent['pos_body_idx'],
     'agent_pos_body_offset': agent['pos_body_offset'],
@@ -110,12 +117,27 @@ fk_cost = {
     'evalnorm': evall1l2term,
 }
 
+# Create second cost function for last step only.
+final_cost = {
+    'type': CostFK,
+    'ramp_option': RAMP_FINAL_ONLY,
+    'target_end_effector': fk_cost['target_end_effector'],
+    'wp': fk_cost['wp'],
+    'l1': 1.0,
+    'l2': 0.0,
+    'alpha': 1e-5,
+    'wp_final_multiplier': 10.0,
+    'evalnorm': evall1l2term,
+}
+
 algorithm['cost'] = {
     'type': CostSum,
-    'costs': [torque_cost, fk_cost],
-    'weights': [100.0, 100.0],
+    'costs': [torque_cost, fk_cost, final_cost], #added final cost
+    'weights': [1.0, 1.0, 1.0], # added final cost
     'smooth_reg_weight': 0.0,
 }
+
+algorithm['fk_cost'] = fk_cost
 
 algorithm['dynamics'] = {
     'type': DynamicsLRPrior,

@@ -12,13 +12,13 @@ from gps.algorithm.algorithm_mdgps import AlgorithmMDGPS
 from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.cost.cost_sum import CostSum
-from gps.algorithm.cost.cost_ioc_nn import CostIOCNN
-from gps.algorithm.cost.cost_ioc_supervised import CostIOCSupervised
+from gps.algorithm.cost.cost_ioc_tf import CostIOCTF
 from gps.algorithm.cost.cost_utils import RAMP_FINAL_ONLY, evall1l2term
 from gps.algorithm.dynamics.dynamics_lr_prior import DynamicsLRPrior
 from gps.algorithm.dynamics.dynamics_prior_gmm import DynamicsPriorGMM
 from gps.algorithm.traj_opt.traj_opt_lqr_python import TrajOptLQRPython
-from gps.algorithm.policy_opt.policy_opt_caffe import PolicyOptCaffe
+from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
+from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.policy.lin_gauss_init import init_demo, init_lqr
 from gps.utility.demo_utils import generate_pos_body_offset, generate_x0, generate_pos_idx
 from gps.algorithm.policy.policy_prior_gmm import PolicyPriorGMM
@@ -40,28 +40,48 @@ PR2_GAINS = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 
 BASE_DIR = '/'.join(str.split(gps_filepath, '/')[:-2])
 EXP_DIR = BASE_DIR + '/../experiments/mjc_mdgps_ioc_example/'
-# DEMO_DIR = BASE_DIR + '/../experiments/mjc_mdgps_multiple_example/on_classic/'
-DEMO_DIR = BASE_DIR + '/../experiments/mjc_mdgps_example/on_policy/'
-DEMO_POLICY_DIR = [DEMO_DIR + 'data_files_maxent_9cond_z_train_demo_%d/' % i for i in xrange(3)]
-DEMO_POLICY_INDEX = ['11', '11', '11']
-# DEMO_DIR = BASE_DIR + '/../experiments/mjc_badmm_example_'
-LG_DIR = BASE_DIR + '/../experiments/mjc_peg_example/'
-DEMO_CONDITIONS = 60
+LG_DEMO_DIR = BASE_DIR + '/../experiments/mjc_peg_example/'
+CONDITIONS = 1
+DEMO_CONDITIONS = 1
+# pos_body_offset = [np.array([-0.05, -0.05, -0.05]), np.array([-0.05, 0.05, 0.05]),
+#                         np.array([-0.05, -0.05, 0.05]), np.array([0.0,0.0,0.0]),
+#                         np.array([-0.05,0.05,-0.05]), np.array([0.05,0.05,-0.05]),
+#                         np.array([0.05,-0.05,-0.05]),
+#                         np.array([0.05, -0.05, 0.05]), np.array([0.05, 0.05, 0.05])]
+
+# demo_pos_body_offset = [np.array([-0.05, -0.05, -0.05]), np.array([-0.05, 0.05, 0.05]),
+#                         np.array([-0.05, -0.05, 0.05]), np.array([0.0,0.0,0.0]),
+#                         np.array([-0.05,0.05,-0.05]), np.array([0.05,0.05,-0.05]),
+#                         np.array([0.05,-0.05,-0.05]),
+#                         np.array([0.05, -0.05, 0.05]), np.array([0.05, 0.05, 0.05])]
+pos_body_offset = [np.array([-0.05, -0.05, -0.05])]
+demo_pos_body_offset = [np.array([-0.05, -0.05, -0.05])]
+
+
+SEED = 0
+NUM_DEMOS = 20
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     # 'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_06.pkl',
-    'demo_exp_dir': DEMO_DIR,
-    'demo_controller_file': [DEMO_POLICY_DIR[i] + 'algorithm_itr_' + DEMO_POLICY_INDEX[i] + '.pkl' for i in xrange(3)],
-    # 'demo_controller_file': DEMO_DIR + 'data_files/algorithm_itr_11.pkl',
-    # 'demo_controller_file': DEMO_DIR + 'data_files_maxent_9cond_z_0.05_0/algorithm_itr_11.pkl',
-    # 'demo_controller_file': DEMO_DIR + 'data_files_maxent_4cond_0.05_z_0/algorithm_itr_11.pkl',
-    'LG_controller_file': LG_DIR + 'data_files/algorithm_itr_09.pkl',
-    'conditions': 9,
-    # 'dense': True # For dense/sparse demos experiment only
-    'nn_demo': True, # Use neural network demonstrations. For experiment only
+    'demo_exp_dir': LG_DEMO_DIR,
+    # 'demo_controller_file': [DEMO_POLICY_DIR[i] + 'algorithm_itr_' + DEMO_POLICY_INDEX[i] + '.pkl' for i in xrange(3)],
+    # 'demo_controller_file': LG_DEMO_DIR + 'data_files_9/algorithm_itr_11.pkl',
+    'demo_controller_file': LG_DEMO_DIR + 'data_files/algorithm_itr_11.pkl',
+    # 'data_files_dir': EXP_DIR + 'data_files_9_LG_local_cost_demo_%d_%d/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_LG_demo_%d_%d/' % (NUM_DEMOS, SEED),
+    'target_filename': EXP_DIR + 'target.npz',
+    'log_filename': EXP_DIR + 'log.txt',
+    # 'LG_demo_file': os.path.join(EXP_DIR, 'data_files_9_LG_local_cost_demo_%d_%d/' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_LG_demo_%d_%d/' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'NN_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
+    'conditions': CONDITIONS,
+    'nn_demo': False, # Use neural network demonstrations. For experiment only
 }
+
+if not os.path.exists(common['data_files_dir']):
+    os.makedirs(common['data_files_dir'])
 
 agent = {
     'type': AgentMuJoCo,
@@ -76,9 +96,10 @@ agent = {
     'sampling_range_bodypos': [np.array([-0.15,-0.15, -0.15]), np.array([0.15, 0.15, 0.15])], # Format is [lower_lim, upper_lim]
     'prohibited_ranges_bodypos':[[None, None, None, None]],
     'pos_body_idx': np.array([1]),
-    'pos_body_offset': [np.array([-0.1, -0.1, -0.1]), np.array([-0.1, -0.1, 0.1]), np.array([-0.1, 0.1, -0.1]),
-                np.array([-0.1, 0.1, 0.1]), np.array([0, 0, 0]), np.array([0.1, -0.1, -0.1]),
-                np.array([0.1, -0.1, 0.1]), np.array([0.1, 0.1, -0.1]), np.array([0.1, 0.1, 0.1])],
+    'pos_body_offset': pos_body_offset,
+    # [np.array([-0.1, -0.1, -0.1]), np.array([-0.1, -0.1, 0.1]), np.array([-0.1, 0.1, -0.1]),
+    #             np.array([-0.1, 0.1, 0.1]), np.array([0, 0, 0]), np.array([0.1, -0.1, -0.1]),
+    #             np.array([0.1, -0.1, 0.1]), np.array([0.1, 0.1, -0.1]), np.array([0.1, 0.1, 0.1])],
     'T': 100,
     'sensor_dims': SENSOR_DIMS,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
@@ -92,15 +113,20 @@ agent = {
 demo_agent = {
     'type': AgentMuJoCo,
     'filename': './mjc_models/pr2_arm3d.xml',
-    'x0': generate_x0(np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
-                      np.zeros(7)]), DEMO_CONDITIONS),
+    'exp_name': 'peg',
+    # 'x0': generate_x0(np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
+    #                   np.zeros(7)]), DEMO_CONDITIONS),
+    'x0': np.concatenate([np.array([0.1, 0.1, -1.54, -1.7, 1.54, -0.2, 0]),
+                          np.zeros(7)]),
     'dt': 0.05,
     'substeps': 5,
     'conditions': DEMO_CONDITIONS,
-    'pos_body_idx': generate_pos_idx(DEMO_CONDITIONS),
+    'pos_body_idx': np.array([1]),
+    # 'pos_body_idx': generate_pos_idx(DEMO_CONDITIONS),
     # 'pos_body_offset': [np.array([0, 0.2, 0]), np.array([0, 0.1, 0]),
     #                     np.array([0, -0.1, 0]), np.array([0, -0.2, 0])],
-    'pos_body_offset': generate_pos_body_offset(DEMO_CONDITIONS),
+    # 'pos_body_offset': generate_pos_body_offset(DEMO_CONDITIONS),
+    'pos_body_offset': demo_pos_body_offset,
     'T': 100,
     'sensor_dims': SENSOR_DIMS,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS,
@@ -118,69 +144,60 @@ demo_agent = {
 algorithm = {
     'type': AlgorithmMDGPS,
     'conditions': common['conditions'],
-    'learning_from_prior': True,
     'ioc' : 'ICML',
-    'ioc_maxent_iter': 30,
-    'iterations': 40,
+    # 'ioc_maxent_iter': 30,
+    'iterations': 25, #20
     'kl_step': 0.5,
     'min_step_mult': 0.4,
-    'max_step_mult': 4.0,
-    'kl_step_no_ioc': 0.5,
-    'min_step_mult_no_ioc': 0.4,
-    'max_step_mult_no_ioc': 4.0,
+    'max_step_mult': 4.0, #4.0
     # 'min_step_mult': 1.0,
     # 'max_step_mult': 1.0,
     'policy_sample_mode': 'replace',
     'max_ent_traj': 1.0,
-    'demo_distr_empest': True,
+    'demo_M': common['conditions'], #1
     'demo_var_mult': 1.0,
-    'init_var_mult': 1.0,
     # 'demo_cond': 15,
-    # 'num_demos': 3,
-    'num_demos': 1,
-    'init_samples': 5,
-    'synthetic_cost_samples': 100,
-    # 'synthetic_cost_samples': 0, # Remember to change back to 100 when done with the 50 samples exp
+    'num_demos': NUM_DEMOS,
+    'synthetic_cost_samples': 0,
     'target_end_effector': np.array([0.0, 0.3, -0.5, 0.0, 0.3, -0.2]),
-    'global_cost': True,
+    'global_cost': False,
+    'num_costs': common['conditions'],
     'sample_on_policy': True,
-    'init_demo_policy': False,
-    'policy_eval': False,
-    'bootstrap': False,
     'success_upper_bound': 0.10,
 }
 
 # Use for nn demos
-algorithm['init_traj_distr'] = {
-    # 'type': init_lqr,
-    'type': init_demo,
-    'init_gains':  1.0 / PR2_GAINS,
-    'init_acc': np.zeros(SENSOR_DIMS[ACTION]),
-    'init_var': 5.0,
-    'stiffness': 1.0,
-    'stiffness_vel': 0.5,
-    'final_weight': 50.0,
-    'dt': agent['dt'],
-    'T': agent['T'],
-}
-
-# Use for LG demos.
 # algorithm['init_traj_distr'] = {
+#     # 'type': init_lqr,
 #     'type': init_demo,
-#     'init_gains':  0.2 / PR2_GAINS,
+#     'init_gains':  1.0 / PR2_GAINS,
 #     'init_acc': np.zeros(SENSOR_DIMS[ACTION]),
-#     # 'init_var': 1.0,
-#     'init_var': 1.5,
-#     'stiffness': 0.5,
+#     'init_var': 5.0,
+#     'stiffness': 1.0,
 #     'stiffness_vel': 0.5,
-#     'final_weight': 10.0,
+#     'final_weight': 50.0,
 #     'dt': agent['dt'],
 #     'T': agent['T'],
 # }
 
+# Use for LG demos.
+algorithm['init_traj_distr'] = {
+    'type': init_demo,
+    # 'type': init_lqr,
+    'init_gains':  0.2 / PR2_GAINS, #0.2
+    'init_acc': np.zeros(SENSOR_DIMS[ACTION]),
+    # 'init_var': 1.0,
+    'init_var': 1.5, #1.5
+    'stiffness': 0.5, #0.5
+    'stiffness_vel': 0.5,
+    'final_weight': 10.0, #10.0
+    'dt': agent['dt'],
+    'T': agent['T'],
+}
+
 torque_cost = {
     'type': CostAction,
-    'wu': 1e-3 / PR2_GAINS,
+    'wu': 5e-5 / PR2_GAINS, #1e-3
 }
 
 fk_cost = {
@@ -209,8 +226,10 @@ final_cost = {
 algorithm['gt_cost'] = {
     'type': CostSum,
     'costs': [torque_cost, fk_cost, final_cost],
-    'weights': [100.0, 100.0, 100.0],
+    'weights': [1.0, 1.0, 1.0],
 }
+
+algorithm['fk_cost'] = fk_cost
 
 # algorithm['cost'] = {
 #     'type': CostIOCNN,
@@ -221,29 +240,39 @@ algorithm['gt_cost'] = {
 #     'iterations': 5000,
 # }
 
-algorithm['cost'] = {
-    'type': CostIOCSupervised,
-    'agent': demo_agent,
-    'demo_file': os.path.join(DEMO_DIR, 'data_files', 'demos_nn_MaxEnt_9_cond_z_0.05_3pols_no_noise.pkl'),
-    'traj_samples': [os.path.join(common['demo_exp_dir'], 'data_files_maxent_9cond_z_train_demo_1', 'traj_sample_itr_%02d.pkl' % i) for i in range(12)],
-    'gt_cost': algorithm['gt_cost'],   
-    'finetune': True,
-    'init_iterations': 20000,
-    'use_jacobian': False,
-    'update_after': 5,
-    'gt_cost': algorithm['gt_cost'],
-
-    'wu': 100*5e-5 / PR2_GAINS,
-    'T': 100,
+algorithm['cost'] = [{
+    'type': CostIOCTF,
+    'wu': 1000.0 / PR2_GAINS, # for nn, this is 200
+    # 'wu' : 0.0,
+    'network_params': {
+        'obs_include': agent['obs_include'],
+        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+        'obs_image_data': [],
+        'sensor_dims': SENSOR_DIMS,
+    },
+    'T': agent['T'],
     'dO': 26,
-    'iterations': 5000,
-    'demo_batch_size': 5,
-    'sample_batch_size': 5,
+    'iterations': 5000, # TODO - do we need 5k?
+    'demo_batch_size': 5, #5
+    'sample_batch_size': 5, #5
+    'num_hidden': 3, #3
+    'dim_hidden': 60,
     'ioc_loss': algorithm['ioc'],
-    'learn_wu': False,  # set to true to learn torque penalty
-    'smooth_reg_weight': 0.0,
-    'mono_reg_weight': 100.0,
-}
+    'mono_reg_weight': 1000.0, #before normalizing, this is 1000
+    'smooth_reg_weight': 1.0,
+    'batch_norm': False,
+    'decay': 0.99,
+    'approximate_lxx': False,
+    'idx': i,
+    'random_seed': SEED, #i
+    'global_random_seed': SEED,
+    'data_files_dir': common['data_files_dir'],
+    'summary_dir': common['data_files_dir'] + 'cost_summary_%d/' % i,
+} for i in xrange(algorithm['num_costs'])]
+
+for i in xrange(algorithm['num_costs']):
+    if not os.path.exists(algorithm['cost'][i]['summary_dir']):
+        os.makedirs(algorithm['cost'][i]['summary_dir'])
 
 algorithm['dynamics'] = {
     'type': DynamicsLRPrior,
@@ -260,10 +289,21 @@ algorithm['traj_opt'] = {
     'type': TrajOptLQRPython,
 }
 
+
 algorithm['policy_opt'] = {
-    'type': PolicyOptCaffe,
-    'iterations': 4000,
-    'weights_file_prefix': EXP_DIR + 'policy',
+    'type': PolicyOptTf,
+    'network_params': {
+        'obs_include': agent['obs_include'],
+        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
+        'obs_image_data': [],
+        'sensor_dims': SENSOR_DIMS,
+    },
+    'network_model': example_tf_network,
+    'iterations': 1000,  # was 100
+    'batch_norm': False,
+    'decay': 0.99,
+    'weights_file_prefix': common['data_files_dir'] + 'policy',
+    'random_seed': SEED,
 }
 
 algorithm['policy_prior'] = {
@@ -278,7 +318,18 @@ config = {
     'num_samples': 5,
     'verbose_trials': 1,
     'verbose_policy_trials': 1,
+    'common': common,
+    'record_gif': {
+        'gif_dir': os.path.join(common['data_files_dir'], 'gifs'),
+        'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs'),
+        'gifs_per_condition': 1,
+    },
     'agent': agent,
     'demo_agent': demo_agent,
     'gui_on': True,
+    'algorithm': algorithm,
+    'conditions': common['conditions'],
+    'random_seed': SEED,
 }
+
+common['info'] = generate_experiment_info(config)

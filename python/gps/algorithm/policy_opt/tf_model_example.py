@@ -38,7 +38,7 @@ def euclidean_loss_layer(a, b, precision, batch_size, behavior_clone=False):
     if not behavior_clone:
         uP = batched_matrix_vector_multiply(a-b, precision)
     else:
-        uP = multiplier*(a-b)
+        uP =(a-b)*multiplier
     uPu = tf.reduce_sum(uP*(a-b))  # this last dot product is then summed, so we just the sum all at once.
     return uPu/scale_factor
 
@@ -135,12 +135,12 @@ def multi_modal_network(dim_input=27, dim_output=7, batch_size=25, network_confi
     Returns:
         A tfMap object that stores inputs, outputs, and scalar loss.
     """
-    n_layers = 2
-    layer_size = 20
+    n_layers = network_config.get('n_layers', 2)
+    layer_size = network_config.get('layer_size', 20)
     dim_hidden = (n_layers - 1)*[layer_size]
     dim_hidden.append(dim_output)
-    pool_size = 2
-    filter_size = 3
+    pool_size = network_config.get('pool_size', 2)
+    filter_size = network_config.get('filter_size', 3)
     behavior_clone = network_config.get('bc', False)
     batch_norm = network_config.get('batch_norm', False)
     decay = network_config.get('decay', 0.9)
@@ -174,13 +174,13 @@ def multi_modal_network(dim_input=27, dim_output=7, batch_size=25, network_confi
 
     # Store layers weight & bias
     weights = {
-        'wc1': get_xavier_weights([filter_size, filter_size, num_channels, num_filters[0]], (pool_size, pool_size)), # 5x5 conv, 1 input, 32 outputs
-        'wc2': get_xavier_weights([filter_size, filter_size, num_filters[0], num_filters[1]], (pool_size, pool_size)), # 5x5 conv, 32 inputs, 64 outputs
+        'wc1': get_xavier_weights([filter_size, filter_size, num_channels, num_filters[0]], (pool_size, pool_size), name='wc1'), # 5x5 conv, 1 input, 32 outputs
+        'wc2': get_xavier_weights([filter_size, filter_size, num_filters[0], num_filters[1]], (pool_size, pool_size), name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
     }
 
     biases = {
-        'bc1': init_bias([num_filters[0]]),
-        'bc2': init_bias([num_filters[1]]),
+        'bc1': init_bias([num_filters[0]], name='bc1'),
+        'bc2': init_bias([num_filters[1]], name='bc2'),
     }
 
     conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], batch_norm=batch_norm, decay=decay, conv_id=0)
@@ -231,7 +231,6 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
         else:
             x_idx = x_idx + list(range(i, i+dim))
         i += dim
-
     nn_input, action, precision = get_input_layer(dim_input, dim_output, behavior_clone)
 
     state_input = nn_input[:, 0:x_idx[-1]+1]
@@ -264,56 +263,70 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
             'bc3': init_bias([num_filters[2]], name='bc3'),
         }
 
-    conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0)
-    conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1)
-    conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2)
+    fc_inputs = []
+    is_training_list = [False, True] # the order is crucial since nnet needs the last conv layer coming from training
+    for is_training in is_training_list:
+        conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0, is_training=is_training)
+        conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1, is_training=is_training)
+        conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2, is_training=is_training)
 
-    _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
-    num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
-    x_map = np.empty([num_rows, num_cols], np.float32)
-    y_map = np.empty([num_rows, num_cols], np.float32)
+        _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
+        num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
+        x_map = np.empty([num_rows, num_cols], np.float32)
+        y_map = np.empty([num_rows, num_cols], np.float32)
 
-    for i in range(num_rows):
-        for j in range(num_cols):
-            x_map[i, j] = (i - num_rows / 2.0) / num_rows
-            y_map[i, j] = (j - num_cols / 2.0) / num_cols
+        for i in range(num_rows):
+            for j in range(num_cols):
+                x_map[i, j] = (i - num_rows / 2.0) / num_rows
+                y_map[i, j] = (j - num_cols / 2.0) / num_cols
 
-    x_map = tf.convert_to_tensor(x_map)
-    y_map = tf.convert_to_tensor(y_map)
+        x_map = tf.convert_to_tensor(x_map)
+        y_map = tf.convert_to_tensor(y_map)
 
-    x_map = tf.reshape(x_map, [num_rows * num_cols])
-    y_map = tf.reshape(y_map, [num_rows * num_cols])
+        x_map = tf.reshape(x_map, [num_rows * num_cols])
+        y_map = tf.reshape(y_map, [num_rows * num_cols])
 
-    # rearrange features to be [batch_size, num_fp, num_rows, num_cols]
-    features = tf.reshape(tf.transpose(conv_layer_2, [0,3,1,2]),
-                          [-1, num_rows*num_cols])
-    softmax = tf.nn.softmax(features)
+        # rearrange features to be [batch_size, num_fp, num_rows, num_cols]
+        features = tf.reshape(tf.transpose(conv_layer_2, [0,3,1,2]),
+                              [-1, num_rows*num_cols])
+        softmax = tf.nn.softmax(features)
 
-    fp_x = tf.reduce_sum(tf.mul(x_map, softmax), [1], keep_dims=True)
-    fp_y = tf.reduce_sum(tf.mul(y_map, softmax), [1], keep_dims=True)
+        fp_x = tf.reduce_sum(tf.mul(x_map, softmax), [1], keep_dims=True)
+        fp_y = tf.reduce_sum(tf.mul(y_map, softmax), [1], keep_dims=True)
 
-    fp = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
+        fp = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
 
-    fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
+        fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
+        fc_inputs.append(fc_input)
 
-    fc_output, weights_FC, biases_FC = get_mlp_layers(fc_input, n_layers, dim_hidden, batch_norm=batch_norm, decay=decay)
+    fc_output, weights_FC, biases_FC = get_mlp_layers(fc_inputs[1], n_layers, dim_hidden, batch_norm=batch_norm, decay=decay, is_training=True)
+    test_output, _, _ = get_mlp_layers(fc_inputs[0], n_layers, dim_hidden, batch_norm=batch_norm, decay=decay, is_training=False)
     fc_vars = weights_FC + biases_FC
 
     loss = euclidean_loss_layer(a=action, b=fc_output, precision=precision, batch_size=batch_size, behavior_clone=behavior_clone)
-    nnet = TfMap.init_from_lists([nn_input, action, precision], [fc_output], [loss], fp=fp, image=flat_image_input, debug=conv_layer_2)
+    nnet = TfMap.init_from_lists([nn_input, action, precision], [fc_output, test_output], [loss], fp=fp, image=flat_image_input, debug=conv_layer_2) #this is training conv layer
     last_conv_vars = fc_input
 
     return nnet, fc_vars, last_conv_vars
 
 
-def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id=0):
+def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id=0, is_training=True):
     layer = tf.nn.bias_add(tf.nn.conv2d(img, w, strides=strides, padding='SAME'), b)
     if not batch_norm:
         return tf.nn.relu(layer)
     else:
         with tf.variable_scope('bn_layer_%d' % conv_id) as vs:
-            layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                    scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+            if is_training:
+                try:
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                except ValueError:
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+            else:
+                layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
+                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+
         return layer
 
 
@@ -321,11 +334,13 @@ def max_pool(img, k):
     return tf.nn.max_pool(img, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
 
-def get_xavier_weights(filter_shape, poolsize=(2, 2)):
+def get_xavier_weights(filter_shape, poolsize=(2, 2), name=None):
     fan_in = np.prod(filter_shape[1:])
     fan_out = (filter_shape[0] * np.prod(filter_shape[2:]) //
                np.prod(poolsize))
 
     low = -4*np.sqrt(6.0/(fan_in + fan_out)) # use 4 for sigmoid, 1 for tanh activation
     high = 4*np.sqrt(6.0/(fan_in + fan_out))
-    return tf.Variable(tf.random_uniform(filter_shape, minval=low, maxval=high, dtype=tf.float32))
+    weights = np.random_uniform(low=low, high=high, size=filter_shape)
+    return safe_get(name, list(shape), initializer=tf.constant_initializer(weights))
+    # return tf.Variable(tf.random_uniform(filter_shape, minval=low, maxval=high, dtype=tf.float32))
