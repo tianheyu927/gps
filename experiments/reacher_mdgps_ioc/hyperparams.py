@@ -83,7 +83,7 @@ test_pos_body_offset = [np.array([-0.05, 0.18, 0.0]), np.array([-0.15, 0.18, 0.0
 
 SEED = 0
 NUM_DEMOS = 20
-DEMO_CLUSTERS = 2
+DEMO_CLUSTERS = 1 #4
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -91,7 +91,7 @@ common = {
     'experiment_dir': EXP_DIR,
     # 'data_files_dir': EXP_DIR + 'data_files_8_demo1_%d/' % SEED,
     # 'data_files_dir': EXP_DIR + 'data_files_LG_demo%d_cost_%d/' % (NUM_DEMOS, SEED),
-    'data_files_dir': EXP_DIR + 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_8_LG_demo%d_local_quad_cost_cluster%d_%d/' % (NUM_DEMOS, DEMO_CLUSTERS, SEED),
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
@@ -99,7 +99,7 @@ common = {
     'demo_controller_file': DEMO_DIR + 'data_files_8/algorithm_itr_14.pkl', #11 for 1 condition
     'nn_demo': False, # Use neural network demonstrations. For experiment only
     # 'LG_demo_file': os.path.join(EXP_DIR, 'data_files_LG_demo%d_cost_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
-    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
+    'LG_demo_file': os.path.join(EXP_DIR, 'data_files_8_LG_demo%d_local_quad_cost_cluster%d_%d' % (NUM_DEMOS, DEMO_CLUSTERS, SEED), 'demos_LG.pkl'),
     'NN_demo_file': os.path.join(EXP_DIR, 'data_files_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
     'conditions': TOTAL_CONDITIONS,
     'train_conditions': range(TRAIN_CONDITIONS),

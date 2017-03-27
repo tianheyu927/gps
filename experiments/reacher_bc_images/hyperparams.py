@@ -94,7 +94,7 @@ common = {
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'demo_exp_dir': DEMO_DIR,
-    'demo_controller_file': DEMO_DIR + 'data_files_8/algorithm_itr_19.pkl',
+    'demo_controller_file': DEMO_DIR + 'data_files_28/algorithm_itr_19.pkl', #28 conditions
     'nn_demo': True, # Use neural network demonstrations. For experiment only
     'LG_demo_file': os.path.join(EXP_DIR, 'data_files_8_LG_demo_%d_%d' % (NUM_DEMOS, SEED), 'demos_LG.pkl'),
     'NN_demo_file': os.path.join(EXP_DIR, 'data_files_8_demo%d_%d' % (NUM_DEMOS, SEED), 'demos_NN.pkl'),
@@ -286,13 +286,13 @@ algorithm['policy_opt'] = {
     'network_model': multi_modal_network_fp,
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': demo_agent,
-    'batch_norm': False,
+    'batch_norm': True,
     'decay': 0.99,
-    'lr': 7.5e-4,
-    # 'batch_size': 30,
-    'fc_only_iterations': 8000,
-    'init_iterations': 3000, #1000
-    'iterations': 3000,  # 1000
+    # 'lr': 3e-4,
+    # 'batch_size': 50,
+    'fc_only_iterations': 0,
+    'init_iterations': 7000, #1000
+    'iterations': 7000,  # 1000
     'random_seed': SEED,
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,

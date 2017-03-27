@@ -35,7 +35,7 @@ SENSOR_DIMS = {
 BAXTER_GAINS = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 
 BASE_DIR = '/'.join(str.split(gps_filepath, '/')[:-2])
-EXP_DIR = BASE_DIR + '/../experiments/baxter_example/'
+EXP_DIR = BASE_DIR + '/../experiments/baxter_reach_example/'
 
 
 common = {
@@ -82,6 +82,7 @@ algorithm = {
     'type': AlgorithmTrajOpt,
     'conditions': common['conditions'],
     'iterations': 10,
+    'target_end_effector': np.zeros(3), #6
 }
 
 algorithm['init_traj_distr'] = {
@@ -105,8 +106,9 @@ fk_cost1 = {
     'type': CostFK,
     # Target end effector is subtracted out of EE_POINTS in ROS so goal
     # is 0.
-    'target_end_effector': np.zeros(3),
+    'target_end_effector': np.zeros(3), #6
     'wp': np.ones(SENSOR_DIMS[END_EFFECTOR_POINTS]),
+    # 'wp': np.array([1, 1, 1, 0, 0, 0]),
     'l1': 0.1,
     'l2': 0.0001,
     'ramp_option': RAMP_LINEAR,
@@ -114,8 +116,9 @@ fk_cost1 = {
 
 fk_cost2 = {
     'type': CostFK,
-    'target_end_effector': np.zeros(3),
+    'target_end_effector': np.zeros(3), #6
     'wp': np.ones(SENSOR_DIMS[END_EFFECTOR_POINTS]),
+    # 'wp': np.array([1, 1, 1, 0, 0, 0]),
     'l1': 1.0,
     'l2': 0.0,
     'wp_final_multiplier': 10.0,  # Weight multiplier on final timestep.

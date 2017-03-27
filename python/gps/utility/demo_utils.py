@@ -177,9 +177,9 @@ def cluster_demos(sample_list, demoX_list, k=3):
     Md = len(demoX_list)
     assert k <= Md
     clusters = {i:[] for i in xrange(M)}
-    sampleX_ini_list = np.vstack((samples.get_X()[0, 0, :] for samples in sample_list))
+    sampleX_init_list = np.vstack((samples.get_X()[0, 0, :] for samples in sample_list))
     demoX_init_list = np.vstack((demoX[0, 0, :] for demoX in demoX_list))
-    dists = cdist(sampleX_ini_list, demoX_init_list, 'euclidean')
+    dists = cdist(sampleX_init_list, demoX_init_list, 'euclidean')
     clusters = np.argsort(dists, axis=1)[:, :k]
     LOGGER.debug('Done clustering demos.')
     return clusters

@@ -370,11 +370,13 @@ class GPSTrainingGUI(object):
         controller entropies, and initial/final KL divergences for BADMM.
         """
         self.set_output_text(self._hyperparams['experiment_name'])
-        if isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, AlgorithmBADMM) or \
+        if algorithm._hyperparams.get('fk_cost', False):
+            condition_titles = '%3s | %8s %12s' % ('', '', '')
+            itr_data_fields  = '%3s | %8s %12s' % ('itr', 'avg_cost', 'avg_fk_cost')
+        elif isinstance(algorithm, AlgorithmMDGPS) or isinstance(algorithm, AlgorithmBADMM) or \
             isinstance(algorithm, BehaviorCloning) or isinstance(algorithm, AlgorithmTrajOpt):
             condition_titles = '%3s | %8s %12s' % ('', '', '')
-            # itr_data_fields  = '%3s | %8s %12s' % ('itr', 'avg_cost', 'avg_pol_cost')
-            itr_data_fields  = '%3s | %8s %12s' % ('itr', 'avg_cost', 'avg_fk_cost')
+            itr_data_fields  = '%3s | %8s %12s' % ('itr', 'avg_cost', 'avg_pol_cost')
         else:
             condition_titles = '%3s | %8s' % ('', '')
             itr_data_fields  = '%3s | %8s' % ('itr', 'avg_cost')
@@ -443,7 +445,7 @@ class GPSTrainingGUI(object):
                 itr_data = '%3d | %8s %12.2f' % (itr, avg_cost, np.mean(pol_costs))
         else:
             test_idx = None
-            itr_data = '%3d | %8.2f' % (itr, avg_cost)
+            itr_data = '%3d | %8.2f %8s' % (itr, avg_cost, 'N/A')
 
         for m in range(algorithm.M):
             if not algorithm._hyperparams.get('bc', False):

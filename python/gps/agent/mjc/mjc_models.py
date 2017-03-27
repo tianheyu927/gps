@@ -1,5 +1,6 @@
 import numpy as np
-
+import copy
+from __future__ import division
 from gps.agent.mjc.model_builder import default_model, pointmass_model, MJCModel
 
 COLOR_MAP = {
@@ -11,6 +12,11 @@ COLOR_MAP = {
     'purple': [1, 0, 1, 1],
     'cyan': [0, 1, 1, 1],
 }
+
+COLOR_RANGE = [i / 5 for i in xrange(5)]
+COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
+COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
+
 
 def reacher():
     """
@@ -110,7 +116,10 @@ def weighted_reacher(finger_density=1.0, arm_density=None):
 def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.1,-.1)):
     mjcmodel = default_model('reacher', regen_fn=lambda: colored_reacher(ncubes, target_color, cube_size, target_pos))
     worldbody = mjcmodel.root.worldbody()
-
+    if type(target_color) is str:
+        color_map = COLOR_MAP
+    else:
+        color_map = COLOR_MAP_CONT
     # Arena
     #worldbody.geom(conaffinity="0",fromto="-.3 -.3 .01 .3 -.3 .01",name="sideS",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
     #worldbody.geom(conaffinity="0",fromto=" .3 -.3 .01 .3  .3 .01",name="sideE",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
@@ -129,16 +138,16 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     body.geom(fromto="0 0 0 0.1 0 0",name="link1",rgba="0.0 0.4 0.6 1",size=".01",type="capsule")
     body = body.body(name="fingertip",pos="0.11 0 0")
     body.site(name="fingertip",pos="0 0 0",size="0.01")
-    body.geom(contype="0",name="fingertip",pos="0 0 0",rgba=COLOR_MAP[target_color],size=".01",type="sphere")
+    body.geom(contype="0",name="fingertip",pos="0 0 0",rgba=color_map[target_color],size=".01",type="sphere")
 
     # Target
     _target_pos = [target_pos[0], target_pos[1], 0.01]
     body = worldbody.body(name="target",pos=_target_pos)
-    body.geom(rgba=COLOR_MAP[target_color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
+    body.geom(rgba=color_map[target_color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
     body.site(name="target",pos="0 0 0",size="0.01")
 
     # Distractor cubes
-    available_colors = COLOR_MAP.keys()
+    available_colors = color_map.keys()
     available_colors.remove(target_color)
     for i in range(ncubes-1):
         pos = np.random.rand(3)
@@ -147,7 +156,7 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
         body = worldbody.body(name="cube_%d"%i,pos=pos)
 
         color = np.random.choice(available_colors)
-        body.geom(rgba=COLOR_MAP[color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
+        body.geom(rgba=color_map[color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
 
     # Actuators
     actuator = mjcmodel.root.actuator()

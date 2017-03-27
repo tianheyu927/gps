@@ -119,8 +119,8 @@ def example_tf_network(dim_input=27, dim_output=7, batch_size=25, network_config
     # test_output = None
     fc_vars = weights_FC + biases_FC
     loss_out = get_loss_layer(mlp_out=mlp_applied, action=action, precision=precision, batch_size=batch_size, behavior_clone=behavior_clone)
-
-    return TfMap.init_from_lists([nn_input, action, precision], [mlp_applied, test_output], [loss_out]), fc_vars, []
+    val_loss = get_loss_layer(mlp_out=test_output, action=action, precision=precision, batch_size=1, behavior_clone=behavior_clone)
+    return TfMap.init_from_lists([nn_input, action, precision], [mlp_applied, test_output], [loss_out, val_loss]), fc_vars, []
 
 
 def multi_modal_network(dim_input=27, dim_output=7, batch_size=25, network_config=None):
@@ -252,9 +252,12 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
     # Store layers weight & bias
     with tf.variable_scope('conv_params'):
         weights = {
-            'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
-            'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
-            'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
+            # 'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
+            # 'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+            # 'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc1': get_he_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
+            'wc2': get_he_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc3': get_he_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
         }
 
         biases = {
@@ -264,11 +267,14 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
         }
 
     fc_inputs = []
-    is_training_list = [False, True] # the order is crucial since nnet needs the last conv layer coming from training
+    is_training_list = [True, False]
     for is_training in is_training_list:
         conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0, is_training=is_training)
         conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1, is_training=is_training)
         conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2, is_training=is_training)
+        
+        if is_training:
+            training_conv_layer_2 = conv_layer_2
 
         _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
         num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
@@ -299,16 +305,20 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
         fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
         fc_inputs.append(fc_input)
 
-    fc_output, weights_FC, biases_FC = get_mlp_layers(fc_inputs[1], n_layers, dim_hidden, batch_norm=batch_norm, decay=decay, is_training=True)
-    test_output, _, _ = get_mlp_layers(fc_inputs[0], n_layers, dim_hidden, batch_norm=batch_norm, decay=decay, is_training=False)
+    fc_output, weights_FC, biases_FC = get_mlp_layers(fc_inputs[0], n_layers, dim_hidden, batch_norm=False, decay=decay, is_training=True)
+    test_output, _, _ = get_mlp_layers(fc_inputs[1], n_layers, dim_hidden, batch_norm=False, decay=decay, is_training=False)
     fc_vars = weights_FC + biases_FC
 
     loss = euclidean_loss_layer(a=action, b=fc_output, precision=precision, batch_size=batch_size, behavior_clone=behavior_clone)
-    nnet = TfMap.init_from_lists([nn_input, action, precision], [fc_output, test_output], [loss], fp=fp, image=flat_image_input, debug=conv_layer_2) #this is training conv layer
-    last_conv_vars = fc_input
+    val_loss = euclidean_loss_layer(a=action, b=test_output, precision=precision, batch_size=1, behavior_clone=behavior_clone)
+    
+    nnet = TfMap.init_from_lists([nn_input, action, precision], [fc_output, test_output], [loss, val_loss], fp=fp, image=flat_image_input, debug=training_conv_layer_2) #this is training conv layer
+    last_conv_vars = fc_inputs[0] #training fc input
 
     return nnet, fc_vars, last_conv_vars
 
+def maml(dim_input=27, dim_output=7, batch_size=25, network_config=None):
+    nnet, fc_vars, last_conv_vars = multi_modal_network_fp(dim_input, dim_output, batch_size, network_config)
 
 def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id=0, is_training=True):
     layer = tf.nn.bias_add(tf.nn.conv2d(img, w, strides=strides, padding='SAME'), b)
@@ -333,7 +343,7 @@ def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id
 def max_pool(img, k):
     return tf.nn.max_pool(img, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
-
+# Consider stride size when using xavier for fp network
 def get_xavier_weights(filter_shape, poolsize=(2, 2), name=None):
     fan_in = np.prod(filter_shape[1:])
     fan_out = (filter_shape[0] * np.prod(filter_shape[2:]) //
@@ -341,6 +351,13 @@ def get_xavier_weights(filter_shape, poolsize=(2, 2), name=None):
 
     low = -4*np.sqrt(6.0/(fan_in + fan_out)) # use 4 for sigmoid, 1 for tanh activation
     high = 4*np.sqrt(6.0/(fan_in + fan_out))
-    weights = np.random_uniform(low=low, high=high, size=filter_shape)
-    return safe_get(name, list(shape), initializer=tf.constant_initializer(weights))
+    weights = np.random.uniform(low=low, high=high, size=filter_shape)
+    return safe_get(name, filter_shape, initializer=tf.constant_initializer(weights))
     # return tf.Variable(tf.random_uniform(filter_shape, minval=low, maxval=high, dtype=tf.float32))
+
+def get_he_weights(filter_shape, name=None):
+    fan_in = np.prod(filter_shape[1:])
+
+    stddev = np.sqrt(2.6/fan_in)
+    weights = stddev * np.random.randn(filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3])
+    return safe_get(name, filter_shape, initializer=tf.constant_initializer(weights))

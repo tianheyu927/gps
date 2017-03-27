@@ -39,7 +39,7 @@ EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 
 
 np.random.seed(47)
-TRAIN_CONDITIONS = 8 # 4
+TRAIN_CONDITIONS = 28 # 4
 TEST_CONDITIONS = 0 # 9
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 pos_body_offset = []
@@ -55,14 +55,24 @@ np.random.seed(13)
 pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
                    np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
                    np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
-                   np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])]
+                   np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0]),
+                   np.array([-0.05, 0.18, 0.0]), np.array([-0.15, 0.18, 0.0]),
+                   np.array([-0.15, 0.02, 0.0]), np.array([-0.05, 0.02, 0.0]),
+                   np.array([-0.02, 0.15, 0.0]), np.array([-0.18, 0.15, 0.0]),
+                   np.array([-0.18, 0.05, 0.0]), np.array([-0.02, 0.05, 0.0]),
+                   np.array([0.02, 0.15, 0.0]), np.array([0.02, 0.22, 0.0]),
+                   np.array([-0.05, 0.22, 0.0]), np.array([-0.15, 0.22, 0.0]),
+                   np.array([-0.22, 0.22, 0.0]), np.array([-0.22, 0.15, 0.0]),
+                   np.array([-0.22, 0.05, 0.0]), np.array([-0.22, -0.02, 0.0]),
+                   np.array([-0.15, -0.02, 0.0]), np.array([-0.05, -0.02, 0.0]),
+                   np.array([0.02, -0.02, 0.0]), np.array([0.02, 0.05, 0.0])]
 seed = 0
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files_8/',
+    'data_files_dir': EXP_DIR + 'data_files_28/',
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
     'conditions': TOTAL_CONDITIONS,
@@ -91,6 +101,7 @@ agent = {
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ pos_body_offset[i], np.array([0., 0., 0.])])
         for i in range(TOTAL_CONDITIONS)],
     'render':True,
+    'success_upper_bound': 0.01,
 }
 
 
@@ -98,7 +109,7 @@ algorithm = {
     'type': AlgorithmMDGPS,
     'sample_on_policy': True,
     'conditions': common['conditions'],
-    'iterations': 20,
+    'iterations': 30,
     'kl_step': 1.0,
     'max_ent_traj': 0.001,
     'min_step_mult': 0.2,

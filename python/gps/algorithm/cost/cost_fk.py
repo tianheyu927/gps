@@ -13,7 +13,7 @@ from gps.proto.gps_pb2 import JOINT_ANGLES, END_EFFECTOR_POINTS, \
 class CostFK(Cost):
     """
     Forward kinematics cost function. Used for costs involving the end
-    effector position.
+    effector position.c
     """
     def __init__(self, hyperparams):
         config = copy.deepcopy(COST_FK)
@@ -57,7 +57,10 @@ class CostFK(Cost):
             #        (see pts_jacobian_only in matlab costinfos code)
             if not END_EFFECTOR_POINT_JACOBIANS in sample._data:
                 raise NotImplementedError()
+            # import pdb; pdb.set_trace()
             jx = sample.get(END_EFFECTOR_POINT_JACOBIANS)
+            if jx.shape[1] > dist.shape[1]: # for baxter
+                jx = jx[:, :dist.shape[1], :]
         else:
             jx = np.zeros((T, dist.shape[1], dU))
             # Dim_EE by dJoint

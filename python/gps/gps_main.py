@@ -57,10 +57,10 @@ class GPSMain(object):
 
         with Timer('init agent'):
             self.agent = config['agent']['type'](config['agent'])
-        if 'test_agent' in config:
-            self.test_agent = config['test_agent']['type'](config['test_agent'])
+        if 'unlabeled_agent' in config:
+            self.unlabeled_agent = config['unlabeled_agent']['type'](config['unlabeled_agent'])
         else:
-            self.test_agent = self.agent
+            self.unlabeled_agent = self.agent
 
         self.data_logger = DataLogger()
         with Timer('init GUI'):
@@ -153,7 +153,7 @@ class GPSMain(object):
             testing: the flag that marks whether we test the policy for untrained cond
         Returns: None
         """
-        target_positions = self._hyperparams['algorithm']['target_end_effector']
+        
         algorithm_file = self._data_files_dir + 'algorithm_itr_%02d.pkl' % itr
         print 'Loading algorithm file.'
         self.algorithm = self.data_logger.unpickle(algorithm_file)
@@ -162,50 +162,56 @@ class GPSMain(object):
             print("Error: cannot find '%s.'" % algorithm_file)
             os._exit(1) # called instead of sys.exit(), since t
 
-        if not self.algorithm._hyperparams.get('bc', False):
-            for cond in range(len(self._train_idx)):
-                for i in range(N):
-                    self._take_sample(itr, cond, i)
-
-            traj_sample_lists = [
-                self.agent.get_samples(cond, -self._hyperparams['num_samples'])
-                for cond in self._train_idx
-            ]
-
-            all_dists = []
-            success_thresh = self.agent._hyperparams.get('success_upper_bound', 0.05)
-            from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
-            for cond in range(len(self._train_idx)):
-                target_position = target_positions[cond][:3]
-                cur_samples = traj_sample_lists[cond]
-                sample_end_effectors = [cur_samples[i].get(END_EFFECTOR_POINTS) for i in xrange(len(cur_samples))]
-                dists = [np.nanmin(np.sqrt(np.sum((sample_end_effectors[i][:, :3] - target_position.reshape(1, -1))**2,
-                         axis = 1)), axis = 0) for i in xrange(len(cur_samples))]
-                all_dists.append(dists)
-            print "Controller success rate is %.5f" % np.mean([np.mean(dist) < success_thresh for dist in all_dists])
-
-            for cond in range(len(self._train_idx)):
-                for i in range(N):
-                    self.agent.visualize_sample(traj_sample_lists[cond][i], cond)
+        if 'unlabeled_agent' in self._hyperparams:
+            target_positions = self._hyperparams['unlabeled_agent']['target_end_effector']
         else:
-            traj_sample_lists = None
+            target_positions = self._hyperparams['algorithm']['target_end_effector']            
+        # if not self.algorithm._hyperparams.get('bc', False):
+        #     for cond in range(len(self._train_idx)):
+        #         for i in range(N):
+        #             self._take_sample(itr, cond, i)
+
+        #     traj_sample_lists = [
+        #         self.agent.get_samples(cond, -self._hyperparams['num_samples'])
+        #         for cond in self._train_idx
+        #     ]
+
+        #     all_dists = []
+        #     success_thresh = self.agent._hyperparams.get('success_upper_bound', 0.05)
+        #     from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
+        #     for cond in range(len(self._train_idx)):
+        #         target_position = target_positions[cond][:3]
+        #         cur_samples = traj_sample_lists[cond]
+        #         sample_end_effectors = [cur_samples[i].get(END_EFFECTOR_POINTS) for i in xrange(len(cur_samples))]
+        #         dists = [np.nanmin(np.sqrt(np.sum((sample_end_effectors[i][:, :3] - target_position.reshape(1, -1))**2,
+        #                  axis = 1)), axis = 0) for i in xrange(len(cur_samples))]
+        #         all_dists.append(dists)
+        #     print "Controller success rate is %.5f" % np.mean([np.mean(dist) < success_thresh for dist in all_dists])
+
+        #     for cond in range(len(self._train_idx)):
+        #         for i in range(N):
+        #             self.agent.visualize_sample(traj_sample_lists[cond][i], cond)
+        # else:
+        traj_sample_lists = None
 
         # Code for looking at demo policy.
         # demo_controller = self.data_logger.unpickle(self._hyperparams['common']['demo_controller_file'][0])
         # demo_policy = demo_controller.policy_opt.policy
         # sample = self.agent.sample(demo_policy, 0)
         # self.agent.visualize_sample(sample, 0)
-
-        pol_sample_lists = self._take_policy_samples(N, testing, self._test_idx, itr)
-        self.data_logger.pickle(
-            self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
-            copy.copy(pol_sample_lists)
-        )
+        if 'unlabeled_agent' in self._hyperparams:
+            pol_sample_lists = self._take_policy_samples(N, testing, range(self._hyperparams['unlabeled_agent']['conditions']), itr)
+        else:        
+            pol_sample_lists = self._take_policy_samples(N, testing, self._test_idx, itr)
+        # self.data_logger.pickle(
+        #     self._data_files_dir + ('pol_sample_itr_%02d.pkl' % itr),
+        #     copy.copy(pol_sample_lists)
+        # )
 
         all_dists = []
         success_thresh = self.agent._hyperparams.get('success_upper_bound', 0.05)
         from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
-        for cond in range(len(self._train_idx)):
+        for cond in range(len(pol_sample_lists)):
             target_position = target_positions[cond][:3]
             cur_samples = pol_sample_lists[cond]
             sample_end_effectors = [cur_samples[i].get(END_EFFECTOR_POINTS) for i in xrange(len(cur_samples))]
@@ -390,31 +396,38 @@ class GPSMain(object):
         for cond in idx:
             gif_name=None
             gif_fps = None
-            if not self.algorithm._hyperparams['multiple_policy']:
-                if testing:
-                    for i in xrange(N):
-                        pol_samples[cond].append(self.test_agent.sample(
-                            self.algorithm.policy_opt.policy, idx[cond],
-                            verbose=True, save=False, noisy=True,
-                            record_gif=gif_name, record_gif_fps=gif_fps))
-                else:
-                    for i in xrange(N):
-                        if 'record_gif' in self._hyperparams:
-                            gif_config = self._hyperparams['record_gif']
+            if testing:
+                for i in xrange(N):
+                    if 'record_gif' in self._hyperparams:
+                        gif_config = self._hyperparams['record_gif']
+                        if i < gif_config.get('gifs_per_condition', float('inf')):
                             gif_fps = gif_config.get('fps', None)
-                            gif_dir = gif_config.get('gif_dir', self._hyperparams['common']['data_files_dir'])
+                            gif_dir = gif_config.get('test_gif_dir', self._hyperparams['common']['data_files_dir'] + 'test_gifs/')
                             mkdir_p(gif_dir)
-                            if i < gif_config.get('gifs_per_condition', float('inf')):
-                                gif_name = os.path.join(gif_dir,'itr%d.cond%d.samp%d.gif' % (itr, cond, i))
-                        pol_samples[cond].append(self.agent.sample(
-                            self.algorithm.policy_opt.policy, idx[cond],
-                            verbose=True, save=False, noisy=True,
-                            record_gif=gif_name, record_gif_fps=gif_fps))
+                            gif_name = os.path.join(gif_dir,'itr%d.cond%d.samp%d.gif' % (itr, cond, i))
+                        else:
+                            gif_name=None
+                            gif_fps = None
+                    pol_samples[cond].append(self.unlabeled_agent.sample(
+                        self.algorithm.policy_opt.policy, idx[cond],
+                        verbose=True, save=False, noisy=True,
+                        record_gif=gif_name, record_gif_fps=gif_fps))
             else:
-                pol = self.algorithm.policy_opts[cond / self.algorithm.num_policies].policy
-                pol_samples[cond][0] = self.test_agent.sample(
-                    pol, idx[cond],
-                    verbose=True, save=False, noisy=True)
+                for i in xrange(N):
+                    if 'record_gif' in self._hyperparams:
+                        gif_config = self._hyperparams['record_gif']
+                        if i < gif_config.get('gifs_per_condition', float('inf')):
+                            gif_fps = gif_config.get('fps', None)
+                            gif_dir = gif_config.get('gif_dir', self._hyperparams['common']['data_files_dir'] + 'gifs/')
+                            mkdir_p(gif_dir)
+                            gif_name = os.path.join(gif_dir,'itr%d.cond%d.samp%d.gif' % (itr, cond, i))
+                        else:
+                            gif_name=None
+                            gif_fps=None
+                    pol_samples[cond].append(self.agent.sample(
+                        self.algorithm.policy_opt.policy, idx[cond],
+                        verbose=True, save=False, noisy=True,
+                        record_gif=gif_name, record_gif_fps=gif_fps))
         return [SampleList(samples) for samples in pol_samples]
 
     def _log_data(self, itr, traj_sample_lists, pol_sample_lists=None):
@@ -695,7 +708,7 @@ def main():
                 hyperparams = imp.load_source('hyperparams', hyperparams_file)
                 hyperparams.seed = seed
                 hyperparams.num_demos = num_demo
-                hyperparams.config.pop('record_gif', None)
+                # hyperparams.config.pop('record_gif', None)
                 hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_demo%d_%d/' % (num_demo, seed)
                 # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
                 hyperparams.config['common']['NN_demo_file'] = os.path.join(exp_dir, 'data_files_8_demo%d_%d/' % (num_demo, seed), 'demos_NN.pkl')
@@ -703,11 +716,13 @@ def main():
                 hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['NN_demo_file']
                 # hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
                 # hyperparams.config['algorithm']['cost']['random_seed'] = seed
+                hyperparams.config['record_gif']['gif_dir'] = os.path.join(hyperparams.config['common']['data_files_dir'], 'gifs')
+                hyperparams.config['record_gif']['test_gif_dir'] = os.path.join(hyperparams.config['common']['data_files_dir'], 'test_gifs')
                 hyperparams.config['algorithm']['policy_opt']['random_seed'] = seed
                 hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
                 current_itr = 0 #19 for ioc
                 gps = GPSMain(hyperparams.config, test_pol=True)
-                acc = gps.test_policy(itr=current_itr, N=args.test_multiple, testing=False)
+                acc = gps.test_policy(itr=current_itr, N=args.test_multiple, testing=True)
                 accuracy_history[num_demo].append(acc)
                 plt.close('all')
         print accuracy_history
@@ -748,35 +763,40 @@ def main():
                                 exp_dir, hyperparams_compare.config, hyperparams.config)
     elif args.multiple:
         seeds = [0, 1, 2]
-        num_demos = [20]
+        num_demos = [1, 5, 10, 15, 20, 25]
+        # demo_clusters = [1, 2, 3]
         for seed in seeds:
             for num_demo in num_demos:
+                # for demo_cluster in demo_clusters:
                 np.random.seed(seed)
                 random.seed(seed)
                 hyperparams = imp.load_source('hyperparams', hyperparams_file)
                 hyperparams.seed = seed
                 hyperparams.num_demos = num_demo
-                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d/' % (num_demo, seed)
-                # hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_demo%d_%d/' % (num_demo, seed)
+                # hyperparams.demo_clusters = demo_clusters
+                # hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_LG_demo%d_local_quad_cost_cluster%d_%d/' % (num_demo, demo_cluster, seed)
+                hyperparams.config['common']['data_files_dir'] = exp_dir + 'data_files_8_demo%d_%d/' % (num_demo, seed)
                 # ioc_dir = exp_dir.replace('behavior_cloning', 'mdgps_ioc')
                 # use exp dir to run bc alone. change to ioc_dir if comparing to ioc
-                hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_local_quad_cost_cluster_%d/' % (num_demo, seed), 'demos_LG.pkl')
-                # hyperparams.config['common']['NN_demo_file'] = os.path.join(exp_dir, 'data_files_8_demo%d_%d/' % (num_demo, seed), 'demos_NN.pkl')
+                # hyperparams.config['common']['LG_demo_file'] = os.path.join(exp_dir, 'data_files_8_LG_demo%d_local_quad_cost_cluster%d_%d/' % (num_demo, demo_cluster, seed), 'demos_LG.pkl')
+                hyperparams.config['common']['NN_demo_file'] = os.path.join(exp_dir, 'data_files_8_demo%d_%d/' % (num_demo, seed), 'demos_NN.pkl')
                 hyperparams.config['algorithm']['num_demos'] = num_demo
+                # hyperparams.config['algorithm']['demo_clusters'] = demo_cluster
                 hyperparams.config['algorithm']['policy_opt']['random_seed'] = seed
-                # hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['NN_demo_file'] #LG
+                hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['NN_demo_file'] #LG
                 hyperparams.config['algorithm']['policy_opt']['weights_file_prefix'] = hyperparams.config['common']['data_files_dir'] + 'policy'
+                hyperparams.config['algorithm']['policy_opt']['plot_dir'] = hyperparams.config['common']['data_files_dir']
                 if not os.path.exists(hyperparams.config['common']['data_files_dir']):
                     os.makedirs(hyperparams.config['common']['data_files_dir'])
                 hyperparams.config['record_gif']['gif_dir'] = os.path.join(hyperparams.config['common']['data_files_dir'], 'gifs')
-                M = hyperparams.config['common']['conditions']
-                for m in xrange(M):
-                    hyperparams.config['algorithm']['cost'][m]['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
-                    hyperparams.config['algorithm']['cost'][m]['global_random_seed'] = seed
-                    hyperparams.config['algorithm']['cost'][m]['random_seed'] = seed
-                    hyperparams.config['algorithm']['cost'][m]['summary_dir'] = hyperparams.config['common']['data_files_dir'] + 'cost_summary_%d/' % (m)
-                    if not os.path.exists(hyperparams.config['algorithm']['cost'][m]['summary_dir']):
-                        os.makedirs(hyperparams.config['algorithm']['cost'][m]['summary_dir'])
+                # M = hyperparams.config['common']['conditions']
+                # for m in xrange(M):
+                #     hyperparams.config['algorithm']['cost'][m]['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
+                #     hyperparams.config['algorithm']['cost'][m]['global_random_seed'] = seed
+                #     hyperparams.config['algorithm']['cost'][m]['random_seed'] = seed
+                #     hyperparams.config['algorithm']['cost'][m]['summary_dir'] = hyperparams.config['common']['data_files_dir'] + 'cost_summary_%d/' % (m)
+                #     if not os.path.exists(hyperparams.config['algorithm']['cost'][m]['summary_dir']):
+                #         os.makedirs(hyperparams.config['algorithm']['cost'][m]['summary_dir'])
                 # hyperparams.config['algorithm']['cost']['data_files_dir'] = hyperparams.config['common']['data_files_dir'] # for ioc
                 # hyperparams.config['algorithm']['cost']['global_random_seed'] = seed
                 # hyperparams.config['algorithm']['cost']['random_seed'] = seed

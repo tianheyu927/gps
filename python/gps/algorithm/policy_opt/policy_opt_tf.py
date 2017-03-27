@@ -41,9 +41,12 @@ class PolicyOptTf(PolicyOpt):
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf_Session(graph=graph, config=tf_config)
             else:
-                self.gpu_device = self._hyperparams['gpu_id']
-                self.device_string = "/gpu:" + str(self.gpu_device)
-                self._sess = tf.Session(graph=self.graph)
+                # self.gpu_device = self._hyperparams['gpu_id']
+                # self.device_string = "/gpu:" + str(self.gpu_device)
+                # self._sess = tf.Session(graph=self.graph)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+                tf_config = tf.ConfigProto(gpu_options=gpu_options)
+                self._sess = tf_Session(graph=graph, config=tf_config)
         else:
             self._sess = tf.Session(graph=self.graph)
         self.act_op = None  # mu_hat
@@ -98,6 +101,7 @@ class PolicyOptTf(PolicyOpt):
             self.feat_op = tf_map.get_feature_op()
             self.image_op = tf_map.get_image_op()  # TODO - make this.
             self.loss_scalar = tf_map.get_loss_op()
+            self.val_loss_scalar = tf_map.get_val_loss_op()
             self.debug = tf_map.debug
             if self.uses_vision:
                 self.fc_vars = fc_vars
@@ -237,7 +241,7 @@ class PolicyOptTf(PolicyOpt):
             if behavior_clone:
                 plt.figure()
                 plt.plot(200*(np.arange(self._hyperparams['fc_only_iterations']/200)+1), conv_loss_history, color='red', linestyle='-')
-                plt.savefig(plot_dir + 'conv_loss_history.png')
+                plt.savefig(plot_dir + 'fc_loss_history.png')
                 plt.show()
             
         if fc_only and self._hyperparams['fc_only_iterations'] > 0:
@@ -272,14 +276,14 @@ class PolicyOptTf(PolicyOpt):
                         val_feed_dict = {self.obs_tensor: test_obs,
                                         self.action_tensor: test_acts}
                         with tf.device(self.device_string):
-                            val_loss_history.append(self.batch_size*2*self.run(self.loss_scalar, feed_dict=val_feed_dict)/test_obs.shape[0])
+                            val_loss_history.append(self.run(self.val_loss_scalar, feed_dict=val_feed_dict)/test_obs.shape[0])
         if behavior_clone:
             plt.figure()
             plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), loss_history, color='red', linestyle='-')
             if test_obs is not None:
                 plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), val_loss_history, color='blue', linestyle=':')
             plot_dir = self._hyperparams.get('plot_dir', '/home/kevin/gps/')
-            plt.savefig(plot_dir + 'loss_history.png')
+            plt.savefig(plot_dir + 'actual_loss_history.png')
             plt.show()
         feed_dict = {self.obs_tensor: obs}
         num_values = obs.shape[0]
