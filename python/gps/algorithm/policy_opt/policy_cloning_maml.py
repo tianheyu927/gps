@@ -111,6 +111,36 @@ class PolicyCloningMAML(PolicyOptTf):
         if self._hyperparams.get('agent', False):
             del self._hyperparams['agent']
 
+    def init_network(self):
+        """ Helper method to initialize the tf networks used """
+        tf_map_generator = self._hyperparams['network_model']
+        with self.graph.as_default():
+            with Timer('building TF network'):
+                tf_map, fc_vars, last_conv_vars = tf_map_generator(dim_input=self._dO, dim_output=self._dU, batch_size=self.batch_size,
+                                          network_config=self._hyperparams['network_params'])
+            self.obs_tensor = tf_map.get_input_tensor()
+            if not self._hyperparams['network_params'].get('bc', False):
+                self.precision_tensor = tf_map.get_precision_tensor()
+            self.action_tensor = tf_map.get_target_output_tensor()
+            self.act_op = tf_map.get_output_op()
+            self.test_act_op = tf_map.get_test_output_op() # used for policy action
+            self.feat_op = tf_map.get_feature_op()
+            self.image_op = tf_map.get_image_op()  # TODO - make this.
+            self.weights = tf_map.get_weights() # get weights from model, used for metalearn
+            self.loss_scalar = tf_map.get_loss_op()
+            self.val_loss_scalar = tf_map.get_val_loss_op()
+            self.debug = tf_map.debug
+            if self.uses_vision:
+                self.fc_vars = fc_vars
+                self.last_conv_vars = last_conv_vars
+            else:
+                self.fc_vars = None
+                self.last_conv_vars = None
+
+            # Setup the gradients. Use test act op
+            self.grads = [tf.gradients(self.test_act_op[:,u], self.obs_tensor)[0]
+                    for u in range(self._dU)]
+
     def construct_image_input(self, nn_input, x_idx, img_idx, network_config=None)
         state_input = nn_input[:, 0:x_idx[-1]+1]
         flat_image_input = nn_input[:, x_idx[-1]+1:img_idx[-1]+1]
@@ -218,23 +248,56 @@ class PolicyCloningMAML(PolicyOptTf):
                 x_idx = x_idx + list(range(i, i+dim))
             i += dim
         
-        self.inputa = inputa = tf.placeholder(tf.float32)
+        self.inputa = inputa = tf.placeholder(tf.float32) # meta_batch_size x update_batch_size x dim_input
         self.inputb = inputb = tf.placeholder(tf.float32)
-        self.labela = labela = tf.placeholder(tf.float32)
-        self.labelb = labelb = tf.placeholder(tf.float32)
+        self.actiona = actiona = tf.placeholder(tf.float32)
+        self.actionb = actionb = tf.placeholder(tf.float32)
     
-        # Store layers weight & bias
+        # Construct layers weight & bias
         self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
+        self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3)))
         
-        # TODO: continue to implement the actual meta learning
+        num_updates = self.num_updates
+        lossesa, outputsa = [], []
+        lossesb = [[] for _ in xrange(num_updates)]
+        outputsb = [[] for _ in xrange(num_updates)]
         
-        test_output, _, _ = get_mlp_layers(fc_inputs[1], n_layers, dim_hidden, batch_norm=False, decay=decay, is_training=False)
-        fc_vars = weights_FC + biases_FC
-        for i in xrange(n_layers):
-            weights['wfc%d' % i] = weights_FC[i]
-            weights['bfc%d' % i] = biases_FC[i]
-        weights.update(biases)
-    
+        def batch_metalearn(inp):
+            inputa, inputb, actiona, actionb = inp #image input
+            inputa = tf.reshape(inputa, [-1, dim_input])
+            inputb = tf.reshape(inputb, [-1, dim_input])
+            actiona = tf.reshape(actiona, [-1, dim_output])
+            actionb = tf.reshape(actionb, [-1, dim_output])
+            
+            # Convert to image dims
+            inputa = self.construct_image_input(inputa, x_idx, img_idx, network_config=network_config)
+            inputb = self.construct_image_input(inputb, x_idx, img_idx, network_config=network_config)
+            
+            local_outputbs, local_lossesb = [], []
+            # Assume fixed data for each update
+            inputas = [inputa]*num_updates
+            actionas = [actiona]*num_updates
+            
+            local_outputa = self.forward(inputa, weights, network_config=network_config)
+            local_lossa = euclidean_loss_layer(local_outputa, actiona, None, behavior_clone=True)
+            
+            gradients = dict(zip(weights.keys(), tf.gradients(local_lossa, weights.values())))
+            # Is mask used here?
+            fast_weights = dict(zip(weights.keys(), [weights[key] - self.step_size*gradients[key] for key in weights.keys()]))
+            output = self.forward(inputb, fast_weights, network_config=network_config)
+            local_outputbs.append(output)
+            local_lossesb.append(euclidean_loss_layer(output, actionb, None, behavior_clone=True))
+
+            for j in range(num_updates - 1):
+                loss = euclidean_loss_layer(self.forward(inputas[j+1], fast_weights, network_config=network_config), actionas[j+1])
+                gradients = dict(zip(fast_weights.keys(), tf.gradients(loss, fast_weights.values())))
+                fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
+                output = self.forward(inputb, fast_weights, network_config=network_config)
+                local_outputbs.append(output)
+                local_lossesb.append(euclidean_loss_layer(output, actionb, None, behavior_clone=True))
+            local_fn_output = [local_outputa, local_outputbs, local_lossa, local_lossesb]
+            return local_fn_output
+        
         loss = euclidean_loss_layer(a=action, b=fc_output, precision=precision, behavior_clone=behavior_clone)
         val_loss = euclidean_loss_layer(a=action, b=test_output, precision=precision, behavior_clone=behavior_clone)
         
