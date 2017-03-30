@@ -11,10 +11,11 @@ class TfMap:
     """ a container for inputs, outputs, and loss in a tf graph. This object exists only
     to make well-defined the tf inputs, outputs, and losses used in the policy_opt_tf class."""
 
-    def __init__(self, input_tensor, target_output_tensor, precision_tensor, output_op, test_output_op, loss_op, val_loss_op, fp=None, image=None, debug=None, random_seed=0):
+    def __init__(self, input_tensor, target_output_tensor, precision_tensor, output_op, test_output_op, weights, loss_op, val_loss_op, fp=None, image=None, debug=None, random_seed=0):
         self.input_tensor = input_tensor
         self.target_output_tensor = target_output_tensor
         self.precision_tensor = precision_tensor
+        self.weights = weights
         self.output_op = output_op
         self.test_output_op = test_output_op
         self.loss_op = loss_op
@@ -25,13 +26,13 @@ class TfMap:
         self.random_seed = random_seed
 
     @classmethod
-    def init_from_lists(cls, inputs, outputs, loss, fp=None, image=None, debug=None, random_seed=0):
+    def init_from_lists(cls, inputs, outputs, weights, loss, fp=None, image=None, debug=None, random_seed=0):
         inputs = check_list_and_convert(inputs)
         outputs = check_list_and_convert(outputs)
         loss = check_list_and_convert(loss)
         if len(inputs) < 3:  # pad for the constructor if needed.
             inputs += [None]*(3 - len(inputs))
-        return cls(inputs[0], inputs[1], inputs[2], outputs[0], outputs[1], loss[0], loss[1], fp=fp, image=image, debug=debug, random_seed=random_seed)
+        return cls(inputs[0], inputs[1], inputs[2], outputs[0], outputs[1], weights[0], loss[0], loss[1], fp=fp, image=image, debug=debug, random_seed=random_seed)
 
     def get_input_tensor(self):
         return self.input_tensor
@@ -50,6 +51,9 @@ class TfMap:
 
     def set_precision_tensor(self, precision_tensor):
         self.precision_tensor = precision_tensor
+
+    def get_weights(self):
+        return self.weights
 
     def get_output_op(self):
         return self.output_op

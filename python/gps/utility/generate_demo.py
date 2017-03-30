@@ -25,14 +25,14 @@ from random import shuffle
 sys.path.append('/'.join(str.split(__file__, '/')[:-2]))
 from gps.agent.mjc.agent_mjc import AgentMuJoCo
 from gps.utility.data_logger import DataLogger, open_zip
-from gps.utility.demo_utils import compute_distance
+from gps.utility.general_utils import compute_distance, Timer
 from gps.sample.sample_list import SampleList
 from gps.algorithm.algorithm_utils import gauss_fit_joint_prior
 from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
                 END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, \
                 END_EFFECTOR_POINT_JACOBIANS, ACTION, RGB_IMAGE, RGB_IMAGE_SIZE, \
-                CONTEXT_IMAGE, CONTEXT_IMAGE_SIZE
-from gps.algorithm.policy.lin_gauss_policy import LinearGaussianPolicy  # Maybe useful if we unpickle the file as controllers
+                CONTEXT_IMAGE, CONTEXT_IMAGE_SIZE, END_EFFECTOR_POINTS_NO_TARGET, \
+                END_EFFECTOR_POINT_VELOCITIES_NO_TARGET
 
 LOGGER = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class GenDemo(object):
 
         def generate(self, demo_file, ioc_agent):
             """
-             Generate demos and save them in a file for experiment.
+             Generate demos and save them in a file/files for experiment.
              Args:
                  demo_file - place to store the demos
                  ioc_agent - ioc agent, for grabbing the observation using the ioc agent's observation data types
@@ -77,24 +77,26 @@ class GenDemo(object):
             agent_config = self._hyperparams['demo_agent']
             if type(agent_config) is not list:
                 self.agent = agent_config['type'](agent_config)
+                M = agent_config['conditions']
             else:
-                assert self.nn_demo
-                self.agents = [agent_config[i]['type'](agent_config[i]) for i in xrange(len(agent_config))]
+                assert self.nn_demo and type(demo_file) is list
+                M = agent_config[0]['conditions']
 
             # Roll out the demonstrations from controllers
             var_mult = self._hyperparams['algorithm'].get('demo_var_mult', 1.0)
             T = self.algorithms[0].T
 
-            M = agent_config['conditions']
             N = self._hyperparams['algorithm']['num_demos']
             demo_M = self._hyperparams['algorithm']['demo_M']
-            if type(agent_config) is not list:
+            if type(agent_config) is list:
                 demos = {i:[] for i in xrange(len(agent_config))}
+                demo_idx_conditions = {i:[] for i in xrange(len(agent_config))}
             elif demo_M != M or M == 1:
                 demos = []
+                demo_idx_conditions = []
             else:
                 demos = {i:[] for i in xrange(M)}
-            demo_idx_conditions = []  # Stores conditions for each demo
+                demo_idx_conditions = []  # Stores conditions for each demo
             if not self.nn_demo:
                 controllers = {}
 
@@ -135,124 +137,26 @@ class GenDemo(object):
                                 else:
                                     demos[i].append(demo)
                 else:
-                    pol = self.algorithms[a].policy_opt.policy
+                    assert len(self.algorithms) == 1
+                    pol = self.algorithms[0].policy_opt.policy
                     for i in xrange(len(agent_config)):
-                        for j in xrange(N):
-                            demo = self.agents[i].sample(
-                                pol, i, # Should be changed back to controller if using linearization
-                                verbose=(j < self._hyperparams['verbose_trials']), noisy=False, record_image=True
-                                )
-                            demos[i].append(demo)
-    
-            self.filter(demos, demo_idx_conditions, agent_config, ioc_agent, demo_file)
-            # # Filter failed demos
-            # if type(agent_config) is list: # USED FOR ONE-SHOT LEARNING
-            #     if agent_config[0].get('filter_demos', False):
+                        self.agent = agent_config[i]['type'](agent_config[i])
+                        for j in xrange(M):
+                            for k in xrange(N):
+                                demo = self.agent.sample(
+                                    pol, j, # Should be changed back to controller if using linearization
+                                    verbose=(k < self._hyperparams['verbose_trials']), noisy=False, record_image=True,
+                                    include_no_target=True
+                                    )
+                                demos[i].append(demo)
+                                demo_idx_conditions[i].append(j)
 
-            # elif agent_config.get('filter_demos', False): # USED FOR PR2
-            #     filter_type = agent_config.get('filter_type', 'last')
-            #     max_per_condition = agent_config.get('max_demos_per_condition', 999)
-            #     target_position = agent_config['target_end_effector']
-            #     dist_threshold = agent_config.get('success_upper_bound', 0.01)
-            #     dists = compute_distance(target_position, SampleList(demos), agent_config['filter_end_effector_idxs'])
-            #     failed_idx = []
-            #     for i, distance in enumerate(dists):
-            #         if filter_type == 'last':
-            #             distance = distance[-1]
-            #         elif filter_type == 'min':
-            #             distance = min(distance)
-            #         else:
-            #             raise NotImplementedError()
-
-            #         print distance
-            #         if(distance > dist_threshold):
-            #             failed_idx.append(i)
-            #     LOGGER.debug("Removing %d failed demos: %s", len(failed_idx), str(failed_idx))
-            #     demos_filtered = [demo for (i, demo) in enumerate(demos) if i not in failed_idx]
-            #     demo_idx_conditions = [cond for (i, cond) in enumerate(demo_idx_conditions) if i not in failed_idx]
-            #     demos = demos_filtered
-
-            #     # Filter max demos per condition
-            #     condition_to_demo = {
-            #         cond: [demo for (i, demo) in enumerate(demos) if demo_idx_conditions[i]==cond][:max_per_condition]
-            #         for cond in range(M)
-            #     }
-            #     LOGGER.debug('Successes per condition: %s', str([len(demo_list) for demo_list in condition_to_demo.values()]))
-            #     demos = [demo for cond in condition_to_demo for demo in condition_to_demo[cond]]
-            #     shuffle(demos)
-
-            #     for demo in demos: demo.reset_agent(ioc_agent)
-            #     demo_list = SampleList(demos)
-            #     demo_store = {'demoX': demo_list.get_X(),
-            #                   'demoU': demo_list.get_U(),
-            #                   'demoO': demo_list.get_obs(),
-            #                   'demoConditions': demo_idx_conditions}
-
-            # elif agent_config['type']==AgentMuJoCo and \
-            #     ('reacher' in agent_config.get('exp_name', []) or 'pointmass' in agent_config.get('exp_name', []) or\
-            #         'peg' in agent_config.get('exp_name', [])):
-            #     dists = []; failed_indices = []
-            #     if demo_M == M or M == 1:
-            #         failed_indices = {i:[] for i in xrange(demo_M)}
-            #     success_thresh = agent_config['success_upper_bound'] # for reacher
-            #     for m in range(M):
-            #         if type(agent_config['target_end_effector']) is list:
-            #             target_position = agent_config['target_end_effector'][m][:3]
-            #         else:
-            #             target_position = agent_config['target_end_effector'][:3]
-            #         for i in range(N):
-            #           index = m*N + i
-            #           if demo_M != M or M == 1:
-            #               demo = demos[index]
-            #               demo_ee = demo.get(END_EFFECTOR_POINTS)
-            #               dists.append(np.min(np.sqrt(np.sum((demo_ee[:, :3] - target_position.reshape(1, -1))**2, axis = 1))))
-            #               if dists[index] >= success_thresh: #agent_config['success_upper_bound']:
-            #                 failed_indices.append(index)
-            #           else:
-            #               demo = demos[m][i]
-            #               demo_ee = demo.get(END_EFFECTOR_POINTS)
-            #               dists.append(np.min(np.sqrt(np.sum((demo_ee[:, :3] - target_position.reshape(1, -1))**2, axis = 1))))
-            #               if dists[i] >= success_thresh: #agent_config['success_upper_bound']:
-            #                 failed_indices[m].append(i)
-            #     if demo_M != M or M == 1:
-            #         good_indices = [i for i in xrange(len(demos)) if i not in failed_indices]
-            #         self._hyperparams['algorithm']['demo_cond'] = len(good_indices)
-            #         filtered_demos = []
-            #         filtered_demo_conditions = []
-            #         for i in good_indices:
-            #             filtered_demos.append(demos[i])
-            #             filtered_demo_conditions.append(demo_idx_conditions[i])
-    
-            #         print 'Num demos:', len(filtered_demos)
-            #         shuffle(filtered_demos)
-            #         for demo in filtered_demos: demo.reset_agent(ioc_agent)
-            #         demo_list =  SampleList(filtered_demos)
-            #         demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs(),
-            #                       'demoConditions': filtered_demo_conditions} #, \
-            #     else:
-            #         filtered_demos = {i:[] for i in xrange(demo_M)}
-            #         filtered_demo_conditions = []
-            #         for m in xrange(M):
-            #             for j in xrange(N):
-            #                 if j not in failed_indices[m]:
-            #                     demos[m][j].reset_agent(ioc_agent)
-            #                     filtered_demos[m].append(demos[m][j])
-            #             filtered_demo_conditions.append(m)
-            #             shuffle(filtered_demos[m])
-            #         print "Num demos:", sum(len(filtered_demos[m]) for m in xrange(M))
-            #         demo_list = [SampleList(filtered_demos[m]) for m in xrange(demo_M)]
-            #         demo_store = {'demoX': [demo_list[m].get_X() for m in xrange(demo_M)], 'demoU': [demo_list[m].get_U() for m in xrange(demo_M)], \
-            #                         'demoO': [demo_list[m].get_obs() for m in xrange(demo_M)], 'demoConditions': filtered_demo_conditions}
-            # else:
-            #     shuffle(demos)
-            #     for demo in demos: demo.reset_agent(ioc_agent)
-            #     demo_list = SampleList(demos)
-            #     demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs()}
-            # # Save the demos.
-            # self.data_logger.pickle(
-            #     demo_file,
-            #     copy.copy(demo_store)
-            # )
+            if type(agent_config) is not list:
+                self.filter(demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M)
+            else:
+                for i in xrange(len(agent_config)):
+                    with Timer('Saving demo file %d' % i):
+                        self.filter(demos[i], demo_idx_conditions[i], agent_config[i], ioc_agent, demo_file[i], demo_M)
 
         def filter(self, demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M):
             """
@@ -298,8 +202,8 @@ class GenDemo(object):
                 LOGGER.debug('Successes per condition: %s', str([len(demo_list) for demo_list in condition_to_demo.values()]))
                 demos = [demo for cond in condition_to_demo for demo in condition_to_demo[cond]]
                 shuffle(demos)
-
-                for demo in demos: demo.reset_agent(ioc_agent)
+                # import pdb; pdb.set_trace()
+                for demo in demos: demo.reset_agent(ioc_agent) # save images as observations!
                 if demo_M != M or M == 1:
                     demo_list = SampleList(demos)
                     demo_store = {'demoX': demo_list.get_X(),
@@ -322,51 +226,3 @@ class GenDemo(object):
                 demo_file,
                 copy.copy(demo_store)
             )
-
-        # Maybe useful to linearize the neural net policy before taking demos
-        def linearize_policy(self, samples, cond):
-            policy_prior = self.algorithms[cond]._hyperparams['policy_prior']
-            init_policy_prior = policy_prior['type'](policy_prior)
-            init_policy_prior._hyperparams['keep_samples'] = False
-            dX, dU, T = self.algorithms[cond].dX, self.algorithms[cond].dU, self.algorithms[cond].T
-            N = len(samples)
-            X = samples.get_X()
-            pol_mu, pol_sig = self.algorithms[cond].policy_opt.prob(samples.get_obs().copy())[:2]
-            # Update the policy prior with collected samples
-            init_policy_prior.update(SampleList([]), self.algorithms[cond].policy_opt, samples)
-            # Collapse policy covariances. This is not really correct, but
-            # it works fine so long as the policy covariance doesn't depend
-            # on state.
-            pol_sig = np.mean(pol_sig, axis=0)
-            pol_info_pol_K = np.zeros((T, dU, dX))
-            pol_info_pol_k = np.zeros((T, dU))
-            pol_info_pol_S = np.zeros((T, dU, dU))
-            pol_info_chol_pol_S = np.zeros((T, dU, dU))
-            pol_info_inv_pol_S = np.empty_like(pol_info_chol_pol_S)
-            # Estimate the policy linearization at each time step.
-            for t in range(T):
-                # Assemble diagonal weights matrix and data.
-                dwts = (1.0 / N) * np.ones(N)
-                Ts = X[:, t, :]
-                Ps = pol_mu[:, t, :]
-                Ys = np.concatenate((Ts, Ps), axis=1)
-                # Obtain Normal-inverse-Wishart prior.
-                mu0, Phi, mm, n0 = init_policy_prior.eval(Ts, Ps)
-                sig_reg = np.zeros((dX+dU, dX+dU))
-                # On the first time step, always slightly regularize covariance.
-                if t == 0:
-                    sig_reg[:dX, :dX] = 1e-8 * np.eye(dX)
-                # Perform computation.
-                pol_K, pol_k, pol_S = gauss_fit_joint_prior(Ys, mu0, Phi, mm, n0,
-                                                                                                        dwts, dX, dU, sig_reg)
-                pol_S += pol_sig[t, :, :]
-                pol_info_pol_K[t, :, :], pol_info_pol_k[t, :] = pol_K, pol_k
-                pol_info_pol_S[t, :, :], pol_info_chol_pol_S[t, :, :] = \
-                        pol_S, sp.linalg.cholesky(pol_S)
-                pol_info_inv_pol_S[t, :, :] = sp.linalg.solve(
-                                                    pol_info_chol_pol_S[t, :, :],
-                                                    np.linalg.solve(pol_info_chol_pol_S[t, :, :].T, np.eye(dU))
-                                                    )
-            return LinearGaussianPolicy(pol_info_pol_K, pol_info_pol_k, pol_info_pol_S, pol_info_chol_pol_S, \
-                                                                            pol_info_inv_pol_S)
-

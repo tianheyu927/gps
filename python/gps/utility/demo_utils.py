@@ -11,7 +11,7 @@ from gps.sample.sample import Sample
 from gps.sample.sample_list import SampleList
 from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
 from gps.utility.data_logger import DataLogger
-from gps.utility.general_utils import flatten_lists
+from gps.utility.general_utils import flatten_lists, Timer
 
 LOGGER = logging.getLogger(__name__)
 
@@ -50,8 +50,32 @@ def extract_samples(itr, sample_file):
     return sample_list
 
 def extract_demos(demo_file):
-    demos = DataLogger().unpickle(demo_file)
-    return demos['demoX'], demos['demoU'], demos['demoO'], demos.get('demoConditions', None)
+    if type(demo_file) is not list:
+        demos = DataLogger().unpickle(demo_file)
+        demos['agent_idx'] = np.zeros(demos['demoX'].shape[0])
+    else:
+        with Timer('Extracting demo file 0'):
+            demos = DataLogger().unpickle(demo_file[0])
+            demos['agent_idx'] = np.zeros(demos['demoX'].shape[0])
+        for i in xrange(1, len(demo_file)):
+            with Timer('Extracting demo file %d' % i):
+                new_demos = DataLogger().unpickle(demo_file[i])
+                demos['demoX'] = np.concatenate((demos['demoX'], new_demos['demoX']), axis=0)
+                demos['demoU'] = np.concatenate((demos['demoU'], new_demos['demoU']), axis=0)
+                demos['demoO'] = np.concatenate((demos['demoO'], new_demos['demoO']), axis=0)
+                demos['demoConditions'] = np.concatenate((demos['demoConditions'], new_demos['demoConditions']))
+                demos['agent_idx'] = np.concatenate((demos['agent_idx'], i*np.ones(new_demos['demoX'].shape[0])))
+    return demos['demoX'], demos['demoU'], demos['demoO'], demos.get('demoConditions', None), demos['agent_idx']
+
+def extract_demo_dict(demo_file):
+    if type(demo_file) is not list:
+        demos = DataLogger().unpickle(demo_file)
+    else:
+        demos = {}
+        for i in xrange(0, len(demo_file)):
+            with Timer('Extracting demo file %d' % i):
+                demos[i] = DataLogger().unpickle(demo_file[i])
+    return demos
 
 def xu_to_sample_list(agent, X, U):
     num = X.shape[0]
@@ -202,25 +226,50 @@ def get_demos(gps):
       gps.demo_gen = GenDemo(gps._hyperparams)
       gps.demo_gen.generate(demo_file, gps.agent)
       demos = gps.data_logger.unpickle(demo_file)
-    if type(demos['demoX']) is not list:
-        print 'Num demos:', demos['demoX'].shape[0]
-    else:
-        for i in xrange(len(demos['demoX'])):
-            print 'Num demos %d is %d' %(i, demos['demoX'][i].shape[0])
+    print 'Num demos:', demos['demoX'].shape[0]
     M = gps._hyperparams['common']['conditions']
-    if not gps.using_bc():
-        if type(demos['demoX']) is list:
-            gps._hyperparams['algorithm']['init_demo_x'] = []
-            gps._hyperparams['algorithm']['init_demo_u'] = []
-            for m in xrange(M):
-                gps._hyperparams['algorithm']['init_demo_x'].append(np.mean(demos['demoX'][m], 0))
-                gps._hyperparams['algorithm']['init_demo_u'].append(np.mean(demos['demoU'][m], 0))
-        else:
-            gps._hyperparams['algorithm']['init_traj_distr']['init_demo_x'] = np.mean(demos['demoX'], 0)
-            gps._hyperparams['algorithm']['init_traj_distr']['init_demo_u'] = np.mean(demos['demoU'], 0)
+    if type(demos['demoX']) is list:
+        gps._hyperparams['algorithm']['init_demo_x'] = []
+        gps._hyperparams['algorithm']['init_demo_u'] = []
+        for m in xrange(M):
+            gps._hyperparams['algorithm']['init_demo_x'].append(np.mean(demos['demoX'][m], 0))
+            gps._hyperparams['algorithm']['init_demo_u'].append(np.mean(demos['demoU'][m], 0))
+    else:
+        gps._hyperparams['algorithm']['init_traj_distr']['init_demo_x'] = np.mean(demos['demoX'], 0)
+        gps._hyperparams['algorithm']['init_traj_distr']['init_demo_u'] = np.mean(demos['demoU'], 0)
 
     gps.algorithm = gps._hyperparams['algorithm']['type'](gps._hyperparams['algorithm'])
     gps.algorithm.demoX = demos['demoX']
     gps.algorithm.demoU = demos['demoU']
     gps.algorithm.demoO = demos['demoO']
+    return demos
+
+def get_bc_demos(gps):
+    """
+    Gather the demos for BC/MAML algorithm. If there's no demo file available, generate it.
+    Args:
+        gps: the gps object.
+    Returns: the demo dictionary of demo tracjectories.
+    """
+    from gps.utility.generate_demo import GenDemo
+
+    if gps._hyperparams['common'].get('nn_demo', False):
+        demo_file = gps._hyperparams['common']['NN_demo_file'] # using neural network demos
+    else:
+        demo_file = gps._hyperparams['common']['LG_demo_file'] # using linear-Gaussian demos
+    if type(demo_file) is not list:
+        demos = gps.data_logger.unpickle(demo_file)
+        if demos is None:
+          gps.demo_gen = GenDemo(gps._hyperparams)
+          gps.demo_gen.generate(demo_file, gps.agent)
+          demos = gps.data_logger.unpickle(demo_file)
+    else:
+        demos = {}
+        demos[0] = gps.data_logger.unpickle(demo_file[0])
+        if demos[0] is None:
+            gps.demo_gen = GenDemo(gps._hyperparams)
+            gps.demo_gen.generate(demo_file, gps.agent)
+    if type(demos) is not dict:
+        print 'Num demos:', demos['demoX'].shape[0]
+    gps.algorithm = gps._hyperparams['algorithm']['type'](gps._hyperparams['algorithm'])
     return demos

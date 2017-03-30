@@ -207,7 +207,8 @@ class AgentMuJoCo(Agent):
 
 
 
-    def sample(self, policy, condition, verbose=True, save=True, noisy=True, record_image=False, record_gif=None, record_gif_fps=None):
+    def sample(self, policy, condition, verbose=True, save=True, noisy=True, record_image=False, record_gif=None, \
+                record_gif_fps=None, include_no_target=False):
         """
         Runs a trial and constructs a new sample containing information
         about the trial.
@@ -230,7 +231,7 @@ class AgentMuJoCo(Agent):
             feature_fn = self.feature_encoder.get_image_features
         elif 'get_image_features' in dir(policy):
             feature_fn = policy.get_image_features
-        new_sample = self._init_sample(condition, feature_fn=feature_fn, record_image=record_image)
+        new_sample = self._init_sample(condition, feature_fn=feature_fn, record_image=record_image, include_no_target=include_no_target)
 
         mj_X = self._hyperparams['x0'][condition]
         U = np.zeros([self.T, self.dU])
@@ -274,7 +275,7 @@ class AgentMuJoCo(Agent):
                 #TODO: Some hidden state stuff will go here.
                 #TODO: Will it? This TODO has been here for awhile
                 self._data = self._world[condition].get_data()
-                self._set_sample(new_sample, mj_X, t, condition, feature_fn=feature_fn, record_image=record_image)
+                self._set_sample(new_sample, mj_X, t, condition, feature_fn=feature_fn, record_image=record_image, include_no_target=include_no_target)
 
 
         if record_gif and imageio:
@@ -313,7 +314,7 @@ class AgentMuJoCo(Agent):
         self._world[condition].set_data(data)
         self._world[condition].kinematics()
 
-    def _init_sample(self, condition, feature_fn=None, record_image=False):
+    def _init_sample(self, condition, feature_fn=None, record_image=False, include_no_target=False):
         """
         Construct a new sample and fill in the first time step.
         Args:
@@ -334,11 +335,11 @@ class AgentMuJoCo(Agent):
         else:
             eepts = data['site_xpos'].flatten()
         sample.set(END_EFFECTOR_POINTS, eepts, t=0)
-        if (END_EFFECTOR_POINTS_NO_TARGET in self._hyperparams['obs_include']):
+        if (END_EFFECTOR_POINTS_NO_TARGET in self._hyperparams['obs_include'] or include_no_target):
             sample.set(END_EFFECTOR_POINTS_NO_TARGET, np.delete(eepts, self._hyperparams['target_idx']), t=0)
 
         sample.set(END_EFFECTOR_POINT_VELOCITIES, np.zeros_like(eepts), t=0)
-        if (END_EFFECTOR_POINT_VELOCITIES_NO_TARGET in self._hyperparams['obs_include']):
+        if (END_EFFECTOR_POINT_VELOCITIES_NO_TARGET in self._hyperparams['obs_include'] or include_no_target):
             sample.set(END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, np.delete(np.zeros_like(eepts), self._hyperparams['target_idx']), t=0)
 
         jac = np.zeros([eepts.shape[0], self._model[condition]['nq']])
@@ -384,7 +385,7 @@ class AgentMuJoCo(Agent):
                         sample.set(IMAGE_FEAT, np.zeros((self._hyperparams['sensor_dims'][IMAGE_FEAT],)), t=0)
         return sample
 
-    def _set_sample(self, sample, mj_X, t, condition, feature_fn=None, record_image=False):
+    def _set_sample(self, sample, mj_X, t, condition, feature_fn=None, record_image=False, include_no_target=False):
         """
         Set the data for a sample for one time step.
         Args:
@@ -403,13 +404,13 @@ class AgentMuJoCo(Agent):
             sample.set(JOINT_VELOCITIES, self._data['qvel'].flatten(), t=t+1)
             cur_eepts = self._data['site_xpos'].flatten()
         sample.set(END_EFFECTOR_POINTS, cur_eepts, t=t+1)
-        if (END_EFFECTOR_POINTS_NO_TARGET in self._hyperparams['obs_include']):
+        if (END_EFFECTOR_POINTS_NO_TARGET in self._hyperparams['obs_include'] or include_no_target):
             sample.set(END_EFFECTOR_POINTS_NO_TARGET, np.delete(cur_eepts, self._hyperparams['target_idx']), t=t+1)
 
         prev_eepts = sample.get(END_EFFECTOR_POINTS, t=t)
         eept_vels = (cur_eepts - prev_eepts) / self._hyperparams['dt']
         sample.set(END_EFFECTOR_POINT_VELOCITIES, eept_vels, t=t+1)
-        if (END_EFFECTOR_POINT_VELOCITIES_NO_TARGET in self._hyperparams['obs_include']):
+        if (END_EFFECTOR_POINT_VELOCITIES_NO_TARGET in self._hyperparams['obs_include'] or include_no_target):
             sample.set(END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, np.delete(eept_vels, self._hyperparams['target_idx']), t=t+1)
 
         jac = np.zeros([cur_eepts.shape[0], self._model[condition]['nq']])

@@ -6,6 +6,8 @@ import time
 import traceback as tb
 
 from gps.utility import color_string
+from gps.utility.data_logger import DataLogger
+from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
 
 
 class BundleType(object):
@@ -185,6 +187,48 @@ def sample_params(sampling_range, prohibited_ranges):
                 break
     return sampled_point
 
+def compute_distance(target_end_effector, sample_list, state_idxs=range(4, 7), end_effector_idxs=range(0,3), filter_type='min'):
+    """
+    Function that computes the distance from the target end effector to the end effector of the sample.
+    Args:
+        target_end_effector: the target coordinates (assuming 6-dimensional)
+        sample_list: A sample list object, whose distance to the target end effector will be computed
+        state_idx: the index of end effector in the state representation of a sample
+        end_effector_idx: the index of effective end effector in the end effector representation (by default the first 3 dim)
+        filter_type: whether choose the distance by using the minimum distance over all time steps or just the distance
+        at the last time step.
+    Returns:
+        dists: a list of distance for each sample in the sample list
+    """
+    target_position = target_end_effector
+    if type(sample_list) is not list:
+        cur_samples = sample_list.get_samples()
+    else:
+        cur_samples = []
+        for m in xrange(len(pol_sample_lists)):
+            samples = pol_sample_lists[m].get_samples()
+            for sample in samples:
+                cur_samples.append(sample)
+    sample_end_effectors = [cur_samples[i].get_X() for i in xrange(len(cur_samples))]
+    if filter_type == 'min':
+        if type(target_position) is not list:
+            dists = [np.nanmin((np.sqrt(np.sum((sample_end_effectors[i][:, state_idxs] - target_position[end_effector_idxs].reshape(1, -1))**2,
+                    axis=1))), axis=0) for i in xrange(len(cur_samples))]
+        else:
+            N = len(cur_samples)/len(target_position)
+            dists = [np.nanmin((np.sqrt(np.sum((sample_end_effectors[i][:, state_idxs] - target_position[i/N][end_effector_idxs].reshape(1, -1))**2,
+                    axis=1))), axis=0) for i in xrange(len(cur_samples))]
+    elif filter_type == 'last':
+        if type(target_position) is not list:
+            dists = [np.sqrt(np.sum((sample_end_effectors[i][:, state_idxs] - target_position[end_effector_idxs].reshape(1, -1))**2,
+                    axis=1))[-1] for i in xrange(len(cur_samples))]
+        else:
+            N = len(cur_samples)/len(target_position)
+            dists = [np.sqrt(np.sum((sample_end_effectors[i][:, state_idxs] - target_position[i/N][end_effector_idxs].reshape(1, -1))**2,
+                    axis=1))[-1] for i in xrange(len(cur_samples))]
+    else:
+        raise NotImplementedError()
+    return dists
 
 class BatchSampler(object):
     """ Samples data """

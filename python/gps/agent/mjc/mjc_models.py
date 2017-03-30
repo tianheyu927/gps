@@ -1,6 +1,7 @@
+from __future__ import division
+
 import numpy as np
 import copy
-from __future__ import division
 from gps.agent.mjc.model_builder import default_model, pointmass_model, MJCModel
 
 COLOR_MAP = {
@@ -14,7 +15,7 @@ COLOR_MAP = {
 }
 
 COLOR_RANGE = [i / 5 for i in xrange(5)]
-COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
+COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE[1:] for k in COLOR_RANGE]
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
 
 
@@ -138,7 +139,7 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     body.geom(fromto="0 0 0 0.1 0 0",name="link1",rgba="0.0 0.4 0.6 1",size=".01",type="capsule")
     body = body.body(name="fingertip",pos="0.11 0 0")
     body.site(name="fingertip",pos="0 0 0",size="0.01")
-    body.geom(contype="0",name="fingertip",pos="0 0 0",rgba=color_map[target_color],size=".01",type="sphere")
+    body.geom(contype="0",name="fingertip",pos="0 0 0",rgba=COLOR_MAP['green'],size=".01",type="sphere")
 
     # Target
     _target_pos = [target_pos[0], target_pos[1], 0.01]

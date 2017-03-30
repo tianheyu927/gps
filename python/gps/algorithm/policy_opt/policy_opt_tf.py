@@ -100,6 +100,7 @@ class PolicyOptTf(PolicyOpt):
             self.test_act_op = tf_map.get_test_output_op() # used for policy action
             self.feat_op = tf_map.get_feature_op()
             self.image_op = tf_map.get_image_op()  # TODO - make this.
+            self.weights = tf_map.get_weights() # get weights from model, used for metalearn
             self.loss_scalar = tf_map.get_loss_op()
             self.val_loss_scalar = tf_map.get_val_loss_op()
             self.debug = tf_map.debug
@@ -276,7 +277,7 @@ class PolicyOptTf(PolicyOpt):
                         val_feed_dict = {self.obs_tensor: test_obs,
                                         self.action_tensor: test_acts}
                         with tf.device(self.device_string):
-                            val_loss_history.append(self.run(self.val_loss_scalar, feed_dict=val_feed_dict)/test_obs.shape[0])
+                            val_loss_history.append(self.run(self.val_loss_scalar, feed_dict=val_feed_dict))
         if behavior_clone:
             plt.figure()
             plt.plot(50*(np.arange(TOTAL_ITERS/50)+1), loss_history, color='red', linestyle='-')

@@ -24,7 +24,8 @@ from gps.utility.data_logger import DataLogger, open_zip
 from gps.sample.sample_list import SampleList
 from gps.utility.general_utils import disable_caffe_logs, Timer, mkdir_p
 from gps.utility.demo_utils import eval_demos_xu, compute_distance_cost_plot, compute_distance_cost_plot_xu, \
-                                    measure_distance_and_success_peg, get_demos, extract_samples, cluster_demos
+                                    measure_distance_and_success_peg, get_demos, get_bc_demos, extract_samples, \
+                                    cluster_demos
 from gps.utility.visualization import get_comparison_hyperparams, compare_experiments, \
                                         compare_samples_curve, visualize_samples, plot_cost_3d, compare_samples
 
@@ -69,9 +70,12 @@ class GPSMain(object):
         config['algorithm']['agent'] = self.agent
 
         if not test_pol:
-            if (self.using_ioc() or self.using_bc()):
-                with Timer('loading demos'):
+            if self.using_ioc():
+                with Timer('loading all demos'):
                     demos = get_demos(self)
+            elif self.using_bc():
+                with Timer('loading all demos'):
+                    demos = get_bc_demos(self)
             else:
                 with Timer('init algorithm'):
                     self.algorithm = config['algorithm']['type'](config['algorithm'])
