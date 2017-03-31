@@ -3,6 +3,7 @@ import copy
 import logging
 import os
 import tempfile
+from datetime import datetime
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -95,7 +96,7 @@ class PolicyCloningMAML(PolicyOptTf):
 
         # For loading demos
         if hyperparams.get('agent', False):
-            test_agent = hyperparams['agent']  # Required for sample packing
+            test_agent = hyperparams['agent']  # Required for sampling
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
@@ -342,6 +343,22 @@ class PolicyCloningMAML(PolicyOptTf):
         n_val = self._hyperparams['n_val'] # number of demos for testing
         N_demos = np.sum(demo['demoO'].shape[0] for i, demo in demos.iteritems())
         print "Number of demos: %d" % N_demos
+        # Normalizing observations
+        if self.policy.scale is None or self.policy.bias is None:
+            obs = np.vstack((demo['demoO'] for demo in demos.values()))
+            self.T = obs.shape[1]
+            obs = obs.reshape(-1, self._dO)
+            self.policy.x_idx = self.x_idx
+            # 1e-3 to avoid infs if some state dimensions don't change in the
+            # first batch of samples
+            self.policy.scale = np.diag(
+                1.0 / np.maximum(np.std(obs[:, self.x_idx], axis=0), 1e-3))
+            self.policy.bias = - np.mean(
+                obs[:, self.x_idx].dot(self.policy.scale), axis=0)
+            for key in demos.keys():
+                demos[key]['demoO'] = demos[key]['demoO'].reshape(-1, self._dO)
+                demos[key]['demoO'][:, self.x_idx] = demos[key]['demoO'][:, self.x_idx].dot(self.policy.scale) + self.policy.bias
+                demos[key]['demoO'] = demos[key]['demoO'].reshape(-1, self.T, self._dO)
         idx = range(n_folders)
         shuffle(idx)
         self.demos = demos
@@ -366,7 +383,6 @@ class PolicyCloningMAML(PolicyOptTf):
         idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size*2)
         U = batch_demos[batch_idx[0]]['demoU'][idx_i]
         O = batch_demos[batch_idx[0]]['demoO'][idx_i]
-        self.T = U.shape[1]
         for i in xrange(1, batch_size):
             n_demo = batch_demos[batch_idx[i]]['demoX'].shape[0]
             idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size*2)
@@ -386,7 +402,7 @@ class PolicyCloningMAML(PolicyOptTf):
         SUMMARY_INTERVAL = 100
         TOTAL_ITERS = self._hyperparams['iterations']
         prelosses, postlosses = [], []
-        log_dir = self._hyperparams['log_dir']
+        log_dir = self._hyperparams['log_dir'] + '_%s' % datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
         train_writer = tf.train.SummaryWriter(log_dir, self.graph)
         # actual training.
         with Timer('Training'):
@@ -445,7 +461,7 @@ class PolicyCloningMAML(PolicyOptTf):
                         else:
                             gif_dir = gif_config.get('gif_dir', self._hyperparams['plot_dir'] + 'gifs/')
                         mkdir_p(gif_dir)
-                        gif_name = os.path.join(gif_dir,'color%d.cond%d.samp%d.gif' % (idx, i, j))
+                        gif_name = os.path.join(gif_dir,'color%d.cond%d.samp%d.gif' % (idx, conditions[i], j))
                     else:
                         gif_name=None
                         gif_fps = None
@@ -467,23 +483,24 @@ class PolicyCloningMAML(PolicyOptTf):
         for i in xrange(len(test_agent)):
             agent = test_agent[i]['type'](test_agent[i])
             conditions = self.demos[i]['demoConditions']
+            target_eepts = np.array(test_agent[i]['target_end_effector'])[conditions]
+            if len(target_eepts.shape) == 1:
+                target_eepts = np.expand_dims(target_eepts, axis=0)
+            target_eepts = target_eepts[:, :3]
             if i in self.val_idx:
                 # Sample on validation conditions.
                 val_sample_list = self.sample(agent, i, conditions, N=1, testing=True)
                 # Calculate val distances
                 X_val = val_sample_list.get_X()
-                target_eepts = np.squeeze(np.array(test_agent[i]['target_end_effector'])[conditions])[:3]
-                val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts, axis=1)) \
+                val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts[j], axis=1)) \
                                     for j in xrange(X_val.shape[0])])
             else:
                 # Sample on training conditions.
                 train_sample_list = self.sample(agent, i, conditions, N=1)
                 # Calculate train distances
                 X_train = train_sample_list.get_X()
-                target_eepts = np.squeeze(np.array(test_agent[i]['target_end_effector'])[conditions])[:3]
-                train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts, axis=1)) \
+                train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)) \
                                     for j in xrange(X_train.shape[0])])
-        import pdb; pdb.set_trace()
 
         print "Training success rate is %.5f" % (np.array(train_dists) <= success_thresh).mean()
         print "Validation success rate is %.5f" % (np.array(val_dists) <= success_thresh).mean()
