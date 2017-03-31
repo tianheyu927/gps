@@ -319,13 +319,8 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
 
     return nnet, fc_vars, last_conv_vars
 
-def maml(dim_input=27, dim_output=7, batch_size=25, network_config=None):
-    nnet, _, _ = multi_modal_network_fp(dim_input, dim_output, batch_size, network_config)
-    weights = nnet.get_weights()
-    # output = 
-
 def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id=0, is_training=True):
-    layer = tf.nn.bias_add(tf.nn.conv2d(img, w, strides=strides, padding='SAME'), b)
+    layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
     if not batch_norm:
         return tf.nn.relu(layer)
     else:
