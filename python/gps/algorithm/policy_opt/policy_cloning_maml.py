@@ -65,7 +65,8 @@ class PolicyCloningMAML(PolicyOptTf):
         self.meta_batch_size = self._hyperparams.get('meta_batch_size', 10)
         self.num_updates = self._hyperparams.get('num_updates', 1)
         self.meta_lr = self._hyperparams.get('lr', 1e-3)
-
+        self.weight_decay = self._hyperparams.get('weight_decay', 0.005)
+        
         self.init_network()
         self.init_solver()
 
@@ -123,9 +124,15 @@ class PolicyCloningMAML(PolicyOptTf):
             self.act_op = outputas
             self.feat_op = fp
             self.image_op = flat_img_inputa
-
-            self.total_loss1 = total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(self.meta_batch_size)
-            self.total_losses2 = total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
+            trainable_vars = tf.trainable_variables()
+            total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(self.meta_batch_size)
+            total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
+            # Adding regularization term
+            for var in trainable_vars:
+                total_loss1 += self.weight_decay*tf.nn.l2_loss(var)
+                total_losses2 = [total_loss2 + self.weight_decay*tf.nn.l2_loss(var) for total_loss2 in total_losses2]
+            self.total_loss1 = total_loss1
+            self.total_losses2 = total_losses2
             self.val_total_loss1 = tf.contrib.copy_graph.get_copied_op(total_loss1, self.graph)
             self.val_total_losses2 = [tf.contrib.copy_graph.get_copied_op(total_losses2[i], self.graph) for i in xrange(len(total_losses2))]
             # after the map_fn
@@ -136,11 +143,11 @@ class PolicyCloningMAML(PolicyOptTf):
             # Add summaries
             train_summ = []
             val_summ = []
-            train_summ.append(tf.scalar_summary('Training Pre-update loss', total_loss1))
-            val_summ.append(tf.scalar_summary('Validation Pre-update loss', total_loss1))
+            train_summ.append(tf.scalar_summary('Training Pre-update loss', self.total_loss1))
+            val_summ.append(tf.scalar_summary('Validation Pre-update loss', self.val_total_loss1))
             for j in xrange(self.num_updates):
-                train_summ.append(tf.scalar_summary('Training Post-update loss, step %d' % j, total_losses2[j]))
-                val_summ.append(tf.scalar_summary('Validation Post-update loss, step %d' % j, total_losses2[j]))
+                train_summ.append(tf.scalar_summary('Training Post-update loss, step %d' % j, self.total_losses2[j]))
+                val_summ.append(tf.scalar_summary('Validation Post-update loss, step %d' % j, self.val_total_losses2[j]))
             self.train_summ_op = tf.merge_summary(train_summ)
             self.val_summ_op = tf.merge_summary(val_summ)
 
@@ -359,13 +366,14 @@ class PolicyCloningMAML(PolicyOptTf):
         idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size*2)
         U = batch_demos[batch_idx[0]]['demoU'][idx_i]
         O = batch_demos[batch_idx[0]]['demoO'][idx_i]
+        self.T = U.shape[1]
         for i in xrange(1, batch_size):
             n_demo = batch_demos[batch_idx[i]]['demoX'].shape[0]
-            idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size)
+            idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size*2)
             U = np.concatenate((U, batch_demos[batch_idx[i]]['demoU'][idx_i]))
             O = np.concatenate((O, batch_demos[batch_idx[i]]['demoO'][idx_i]))
-        U = U.reshape(batch_size, 2*update_batch_size, -1)
-        O = O.reshape(batch_size, 2*update_batch_size, -1)
+        U = U.reshape(batch_size, 2*update_batch_size*self.T, -1)
+        O = O.reshape(batch_size, 2*update_batch_size*self.T, -1)
         return O, U
     
     def update(self):
@@ -381,44 +389,45 @@ class PolicyCloningMAML(PolicyOptTf):
         log_dir = self._hyperparams['log_dir']
         train_writer = tf.train.SummaryWriter(log_dir, self.graph)
         # actual training.
-        for itr in range(TOTAL_ITERS):
-            obs, tgt_mu = self.generate_data_batch()
-            inputa = obs[:, :self.update_batch_size, :]
-            inputb = obs[:, self.update_batch_size:, :]
-            actiona = tgt_mu[:, :self.update_batch_size, :]
-            actionb = tgt_mu[:, self.update_batch_size:, :]
-            feed_dict = {self.inputa: inputa,
-                        self.inputb: inputb,
-                        self.actiona: actiona,
-                        self.actionb: actionb}
-            input_tensors = [self.train_op]
-            if itr % SUMMARY_INTERVAL == 0 or itr % PRINT_INTERVAL == 0:
-                input_tensors.extend([self.train_summ_op, self.total_loss1, self.total_losses2[self.num_updates-1]])
-            result = self.run(input_tensors, feed_dict=feed_dict)
-
-            if itr % SUMMARY_INTERVAL == 0:
-                prelosses.append(result[-2])
-                train_writer.add_summary(result[1], itr)
-                postlosses.append(result[-1])
-
-            if itr != 0 and itr % PRINT_INTERVAL == 0:
-                print 'Iteration %d: average preloss is %.2f, average postloss is %.2f' % (itr, np.mean(prelosses), np.mean(postlosses))
-                prelosses, postlosses = [], []
-
-            if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
-                input_tensors = [self.val_summ_op, self.val_total_loss1, self.val_total_losses2[self.num_updates-1]]
-                val_obs, val_act = self.generate_data_batch(train=False)
-                inputa = val_obs[:, :self.update_batch_size, :]
-                inputb = val_obs[:, self.update_batch_size:, :]
-                actiona = val_act[:, :self.update_batch_size, :]
-                actionb = val_act[:, self.update_batch_size:, :]
+        with Timer('Training'):
+            for itr in range(TOTAL_ITERS):
+                obs, tgt_mu = self.generate_data_batch()
+                inputa = obs[:, :self.update_batch_size*self.T, :]
+                inputb = obs[:, self.update_batch_size*self.T:, :]
+                actiona = tgt_mu[:, :self.update_batch_size*self.T, :]
+                actionb = tgt_mu[:, self.update_batch_size*self.T:, :]
                 feed_dict = {self.inputa: inputa,
                             self.inputb: inputb,
                             self.actiona: actiona,
                             self.actionb: actionb}
-                results = self.run(input_tensors, feed_dict=feed_dict)
-                train_writer.add_summary(results[0], itr)
-                print 'Test results: average preloss is %.2f, average postloss is %.2f' % (np.mean(results[1]), np.mean(results[2]))
+                input_tensors = [self.train_op]
+                if itr % SUMMARY_INTERVAL == 0 or itr % PRINT_INTERVAL == 0:
+                    input_tensors.extend([self.train_summ_op, self.total_loss1, self.total_losses2[self.num_updates-1]])
+                result = self.run(input_tensors, feed_dict=feed_dict)
+    
+                if itr % SUMMARY_INTERVAL == 0:
+                    prelosses.append(result[-2])
+                    train_writer.add_summary(result[1], itr)
+                    postlosses.append(result[-1])
+    
+                if itr != 0 and itr % PRINT_INTERVAL == 0:
+                    print 'Iteration %d: average preloss is %.2f, average postloss is %.2f' % (itr, np.mean(prelosses), np.mean(postlosses))
+                    prelosses, postlosses = [], []
+    
+                if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
+                    input_tensors = [self.val_summ_op, self.val_total_loss1, self.val_total_losses2[self.num_updates-1]]
+                    val_obs, val_act = self.generate_data_batch(train=False)
+                    inputa = val_obs[:, :self.update_batch_size*self.T, :]
+                    inputb = val_obs[:, self.update_batch_size*self.T:, :]
+                    actiona = val_act[:, :self.update_batch_size*self.T, :]
+                    actionb = val_act[:, self.update_batch_size*self.T:, :]
+                    feed_dict = {self.inputa: inputa,
+                                self.inputb: inputb,
+                                self.actiona: actiona,
+                                self.actionb: actionb}
+                    results = self.run(input_tensors, feed_dict=feed_dict)
+                    train_writer.add_summary(results[0], itr)
+                    print 'Test results: average preloss is %.2f, average postloss is %.2f' % (np.mean(results[1]), np.mean(results[2]))
 
         # Keep track of tensorflow iterations for loading solver states.
         self.tf_iter += self._hyperparams['iterations']

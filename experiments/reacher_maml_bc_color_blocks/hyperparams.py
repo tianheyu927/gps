@@ -258,15 +258,17 @@ algorithm['policy_opt'] = {
     'batch_norm': True,
     'decay': 0.99,
     'fc_only_iterations': 0,
-    'init_iterations': 10000, #1000
-    'iterations': 10000,  # 1000
+    'init_iterations': 5000, #1000
+    'iterations': 5000,  # 1000
     'random_seed': SEED,
     'n_val': 20, #1
     'step_size': 1e-3, # step size of gradient step
     'num_updates': 1, # take one gradient step
     'meta_batch_size': 10, #10, # number of functions learned during training
+    'weight_decay': 0.005,
     'update_batch_size': 1, # one-shot learning
     'log_dir': '/tmp/data/maml_reacher_bc',
+    'plot_dir': common['data_files_dir'],
     'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',
     'record_gif': {
