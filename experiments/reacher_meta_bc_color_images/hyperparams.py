@@ -253,7 +253,6 @@ algorithm['policy_opt'] = {
         'sensor_dims': SENSOR_DIMS,
         'bc': True,
     },
-    'network_model': multi_modal_network_fp,
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': pol_agent,
     'batch_norm': True,
@@ -269,7 +268,7 @@ algorithm['policy_opt'] = {
     'num_updates': 1, # take one gradient step
     'meta_batch_size': 10, # number of functions learned during training
     'update_batch_size': 1, # one-shot learning
-    'plot_dir': common['data_files_dir'],
+    'log_dir': '/tmp/data/maml_reacher_bc',
     'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',
     'record_gif': {
