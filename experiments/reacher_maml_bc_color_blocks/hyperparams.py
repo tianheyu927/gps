@@ -257,9 +257,7 @@ algorithm['policy_opt'] = {
     'agent': pol_agent,
     'batch_norm': True,
     'decay': 0.99,
-    'fc_only_iterations': 0,
-    'init_iterations': 5000, #5000
-    'iterations': 5000,  # 5000
+    'iterations': 10000,  # 5000
     'random_seed': SEED,
     'n_val': 20, #20
     'step_size': 1e-3, # step size of gradient step

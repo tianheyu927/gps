@@ -400,9 +400,11 @@ class PolicyCloningMAML(PolicyOptTf):
         PRINT_INTERVAL = 100
         TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
         SUMMARY_INTERVAL = 100
+        SAVE_INTERVAL = 1000
         TOTAL_ITERS = self._hyperparams['iterations']
         prelosses, postlosses = [], []
         log_dir = self._hyperparams['log_dir'] + '_%s' % datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        save_dir = self._hyperparams['log_dir'] + '_model'
         train_writer = tf.train.SummaryWriter(log_dir, self.graph)
         # actual training.
         with Timer('Training'):
@@ -444,7 +446,9 @@ class PolicyCloningMAML(PolicyOptTf):
                     results = self.run(input_tensors, feed_dict=feed_dict)
                     train_writer.add_summary(results[0], itr)
                     print 'Test results: average preloss is %.2f, average postloss is %.2f' % (np.mean(results[1]), np.mean(results[2]))
-
+                
+                if itr != 0 and itr % SAVE_INTERVAL == 0:
+                    self.save_model(save_dir + '_%d' % itr)
         # Keep track of tensorflow iterations for loading solver states.
         self.tf_iter += self._hyperparams['iterations']
 
