@@ -34,12 +34,14 @@ def euclidean_loss_layer(a, b, precision, behavior_clone=False):
     """ Math:  out = (action - mlp_out)'*precision*(action-mlp_out)
                     = (u-uhat)'*A*(u-uhat)"""
     # scale_factor = tf.constant(2*batch_size, dtype='float')
-    multiplier = tf.constant(10000.0, dtype='float') #for bc
+    multiplier = tf.constant(100.0, dtype='float') #for bc #10000
     if not behavior_clone:
         uP = batched_matrix_vector_multiply(a-b, precision)
+        return tf.reduce_mean(uP*(a-b))
     else:
-        uP =(a-b)*multiplier
-    return tf.reduce_mean(uP*(a-b))  # this last dot product is then summed, so we just the sum all at once.
+        uP =a*multiplier-b*multiplier
+        # return tf.reduce_mean(uP*uP)  # this last dot product is then summed, so we just the sum all at once.
+        return tf.reduce_mean(tf.square(uP))
 
 def get_input_layer(dim_input, dim_output, behavior_clone=False):
     """produce the placeholder inputs that are used to run ops forward and backwards.
@@ -315,6 +317,130 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
     val_loss = euclidean_loss_layer(a=action, b=test_output, precision=precision, behavior_clone=behavior_clone)
     
     nnet = TfMap.init_from_lists([nn_input, action, precision], [fc_output, test_output], [weights], [loss, val_loss], fp=fp, image=flat_image_input, debug=training_conv_layer_2) #this is training conv layer
+    last_conv_vars = fc_inputs[0] #training fc input
+
+    return nnet, fc_vars, last_conv_vars
+
+def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, network_config=None):
+    """
+    An example a network in theano that has both state and image inputs, with the feature
+    point architecture (spatial softmax + expectation).
+    Args:
+        dim_input: Dimensionality of input.
+        dim_output: Dimensionality of the output.
+        batch_size: Batch size.
+        network_config: dictionary of network structure parameters
+    Returns:
+        A tfMap object that stores inputs, outputs, and scalar loss.
+    """
+    n_layers = 5 # TODO TODO this used to be 3.
+    layer_size = 50  # TODO TODO This used to be 20.
+    dim_hidden = (n_layers - 1)*[layer_size]
+    dim_hidden.append(dim_output)
+    pool_size = 2
+    filter_size = 5
+    behavior_clone = network_config.get('bc', False)
+    batch_norm = network_config.get('batch_norm', False)
+    decay = network_config.get('decay', 0.9)
+
+    # List of indices for state (vector) data and image (tensor) data in observation.
+    x_idx, img_idx, i = [], [], 0
+    for sensor in network_config['obs_include']:
+        dim = network_config['sensor_dims'][sensor]
+        if sensor in network_config['obs_image_data']:
+            img_idx = img_idx + list(range(i, i+dim))
+        else:
+            x_idx = x_idx + list(range(i, i+dim))
+        i += dim
+    nn_input, action, precision = get_input_layer(dim_input, dim_output, behavior_clone)
+
+    state_input = nn_input[:, 0:x_idx[-1]+1]
+    flat_image_input = nn_input[:, x_idx[-1]+1:img_idx[-1]+1]
+
+    # image goes through 3 convnet layers
+    num_filters = network_config['num_filters']
+
+    im_height = network_config['image_height']
+    im_width = network_config['image_width']
+    num_channels = network_config['image_channels']
+    image_input = tf.reshape(flat_image_input, [-1, num_channels, im_width, im_height])
+    image_input = tf.transpose(image_input, perm=[0,3,2,1])
+
+    # we pool twice, each time reducing the image size by a factor of 2.
+    conv_out_size = int(im_width/(2.0*pool_size)*im_height/(2.0*pool_size)*num_filters[1])
+    first_dense_size = conv_out_size + len(x_idx)
+
+    # Store layers weight & bias
+    with tf.variable_scope('conv_params'):
+        weights = {
+            # 'wc1': init_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
+            # 'wc2': init_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+            # 'wc3': init_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc1': get_he_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'), # 5x5 conv, 1 input, 32 outputs
+            'wc2': get_he_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc3': get_he_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'), # 5x5 conv, 32 inputs, 64 outputs
+            'wc4': get_he_weights([filter_size, filter_size, num_filters[2], num_filters[3]], name='wc4'),
+        }
+
+        biases = {
+            'bc1': init_bias([num_filters[0]], name='bc1'),
+            'bc2': init_bias([num_filters[1]], name='bc2'),
+            'bc3': init_bias([num_filters[2]], name='bc3'),
+            'bc4': init_bias([num_filters[3]], name='bc4'),
+        }
+
+    fc_inputs = []
+    is_training_list = [True, False]
+    for is_training in is_training_list:
+        conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0, is_training=is_training)
+        conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1, is_training=is_training)
+        conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2, is_training=is_training)
+        conv_layer_3 = conv2d(img=conv_layer_2, w=weights['wc4'], b=biases['bc4'], batch_norm=batch_norm, decay=decay, conv_id=3, is_training=is_training)
+        
+        if is_training:
+            training_conv_layer_3 = conv_layer_3
+
+        _, num_rows, num_cols, num_fp = conv_layer_3.get_shape()
+        num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
+        x_map = np.empty([num_rows, num_cols], np.float32)
+        y_map = np.empty([num_rows, num_cols], np.float32)
+
+        for i in range(num_rows):
+            for j in range(num_cols):
+                x_map[i, j] = (i - num_rows / 2.0) / num_rows
+                y_map[i, j] = (j - num_cols / 2.0) / num_cols
+
+        x_map = tf.convert_to_tensor(x_map)
+        y_map = tf.convert_to_tensor(y_map)
+
+        x_map = tf.reshape(x_map, [num_rows * num_cols])
+        y_map = tf.reshape(y_map, [num_rows * num_cols])
+
+        # rearrange features to be [batch_size, num_fp, num_rows, num_cols]
+        features = tf.reshape(tf.transpose(conv_layer_2, [0,3,1,2]),
+                              [-1, num_rows*num_cols])
+        softmax = tf.nn.softmax(features)
+
+        fp_x = tf.reduce_sum(tf.mul(x_map, softmax), [1], keep_dims=True)
+        fp_y = tf.reduce_sum(tf.mul(y_map, softmax), [1], keep_dims=True)
+
+        fp = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
+
+        fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
+        fc_inputs.append(fc_input)
+
+    fc_output, weights_FC, biases_FC = get_mlp_layers(fc_inputs[0], n_layers, dim_hidden, batch_norm=False, decay=decay, is_training=True)
+    test_output, _, _ = get_mlp_layers(fc_inputs[1], n_layers, dim_hidden, batch_norm=False, decay=decay, is_training=False)
+    fc_vars = weights_FC + biases_FC
+    for i in xrange(n_layers):
+        weights['wfc%d' % i] = weights_FC[i]
+        weights['bfc%d' % i] = biases_FC[i]
+    weights.update(biases)
+
+    loss = euclidean_loss_layer(a=action, b=fc_output, precision=precision, behavior_clone=behavior_clone)
+    val_loss = euclidean_loss_layer(a=action, b=test_output, precision=precision, behavior_clone=behavior_clone)
+    
+    nnet = TfMap.init_from_lists([nn_input, action, precision], [fc_output, test_output], [weights], [loss, val_loss], fp=fp, image=flat_image_input, debug=training_conv_layer_3) #this is training conv layer
     last_conv_vars = fc_inputs[0] #training fc input
 
     return nnet, fc_vars, last_conv_vars

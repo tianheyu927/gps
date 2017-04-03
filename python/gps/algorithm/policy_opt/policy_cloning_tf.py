@@ -40,6 +40,9 @@ class PolicyCloningTf(PolicyOptTf):
             self.eval_success_rate(test_agent)
 
         self.test_agent = None  # don't pickle agent
+        self.demos = None
+        self.train_demos = None
+        self.val_demos = None
         if self._hyperparams.get('agent', False):
             del self._hyperparams['agent']
 
@@ -50,20 +53,16 @@ class PolicyCloningTf(PolicyOptTf):
         if type(demo_file) is list:
             N = np.sum(demo['demoO'].shape[0] for i, demo in demos.iteritems())
             print "Number of demos: %d" % N
-            update_batch_size = self.update_batch_size
-            n_demo = demos[0]['demoX'].shape[0]
-            idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size)
-            X = demos[0]['demoX'][idx_i]
-            U = demos[0]['demoU'][idx_i]
-            O = demos[0]['demoO'][idx_i]
-            cond = np.array(demos[0]['demoConditions'])[idx_i]
+            X = demos[0]['demoX']
+            U = demos[0]['demoU']
+            O = demos[0]['demoO']
+            cond = np.array(demos[0]['demoConditions'])
             for i in xrange(1, len(demo_file)):
                 n_demo = demos[i]['demoX'].shape[0]
-                idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size)
-                X = np.concatenate((X, demos[i]['demoX'][idx_i]))
-                U = np.concatenate((U, demos[i]['demoU'][idx_i]))
-                O = np.concatenate((O, demos[i]['demoO'][idx_i]))
-                cond = np.concatenate((cond, np.array(demos[i]['demoConditions'])[idx_i]))
+                X = np.concatenate((X, demos[i]['demoX']))
+                U = np.concatenate((U, demos[i]['demoU']))
+                O = np.concatenate((O, demos[i]['demoO']))
+                cond = np.concatenate((cond, np.array(demos[i]['demoConditions'])))
             print "Number of few-shot demos is %d" % (X.shape[0])
         else:
             N = demos['demoO'].shape[0]
@@ -73,21 +72,29 @@ class PolicyCloningTf(PolicyOptTf):
             O = demos['demoO']
             cond = demos['demoConditions']
         if n_val != 0:
-            valO = O[:n_val]
-            valX = X[:n_val]
-            valU = U[:n_val]
-            val_cond = cond[:n_val]
-            O = O[n_val:]
-            X = X[n_val:]
-            U = U[n_val:]
-            cond = cond[n_val:]
+            n_folders = len(demos.keys())
+            idx = range(n_folders)
+            shuffle(idx)
+            self.demos = demos
+            self.val_demos = {key: demos[key] for key in np.array(demos.keys())[idx[:n_val]]}
+            self.train_demos = {key: demos[key] for key in np.array(demos.keys())[idx[n_val:]]}
+            self.val_idx = sorted(idx[:n_val])
+            self.train_idx = sorted(idx[n_val:])
+            valO = O[idx[:n_val]]
+            valX = X[idx[:n_val]]
+            valU = U[:idx[:n_val]]
+            val_cond = cond[idx[:n_val]]
+            O = O[idx[n_val:]]
+            X = X[idx[n_val:]]
+            U = U[idx[n_val:]]
+            cond = cond[idx[n_val:]]
         else:
+            self.demos = self.train_demos = demos
+            self.val_demos = None
             valO = None
             valX = None
             valU = None
             val_cond = None
-        self.train_set = {"trainO": O, "trainX": X, "trainU": U, "train_conditions": cond}   
-        self.val_set = {"valO": valO, "valX": valX, "valU": valU, "val_conditions": val_cond}
 
         return O, U, valO, valU
 
@@ -118,38 +125,34 @@ class PolicyCloningTf(PolicyOptTf):
         return SampleList(samples)
     
     def eval_success_rate(self, test_agent):
-        # TODO: sample on train and val sets and calucate the success rate.
         assert type(test_agent) is list
         success_thresh = test_agent[0]['filter_demos'].get('success_upper_bound', 0.05)
         state_idx = np.array(list(test_agent[0]['filter_demos'].get('state_idx', range(4, 7))))
         train_dists = []
         val_dists = []
-        # Calculate the validation set success rate.
-        for i in xrange(self._hyperparams['n_val']):
+        for i in xrange(len(test_agent)):
             agent = test_agent[i]['type'](test_agent[i])
-            # Get the validation pos body offset idx!
-            val_conditions = self.val_set['val_conditions'][i*self.update_batch_size:(i+1)*self.update_batch_size]
-            # Sample on validation conditions.
-            val_sample_list = self.sample(agent, i, val_conditions, N=1, testing=True)
-            # Calculate val distances
-            X_val = val_sample_list.get_X()
-            target_eepts = np.squeeze(np.array(test_agent[i]['target_end_effector'])[val_conditions])[:3]
-            val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts, axis=1)) \
-                                for j in xrange(X_val.shape[0])])
+            conditions = self.demos[i]['demoConditions']
+            target_eepts = np.array(test_agent[i]['target_end_effector'])[conditions]
+            if len(target_eepts.shape) == 1:
+                target_eepts = np.expand_dims(target_eepts, axis=0)
+            target_eepts = target_eepts[:, :3]
+            if self.val_demos and i in self.val_idx:
+                # Sample on validation conditions.
+                val_sample_list = self.sample(agent, i, conditions, N=1, testing=True)
+                # Calculate val distances
+                X_val = val_sample_list.get_X()
+                val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts[j], axis=1)) \
+                                    for j in xrange(X_val.shape[0])])
+            else:
+                # Sample on training conditions.
+                train_sample_list = self.sample(agent, i, conditions, N=1)
+                # Calculate train distances
+                X_train = train_sample_list.get_X()
+                train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)) \
+                                    for j in xrange(X_train.shape[0])])
 
-        # Calculate the training set success rate.
-        for i in xrange(len(test_agent)-self._hyperparams['n_val']):
-            agent = test_agent[i+self._hyperparams['n_val']]['type'](test_agent[i+self._hyperparams['n_val']])
-            # Get the train pos body offset idx!
-            train_conditions = self.train_set['train_conditions'][i*self.update_batch_size:(i+1)*self.update_batch_size]
-            # Sample on train conditions.
-            train_sample_list = self.sample(agent, i+self._hyperparams['n_val'], train_conditions, N=1)
-            # Calculate train distances
-            X_train = train_sample_list.get_X()
-            target_eepts = np.squeeze(np.array(test_agent[i+self._hyperparams['n_val']]['target_end_effector'])[train_conditions])[:3]
-            train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts, axis=1)) \
-                                for j in xrange(X_train.shape[0])])
         import pdb; pdb.set_trace()
-
         print "Training success rate is %.5f" % (np.array(train_dists) <= success_thresh).mean()
-        print "Validation success rate is %.5f" % (np.array(val_dists) <= success_thresh).mean()
+        if self.val_demos:
+            print "Validation success rate is %.5f" % (np.array(val_dists) <= success_thresh).mean()

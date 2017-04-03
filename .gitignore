@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 
+# Checkpoints
+checkpoint
+
+# C9
+.c9/
+
 # C extensions
 *.so
 
@@ -99,7 +105,13 @@ MUJOCO_LOG.TXT
 *.csv
 
 # Experiment files
-experiments/**/data_files/
+experiments/**/data_files*/
 experiments/**/log.txt
 experiments/**/*.png
 .previous_experiment
+
+# Images
+*.png
+
+# Hardcoded stuff
+python/gps/plot_bc_ioc.py

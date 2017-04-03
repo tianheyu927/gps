@@ -17,7 +17,7 @@ from gps.algorithm.policy_opt.policy_cloning_tf import PolicyCloningTf
 from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
-from gps.algorithm.policy_opt.tf_model_example import multi_modal_network, multi_modal_network_fp
+from gps.algorithm.policy_opt.tf_model_example import multi_modal_network, multi_modal_network_fp_large
 
 from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
         END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, RGB_IMAGE, RGB_IMAGE_SIZE, ACTION, \
@@ -242,7 +242,7 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningTf,
     'network_params': {
-        'num_filters': [15, 15, 15],
+        'num_filters': [15, 15, 15, 15],
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
@@ -252,19 +252,18 @@ algorithm['policy_opt'] = {
         'sensor_dims': SENSOR_DIMS,
         'bc': True,
     },
-    'network_model': multi_modal_network_fp,
+    'network_model': multi_modal_network_fp_large,
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
-    'update_batch_size': 1, # one-shot learning
     'agent': pol_agent,
     'batch_norm': True,
     'decay': 0.99,
-    # 'lr': 3e-4,
-    'batch_size': 25,
+    # 'lr': 5e-4,
+    'batch_size': 100,
     'fc_only_iterations': 0,
-    'init_iterations': 8000, #1000
-    'iterations': 8000,  # 1000
+    'init_iterations': 12000, #1000
+    'iterations': 12000,  # 1000
     'random_seed': SEED,
-    'n_val': 20,
+    'n_val': 0,
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',

@@ -580,6 +580,8 @@ def main():
                     help='run the experiments with multiple seeds sequentially')
     parser.add_argument('--test_multiple', metavar='N', type=int,
                 help='test the policies with multiple seeds sequentially')
+    parser.add_argument('--restore', metavar='N', type=int,
+                help='restore weights from iteration N (for BC only)')
 
     args = parser.parse_args()
 
@@ -589,6 +591,7 @@ def main():
     compare = args.compare
     measure = args.measure
     visualize = args.visualize
+    restore_iter = args.restore
 
     from gps import __file__ as gps_filepath
     gps_filepath = os.path.abspath(gps_filepath)
@@ -812,6 +815,8 @@ def main():
                 gps.run()
                 plt.close('all')
     else:
+        if restore_iter and hyperparams.config['algorithm'].get('bc', False):
+            hyperparams.config['algorithm']['policy_opt']['restore_iter'] = restore_iter
         gps = GPSMain(hyperparams.config)
         if hyperparams.config['gui_on']:
             # run_gps = threading.Thread(

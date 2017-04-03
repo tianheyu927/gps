@@ -22,6 +22,8 @@ from gps.sample.sample_list import SampleList
 from gps.utility.demo_utils import xu_to_sample_list, extract_demo_dict
 from gps.utility.general_utils import BatchSampler, compute_distance, mkdir_p, Timer
 
+ANNEAL_INTERVAL = 2000
+
 class PolicyCloningMAML(PolicyOptTf):
     """ Set up weighted neural network norm loss with learned parameters. """
     def __init__(self, hyperparams, dO, dU):
@@ -43,12 +45,12 @@ class PolicyCloningMAML(PolicyOptTf):
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf_Session(graph=graph, config=tf_config)
             else:
-                # self.gpu_device = self._hyperparams['gpu_id']
-                # self.device_string = "/gpu:" + str(self.gpu_device)
-                # self._sess = tf.Session(graph=self.graph)
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
-                tf_config = tf.ConfigProto(gpu_options=gpu_options)
-                self._sess = tf_Session(graph=graph, config=tf_config)
+                self.gpu_device = self._hyperparams['gpu_id']
+                self.device_string = "/gpu:" + str(self.gpu_device)
+                self._sess = tf.Session(graph=self.graph)
+                # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+                # tf_config = tf.ConfigProto(gpu_options=gpu_options)
+                # self._sess = tf_Session(graph=graph, config=tf_config)
         else:
             self._sess = tf.Session(graph=self.graph)
         self.act_op = None  # mu_hat
@@ -69,7 +71,6 @@ class PolicyCloningMAML(PolicyOptTf):
         self.weight_decay = self._hyperparams.get('weight_decay', 0.005)
         
         self.init_network()
-        self.init_solver()
 
         with self.graph.as_default():
             self.saver = tf.train.Saver()
@@ -102,9 +103,16 @@ class PolicyCloningMAML(PolicyOptTf):
         demo_file = hyperparams['demo_file']
         
         if hyperparams.get('agent', False):
+            restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
-            self.update()
-            self.eval_success_rate(test_agent)
+            if restore_iter > 0:
+                self.restore_model(hyperparams['log_dir'] + '_model_%d' % restore_iter)
+                # TODO: also implement resuming training from restored model
+                import pdb; pdb.set_trace()
+                self.eval_success_rate(test_agent)
+            else:
+                self.update()
+                self.eval_success_rate(test_agent)
 
         self.test_agent = None  # don't pickle agent
         self.val_demos = None # don't pickle demos
@@ -119,10 +127,10 @@ class PolicyCloningMAML(PolicyOptTf):
             with Timer('building TF network'):
                 result = self.construct_model(dim_input=self._dO, dim_output=self._dU,
                                           network_config=self._hyperparams['network_params'])
-            outputas, outputbs, lossesa, lossesb, flat_img_inputa, fp = result
+            outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp = result
             self.obs_tensor = self.inputa
             self.action_tensor = self.actiona
-            self.act_op = outputas
+            self.act_op = test_outputa
             self.feat_op = fp
             self.image_op = flat_img_inputa
             trainable_vars = tf.trainable_variables()
@@ -134,6 +142,8 @@ class PolicyCloningMAML(PolicyOptTf):
                 total_losses2 = [total_loss2 + self.weight_decay*tf.nn.l2_loss(var) for total_loss2 in total_losses2]
             self.total_loss1 = total_loss1
             self.total_losses2 = total_losses2
+            self.lossesa = lossesa # for testing
+            self.lossesb = lossesb[-1] # for testing
             self.val_total_loss1 = tf.contrib.copy_graph.get_copied_op(total_loss1, self.graph)
             self.val_total_losses2 = [tf.contrib.copy_graph.get_copied_op(total_losses2[i], self.graph) for i in xrange(len(total_losses2))]
             # after the map_fn
@@ -141,22 +151,23 @@ class PolicyCloningMAML(PolicyOptTf):
             self.outputbs = outputbs
             self.image_op = flat_img_inputa
             self.feat_op = fp
+
+            # Initialize solver
+            # mom1, mom2 = 0.9, 0.999 # adam defaults
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            with tf.control_dependencies(update_ops):
+                self.global_step = tf.Variable(0, trainable=False)
+                learning_rate = tf.train.exponential_decay(self.meta_lr, self.global_step, ANNEAL_INTERVAL, 0.5, staircase=True)
+                self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.total_losses2[self.num_updates - 1], global_step=self.global_step)
+            
             # Add summaries
-            train_summ = []
-            val_summ = []
-            train_summ.append(tf.scalar_summary('Training Pre-update loss', self.total_loss1))
-            val_summ.append(tf.scalar_summary('Validation Pre-update loss', self.val_total_loss1))
+            train_summ = [tf.scalar_summary('Training Pre-update loss', self.total_loss1)] # tf.scalar_summary('Learning rate', learning_rate)
+            val_summ = [tf.scalar_summary('Validation Pre-update loss', self.val_total_loss1)]
             for j in xrange(self.num_updates):
                 train_summ.append(tf.scalar_summary('Training Post-update loss, step %d' % j, self.total_losses2[j]))
                 val_summ.append(tf.scalar_summary('Validation Post-update loss, step %d' % j, self.val_total_losses2[j]))
             self.train_summ_op = tf.merge_summary(train_summ)
             self.val_summ_op = tf.merge_summary(val_summ)
-
-    def init_solver(self):
-        with self.graph.as_default():
-            mom1, mom2 = 0.9, 0.999 # adam defaults
-            optimizer = tf.train.AdamOptimizer(self.meta_lr, mom1, mom2)
-            self.train_op = optimizer.minimize(self.total_losses2[self.num_updates - 1])
 
     def construct_image_input(self, nn_input, x_idx, img_idx, network_config=None):
         state_input = nn_input[:, 0:x_idx[-1]+1]
@@ -173,8 +184,8 @@ class PolicyCloningMAML(PolicyOptTf):
         return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
-        n_layers = 3 # TODO TODO this used to be 3.
-        layer_size = 20  # TODO TODO This used to be 20.
+        n_layers = 4 # TODO TODO this used to be 3.
+        layer_size = 40  # TODO TODO This used to be 20.
         dim_hidden = (n_layers - 1)*[layer_size]
         dim_hidden.append(dim_output)
         filter_size = 5
@@ -201,14 +212,14 @@ class PolicyCloningMAML(PolicyOptTf):
             in_shape = dim_hidden[i]
         return weights
         
-    def forward(self, image_input, state_input, weights, network_config=None):
-        n_layers = 3
+    def forward(self, image_input, state_input, weights, is_training=True, network_config=None):
+        n_layers = 4 # 3
         batch_norm = network_config.get('batch_norm', False)
         decay = network_config.get('decay', 0.9)
 
-        conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0)
-        conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1)
-        conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2)
+        conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0, is_training=is_training)
+        conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1, is_training=is_training)
+        conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2, is_training=is_training)
         
         _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
         num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
@@ -300,6 +311,7 @@ class PolicyCloningMAML(PolicyOptTf):
             actionas = [actiona]*num_updates
             
             local_outputa, fp = self.forward(inputa, state_inputa, weights, network_config=network_config)
+            test_outputa, _ = self.forward(inputa, state_inputa, weights, is_training=False, network_config=network_config)
             local_lossa = euclidean_loss_layer(local_outputa, actiona, None, behavior_clone=True)
             
             gradients = dict(zip(weights.keys(), tf.gradients(local_lossa, weights.values())))
@@ -313,10 +325,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 loss = euclidean_loss_layer(self.forward(inputas[j+1], state_inputas[j+1], fast_weights, network_config=network_config)[0], actionas[j+1])
                 gradients = dict(zip(fast_weights.keys(), tf.gradients(loss, fast_weights.values())))
                 fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
-                output = self.forward(inputb, state_inputb, fast_weights, network_config=network_config)
+                output = self.forward(inputb, state_inputb, fast_weights, network_config=network_config)[0]
                 local_outputbs.append(output)
                 local_lossesb.append(euclidean_loss_layer(output, actionb, None, behavior_clone=True))
-            local_fn_output = [local_outputa, local_outputbs, local_lossa, local_lossesb, flat_img_inputa, fp]
+            local_fn_output = [local_outputa, local_outputbs, test_outputa, local_lossa, local_lossesb, flat_img_inputa, fp]
             return local_fn_output
 
         if batch_norm:
@@ -324,7 +336,7 @@ class PolicyCloningMAML(PolicyOptTf):
             # TODO: figure out if this line of code is necessary
             unused = batch_metalearn((inputa[0], inputb[0], actiona[0], actionb[0]))
         
-        out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32]
+        out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32]
         result = tf.map_fn(batch_metalearn, elems=(inputa, inputb, actiona, actionb), dtype=out_dtype)
         print 'Done with map.'
         return result
@@ -370,10 +382,10 @@ class PolicyCloningMAML(PolicyOptTf):
     def generate_data_batch(self, train=True):
         if train:
             demos = self.train_demos
-            folder_idx = self.train_idx
+            folder_idx = list(np.array(self.train_idx).copy())
         else:
             demos = self.val_demos
-            folder_idx = self.val_idx
+            folder_idx = list(np.array(self.val_idx).copy())
         batch_size = self.meta_batch_size
         update_batch_size = self.update_batch_size
         shuffle(folder_idx)
@@ -447,8 +459,10 @@ class PolicyCloningMAML(PolicyOptTf):
                     train_writer.add_summary(results[0], itr)
                     print 'Test results: average preloss is %.2f, average postloss is %.2f' % (np.mean(results[1]), np.mean(results[2]))
                 
-                if itr != 0 and itr % SAVE_INTERVAL == 0:
+                if itr != 0 and (itr % SAVE_INTERVAL == 0 or itr == TOTAL_ITERS - 1):
+                    # TODO: implement restore
                     self.save_model(save_dir + '_%d' % itr)
+
         # Keep track of tensorflow iterations for loading solver states.
         self.tf_iter += self._hyperparams['iterations']
 
@@ -461,11 +475,11 @@ class PolicyCloningMAML(PolicyOptTf):
                     if j < gif_config.get('gifs_per_condition', float('inf')):
                         gif_fps = gif_config.get('fps', None)
                         if testing:
-                            gif_dir = gif_config.get('test_gif_dir', self._hyperparams['plot_dir'] + 'test_gifs/')
+                            gif_dir = gif_config.get('test_gif_dir', self._hyperparams['plot_dir'])
                         else:
-                            gif_dir = gif_config.get('gif_dir', self._hyperparams['plot_dir'] + 'gifs/')
-                        mkdir_p(gif_dir)
-                        gif_name = os.path.join(gif_dir,'color%d.cond%d.samp%d.gif' % (idx, conditions[i], j))
+                            gif_dir = gif_config.get('gif_dir', self._hyperparams['plot_dir'])
+                        mkdir_p(gif_dir + 'color_%d/' % idx)
+                        gif_name = os.path.join(gif_dir,'cond%d.samp%d.gif' % (conditions[i], j))
                     else:
                         gif_name=None
                         gif_fps = None
@@ -506,5 +520,6 @@ class PolicyCloningMAML(PolicyOptTf):
                 train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)) \
                                     for j in xrange(X_train.shape[0])])
 
+        import pdb; pdb.set_trace()
         print "Training success rate is %.5f" % (np.array(train_dists) <= success_thresh).mean()
         print "Validation success rate is %.5f" % (np.array(val_dists) <= success_thresh).mean()
