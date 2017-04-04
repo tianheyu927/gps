@@ -54,6 +54,7 @@ class PolicyCloningMAML(PolicyOptTf):
         else:
             self._sess = tf.Session(graph=self.graph)
         self.act_op = None  # mu_hat
+        self.test_act_op = None # for testing
         self.feat_op = None # features
         self.image_op = None # image
         self.total_loss1 = None
@@ -77,7 +78,7 @@ class PolicyCloningMAML(PolicyOptTf):
 
         self.var = self._hyperparams['init_var'] * np.ones(dU)
         # use test action for policy action
-        self.policy = TfPolicy(dU, self.obs_tensor, self.act_op, self.feat_op, self.image_op,
+        self.policy = TfPolicy(dU, self.obs_tensor, self.test_act_op, self.feat_op, self.image_op,
                                np.zeros(dU), self._sess, self.graph, self.device_string, copy_param_scope=self._hyperparams['copy_param_scope'])
         # List of indices for state (vector) data and image (tensor) data in observation.
         self.x_idx, self.img_idx, i = [], [], 0
@@ -130,7 +131,8 @@ class PolicyCloningMAML(PolicyOptTf):
             outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp = result
             self.obs_tensor = self.inputa
             self.action_tensor = self.actiona
-            self.act_op = test_outputa
+            self.act_op = outputas
+            self.test_act_op = test_outputa
             self.feat_op = fp
             self.image_op = flat_img_inputa
             trainable_vars = tf.trainable_variables()
@@ -154,11 +156,9 @@ class PolicyCloningMAML(PolicyOptTf):
 
             # Initialize solver
             # mom1, mom2 = 0.9, 0.999 # adam defaults
-            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            with tf.control_dependencies(update_ops):
-                self.global_step = tf.Variable(0, trainable=False)
-                learning_rate = tf.train.exponential_decay(self.meta_lr, self.global_step, ANNEAL_INTERVAL, 0.5, staircase=True)
-                self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.total_losses2[self.num_updates - 1], global_step=self.global_step)
+            self.global_step = tf.Variable(0, trainable=False)
+            learning_rate = tf.train.exponential_decay(self.meta_lr, self.global_step, ANNEAL_INTERVAL, 0.5, staircase=True)
+            self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.total_losses2[self.num_updates - 1], global_step=self.global_step)
             
             # Add summaries
             train_summ = [tf.scalar_summary('Training Pre-update loss', self.total_loss1)] # tf.scalar_summary('Learning rate', learning_rate)
