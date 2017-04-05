@@ -20,13 +20,14 @@ class TfPolicy(Policy):
         sess: tf session.
         device_string: tf device string for running on either gpu or cpu.
     """
-    def __init__(self, dU, obs_tensor, act_op, feat_op, image_op, var, sess, graph, device_string, copy_param_scope=None):
+    def __init__(self, dU, obs_tensor, act_op, feat_op, image_op, phase_op, var, sess, graph, device_string, batch_norm=False, copy_param_scope=None):
         Policy.__init__(self)
         self.dU = dU
         self.obs_tensor = obs_tensor
         self.act_op = act_op
         self.feat_op = feat_op
         self.image_op = image_op
+        self.phase_op = phase_op
         self._sess = sess
         self.graph = graph
         self.device_string = device_string
@@ -34,6 +35,7 @@ class TfPolicy(Policy):
         self.scale = None  # must be set from elsewhere based on observations
         self.bias = None
         self.x_idx = None
+        self.batch_norm = batch_norm
 
         if copy_param_scope:
             with self.graph.as_default():
@@ -59,6 +61,9 @@ class TfPolicy(Policy):
         if len(obs.shape) == 1:
             obs = np.expand_dims(obs, axis=0)
         obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
+        # if self.batch_norm:
+        #     action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs, self.phase_op: 0}) # testing
+        # else:
         action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs})
         if noise is None:
             u = action_mean

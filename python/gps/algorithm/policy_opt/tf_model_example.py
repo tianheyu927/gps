@@ -448,21 +448,28 @@ def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, netw
 def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id=0, is_training=True):
     layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
     if not batch_norm:
-        return tf.nn.relu(layer)
+        return tf.nn.relu(layer), tf.constant(1.0), tf.constant(1.0)
     else:
         with tf.variable_scope('bn_layer_%d' % conv_id) as vs:
             if is_training:
                 try:
                     layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
                 except ValueError:
                     layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
             else:
                 layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
-                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
-
-        return layer
+                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+            moving_mean = safe_get('moving_mean')
+            moving_variance = safe_get('moving_variance')
+            # try:
+            #     layer = tf.contrib.layers.batch_norm(layer, is_training=phase, center=True,
+            #         scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
+            # except ValueError:
+            #     layer = tf.contrib.layers.batch_norm(layer, is_training=phase, center=True,
+            #         scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+        return layer, moving_mean, moving_variance
 
 
 def max_pool(img, k):
