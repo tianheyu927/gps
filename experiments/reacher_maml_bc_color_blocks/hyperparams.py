@@ -256,8 +256,8 @@ algorithm['policy_opt'] = {
     'use_gpu': 1,
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': pol_agent,
-    'batch_norm': True, # True
-    'decay': 0.99,
+    'norm_type': 'batch_norm', # True
+    'decay': 0.9,
     'iterations': 10000,  # 5000
     'restore_iter': 0,
     'random_seed': SEED,
@@ -265,7 +265,7 @@ algorithm['policy_opt'] = {
     'step_size': 1e-3, # step size of gradient step
     'num_updates': 1, # take one gradient step
     'meta_batch_size': 1, #10, # number of functions learned during training
-    'weight_decay': 0.005,
+    'weight_decay': 0.01, #0.005,
     'update_batch_size': 1, # one-shot learning
     'log_dir': '/tmp/data/maml_bc',
     'plot_dir': common['data_files_dir'],

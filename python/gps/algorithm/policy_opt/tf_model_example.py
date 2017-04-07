@@ -219,7 +219,7 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
     pool_size = 2
     filter_size = 5
     behavior_clone = network_config.get('bc', False)
-    batch_norm = network_config.get('batch_norm', False)
+    norm_type = network_config.get('norm_type', False)
     decay = network_config.get('decay', 0.9)
 
     # List of indices for state (vector) data and image (tensor) data in observation.
@@ -269,9 +269,9 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
     fc_inputs = []
     is_training_list = [True, False]
     for is_training in is_training_list:
-        conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0, is_training=is_training)
-        conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1, is_training=is_training)
-        conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2, is_training=is_training)
+        conv_layer_0 = norm(conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
+        conv_layer_1 = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2']), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
+        conv_layer_2 = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3']), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)
         
         if is_training:
             training_conv_layer_2 = conv_layer_2
@@ -340,7 +340,7 @@ def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, netw
     pool_size = 2
     filter_size = 5
     behavior_clone = network_config.get('bc', False)
-    batch_norm = network_config.get('batch_norm', False)
+    norm_type = network_config.get('norm_type', False)
     decay = network_config.get('decay', 0.9)
 
     # List of indices for state (vector) data and image (tensor) data in observation.
@@ -392,10 +392,10 @@ def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, netw
     fc_inputs = []
     is_training_list = [True, False]
     for is_training in is_training_list:
-        conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1], batch_norm=batch_norm, decay=decay, conv_id=0, is_training=is_training)
-        conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1, is_training=is_training)
-        conv_layer_2 = conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], batch_norm=batch_norm, decay=decay, conv_id=2, is_training=is_training)
-        conv_layer_3 = conv2d(img=conv_layer_2, w=weights['wc4'], b=biases['bc4'], batch_norm=batch_norm, decay=decay, conv_id=3, is_training=is_training)
+        conv_layer_0 = norm(conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
+        conv_layer_1 = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2']), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
+        conv_layer_2 = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3']), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)
+        conv_layer_3 = norm(conv2d(img=conv_layer_2, w=weights['wc4'], b=biases['bc4']), norm_type=norm_type, decay=decay, conv_id=3, is_training=is_training)
         
         if is_training:
             training_conv_layer_3 = conv_layer_3
@@ -445,12 +445,40 @@ def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, netw
 
     return nnet, fc_vars, last_conv_vars
 
-def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id=0, is_training=True):
+def conv2d(img, w, b, strides=[1, 1, 1, 1]):
     layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
-    if not batch_norm:
-        return tf.nn.relu(layer), tf.constant(1.0), tf.constant(1.0)
-    else:
-        with tf.variable_scope('bn_layer_%d' % conv_id) as vs:
+    return layer
+    # if not batch_norm:
+    #     return tf.nn.relu(layer), tf.constant(1.0), tf.constant(1.0)
+    # else:
+    #     with tf.variable_scope('bn_layer_%d' % conv_id) as vs:
+    #         if is_training:
+    #             try:
+    #                 layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+    #                     scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
+    #             except ValueError:
+    #                 layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+    #                     scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+    #         else:
+    #             layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
+    #                 scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+    #         moving_mean = safe_get('moving_mean')
+    #         moving_variance = safe_get('moving_variance')
+    #         # try:
+    #         #     layer = tf.contrib.layers.batch_norm(layer, is_training=phase, center=True,
+    #         #         scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
+    #         # except ValueError:
+    #         #     layer = tf.contrib.layers.batch_norm(layer, is_training=phase, center=True,
+    #         #         scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+    #     return layer, moving_mean, moving_variance
+
+def norm(layer, norm_type='batch_norm', decay=0.9, conv_id=0, is_training=True):
+    if norm_type != 'batch_norm' and norm_type != 'layer_norm':
+        return tf.nn.relu(layer)
+    with tf.variable_scope('norm_layer_%d' % conv_id) as vs:
+        if norm_type == 'batch_norm':
+            if conv_id == 2:
+                original = tf.add(layer, 0)
             if is_training:
                 try:
                     layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
@@ -461,16 +489,27 @@ def conv2d(img, w, b, strides=[1, 1, 1, 1], batch_norm=False, decay=0.9, conv_id
             else:
                 layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
                     scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
-            moving_mean = safe_get('moving_mean')
-            moving_variance = safe_get('moving_variance')
-            # try:
-            #     layer = tf.contrib.layers.batch_norm(layer, is_training=phase, center=True,
-            #         scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
-            # except ValueError:
-            #     layer = tf.contrib.layers.batch_norm(layer, is_training=phase, center=True,
-            #         scale=True, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
-        return layer, moving_mean, moving_variance
-
+            if conv_id == 2:
+                moving_mean = tf.add(safe_get('moving_mean'), 0)
+                moving_variance = tf.add(safe_get('moving_variance'), 0)
+                beta = safe_get('beta')
+                gamma = safe_get('beta')
+                mean, variance = tf.nn.moments(original, [0, 1, 2], shift=moving_mean)
+                outputs = tf.nn.batch_normalization(original, mean, variance, beta, None, 0.001)
+                outputs.set_shape(original.get_shape())
+                outputs = tf.nn.relu(outputs)
+                test_outputs = tf.nn.batch_normalization(original, moving_mean, moving_variance, beta, None, 0.001)
+                test_outputs.set_shape(original.get_shape())
+                test_outputs = tf.nn.relu(test_outputs)
+                return layer, outputs, test_outputs, mean, variance, moving_mean, moving_variance, safe_get('moving_mean'), safe_get('moving_variance')
+        else: # layer_norm
+            try:
+                layer = tf.contrib.layers.layer_norm(layer, center=True,
+                    scale=False, activation_fn=tf.nn.relu, scope=vs) # updates_collections=None
+            except ValueError:
+                layer = tf.contrib.layers.layer_norm(layer, center=True,
+                    scale=False, activation_fn=tf.nn.relu, scope=vs, reuse=True)
+        return layer
 
 def max_pool(img, k):
     return tf.nn.max_pool(img, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')

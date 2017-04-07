@@ -20,7 +20,7 @@ class TfPolicy(Policy):
         sess: tf session.
         device_string: tf device string for running on either gpu or cpu.
     """
-    def __init__(self, dU, obs_tensor, act_op, feat_op, image_op, phase_op, var, sess, graph, device_string, batch_norm=False, copy_param_scope=None):
+    def __init__(self, dU, obs_tensor, act_op, feat_op, image_op, phase_op, var, sess, graph, device_string, copy_param_scope=None):
         Policy.__init__(self)
         self.dU = dU
         self.obs_tensor = obs_tensor
@@ -35,7 +35,6 @@ class TfPolicy(Policy):
         self.scale = None  # must be set from elsewhere based on observations
         self.bias = None
         self.x_idx = None
-        self.batch_norm = batch_norm
 
         if copy_param_scope:
             with self.graph.as_default():
