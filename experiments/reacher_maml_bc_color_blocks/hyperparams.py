@@ -45,13 +45,13 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks'
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_more'
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 
 np.random.seed(47)
-DEMO_CONDITIONS = 16 #20
+DEMO_CONDITIONS = 32 #20
 COLOR_CONDITIONS = 80 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
@@ -257,18 +257,21 @@ algorithm['policy_opt'] = {
     'T': agent['T'],
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': pol_agent,
-    'norm_type': 'vbn', # True
-    'decay': 0.99,
-    'iterations': 12000,  # 5000
+    'norm_type': 'layer_norm', # True
+    'use_dropout': False,
+    'keep_prob': 0.9,
+    'decay': 0.9,
+    'iterations': 100000,  # 5000
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': 20, #20
-    'step_size': 1e-3, # step size of gradient step
+    'n_val': 10, #20
+    'step_size': 1e-1, # step size of gradient step
     'num_updates': 1, # take one gradient step
-    'meta_batch_size': 10, #10, # number of functions learned during training
+    'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
-    'update_batch_size': 1, # one-shot learning
+    'update_batch_size': 1, # batch size for each task
     'log_dir': '/tmp/data/maml_bc',
+    'save_dir': '/tmp/data/maml_bc_model_ln_small',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',

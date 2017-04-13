@@ -8,7 +8,7 @@ import tensorflow as tf
 from gps.algorithm.policy.policy import Policy
 
 
-class TfPolicy(Policy):
+class TfPolicyMAML(Policy):
     """
     A neural network policy implemented in tensor flow. The network output is
     taken to be the mean, and Gaussian noise is added on top of it.
@@ -20,13 +20,14 @@ class TfPolicy(Policy):
         sess: tf session.
         device_string: tf device string for running on either gpu or cpu.
     """
-    def __init__(self, dU, obs_tensor, act_op, feat_op, image_op, var, sess, graph, device_string, copy_param_scope=None):
+    def __init__(self, dU, obs_tensor, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
         Policy.__init__(self)
         self.dU = dU
         self.obs_tensor = obs_tensor
         self.act_op = act_op
         self.feat_op = feat_op
         self.image_op = image_op
+        self.norm_type = norm_type
         self._sess = sess
         self.graph = graph
         self.device_string = device_string
@@ -34,6 +35,8 @@ class TfPolicy(Policy):
         self.scale = None  # must be set from elsewhere based on observations
         self.bias = None
         self.x_idx = None
+        self.reference_op = reference_op
+        self.reference_out = reference_out
 
         if copy_param_scope:
             with self.graph.as_default():
@@ -59,12 +62,21 @@ class TfPolicy(Policy):
         if len(obs.shape) == 1:
             obs = np.expand_dims(obs, axis=0)
         obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
+        # if self.batch_norm:
+        #     action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs, self.phase_op: 0}) # testing
+        # else:
+        if self.norm_type == 'vbn':
+            assert hasattr(self, 'reference_batch')
+            if self.reference_out is not None:
+                action_mean = self.run([self.reference_out, self.act_op], feed_dict={self.obs_tensor: obs, self.reference_op: self.reference_batch})[1]
+            else:
+                action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs, self.reference_op: self.reference_batch})
         action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs})
         if noise is None:
             u = action_mean
         else:
             u = action_mean + self.chol_pol_covar.T.dot(noise)
-        return u[0]  # the DAG computations are batched by default, but we use batch size 1.
+        return np.squeeze(u)  # the DAG computations are batched by default, but we use batch size 1.
 
     def run(self, op, feed_dict=None):
         with tf.device(self.device_string):
@@ -156,3 +168,4 @@ class TfPolicy(Policy):
             cls_init.bias = pol_dict['bias']
             cls_init.x_idx = pol_dict['x_idx']
             return cls_init
+
