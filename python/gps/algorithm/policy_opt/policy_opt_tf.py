@@ -41,12 +41,12 @@ class PolicyOptTf(PolicyOpt):
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf_Session(graph=graph, config=tf_config)
             else:
-                # self.gpu_device = self._hyperparams['gpu_id']
-                # self.device_string = "/gpu:" + str(self.gpu_device)
-                # self._sess = tf.Session(graph=self.graph)
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
-                tf_config = tf.ConfigProto(gpu_options=gpu_options)
-                self._sess = tf_Session(graph=graph, config=tf_config)
+                self.gpu_device = self._hyperparams['gpu_id']
+                self.device_string = "/gpu:" + str(self.gpu_device)
+                self._sess = tf.Session(graph=self.graph)
+                # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+                # tf_config = tf.ConfigProto(gpu_options=gpu_options)
+                # self._sess = tf_Session(graph=graph, config=tf_config)
         else:
             self._sess = tf.Session(graph=self.graph)
         self.act_op = None  # mu_hat

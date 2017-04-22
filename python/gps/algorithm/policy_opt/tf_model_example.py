@@ -142,14 +142,14 @@ def multi_modal_network(dim_input=27, dim_output=7, batch_size=25, network_confi
     Returns:
         A tfMap object that stores inputs, outputs, and scalar loss.
     """
-    n_layers = network_config.get('n_layers', 2)
-    layer_size = network_config.get('layer_size', 20)
+    n_layers = network_config.get('n_layers', 3)
+    layer_size = network_config.get('layer_size', 40)
     dim_hidden = (n_layers - 1)*[layer_size]
     dim_hidden.append(dim_output)
-    pool_size = network_config.get('pool_size', 2)
-    filter_size = network_config.get('filter_size', 3)
+    # pool_size = network_config.get('pool_size', 2)
+    filter_size = network_config.get('filter_size', 2)
     behavior_clone = network_config.get('bc', False)
-    batch_norm = network_config.get('batch_norm', False)
+    norm_type = network_config.get('norm_type', False)
     decay = network_config.get('decay', 0.9)
 
     # List of indices for state (vector) data and image (tensor) data in observation.
@@ -176,36 +176,47 @@ def multi_modal_network(dim_input=27, dim_output=7, batch_size=25, network_confi
     image_input = tf.reshape(flat_image_input, [-1, im_width, im_height, num_channels])
 
     # we pool twice, each time reducing the image size by a factor of 2.
-    conv_out_size = int(im_width/(2.0*pool_size)*im_height/(2.0*pool_size)*num_filters[1])
+    # conv_out_size = int(im_width/(2.0*pool_size)*im_height/(2.0*pool_size)*num_filters[1])
+    conv_out_size = int(im_width/(8.0)*im_height/(8.0)*num_filters[1])
     first_dense_size = conv_out_size + len(x_idx)
 
     # Store layers weight & bias
     weights = {
-        'wc1': get_xavier_weights([filter_size, filter_size, num_channels, num_filters[0]], (pool_size, pool_size), name='wc1'), # 5x5 conv, 1 input, 32 outputs
-        'wc2': get_xavier_weights([filter_size, filter_size, num_filters[0], num_filters[1]], (pool_size, pool_size), name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+        # 'wc1': get_xavier_weights([filter_size, filter_size, num_channels, num_filters[0]], (pool_size, pool_size), name='wc1'), # 5x5 conv, 1 input, 32 outputs
+        # 'wc2': get_xavier_weights([filter_size, filter_size, num_filters[0], num_filters[1]], (pool_size, pool_size), name='wc2'), # 5x5 conv, 32 inputs, 64 outputs
+        'wc1': init_conv_weights_xavier([filter_size, filter_size, num_channels, num_filters[0]], name='wc1'),
+        'wc2': init_conv_weights_xavier([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2'),
+        'wc3': init_conv_weights_xavier([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3'),
     }
 
     biases = {
         'bc1': init_bias([num_filters[0]], name='bc1'),
         'bc2': init_bias([num_filters[1]], name='bc2'),
+        'bc3': init_bias([num_filters[2]], name='bc3'),
     }
 
-    conv_layer_0 = conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], batch_norm=batch_norm, decay=decay, conv_id=0)
+    conv_layer_0 = norm(conv2d(img=image_input, w=weights['wc1'], b=biases['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0)
 
-    conv_layer_0 = max_pool(conv_layer_0, k=pool_size)
+    # conv_layer_0 = max_pool(conv_layer_0, k=pool_size)
 
-    conv_layer_1 = conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], batch_norm=batch_norm, decay=decay, conv_id=1)
+    conv_layer_1 = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=biases['bc2'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=1)
 
-    conv_layer_1 = max_pool(conv_layer_1, k=pool_size)
+    # conv_layer_1 = max_pool(conv_layer_1, k=pool_size)
 
-    conv_out_flat = tf.reshape(conv_layer_1, [-1, conv_out_size])
+    conv_layer_2 = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=biases['bc3'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=2)
+
+    conv_out_flat = tf.reshape(conv_layer_2, [-1, conv_out_size])
 
     fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
-
-    fc_output, _, _ = get_mlp_layers(fc_input, n_layers, dim_hidden, batch_norm=batch_norm, decay=decay)
+    
+    fc_output, weights_FC, biases_FC = get_mlp_layers(fc_input, n_layers, dim_hidden, batch_norm=False, decay=decay)
 
     loss = euclidean_loss_layer(a=action, b=fc_output, precision=precision, behavior_clone=behavior_clone)
-    return TfMap.init_from_lists([nn_input, action, precision], [fc_output], [weights], [loss], image=flat_image_input)
+    # training and testing the same (assuming using layernorm)
+    nnet = TfMap.init_from_lists([nn_input, action, precision], [fc_output, fc_output], [weights], [loss, loss], image=flat_image_input)
+    last_conv_vars = fc_input
+    fc_vars = weights_FC + biases_FC
+    return nnet, fc_vars, last_conv_vars
 
 def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_config=None):
     """
@@ -574,7 +585,7 @@ def dropout(layer, keep_prob=0.9, is_training=True, name=None):
     if is_training:
         return tf.nn.dropout(layer, keep_prob=keep_prob, name=name)
     else:
-        return tf.identity(layer, name=name)
+        return tf.add(layer, 0, name=name)
 
 # Consider stride size when using xavier for fp network
 def get_xavier_weights(filter_shape, poolsize=(2, 2), name=None):

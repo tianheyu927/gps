@@ -83,7 +83,7 @@ test_pos_body_offset = [np.array([-0.05, 0.18, 0.0]), np.array([-0.15, 0.18, 0.0
                     np.array([0.02, -0.02, 0.0]), np.array([0.02, 0.05, 0.0])]
 
 SEED = 0
-NUM_DEMOS = 20
+NUM_DEMOS = 5
 
 common = {
     'experiment_name': 'my_experiment' + '_' + \
@@ -279,7 +279,8 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningTf,
     'network_params': {
-        'num_filters': [15, 15, 15],
+        # 'num_filters': [15, 15, 15],
+        'num_filters': [20, 20, 20],
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
@@ -289,16 +290,17 @@ algorithm['policy_opt'] = {
         'sensor_dims': SENSOR_DIMS,
         'bc': True,
     },
-    'network_model': multi_modal_network_fp,
+    'network_model': multi_modal_network,
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': demo_agent,
-    'batch_norm': True,
+    'norm_type': 'layer_norm',
     'decay': 0.99,
-    # 'lr': 3e-4,
+    'lr': 1e-3,
     # 'batch_size': 50,
+    'n_val': 0,
     'fc_only_iterations': 0,
-    'init_iterations': 7000, #1000
-    'iterations': 7000,  # 1000
+    'init_iterations': 20000, #1000
+    'iterations': 10000,  # 1000
     'random_seed': SEED,
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,

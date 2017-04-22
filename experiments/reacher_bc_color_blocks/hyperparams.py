@@ -45,7 +45,7 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks'
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_more'
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
@@ -255,13 +255,14 @@ algorithm['policy_opt'] = {
     'network_model': multi_modal_network_fp_large,
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': pol_agent,
-    'batch_norm': True,
+    'use_gpu': 1,
+    'norm_type': 'layer_norm',
     'decay': 0.99,
     # 'lr': 5e-4,
     'batch_size': 100,
     'fc_only_iterations': 0,
-    'init_iterations': 12000, #1000
-    'iterations': 12000,  # 1000
+    'init_iterations': 30000, #1000
+    'iterations': 30000,  # 1000
     'random_seed': SEED,
     'n_val': 0,
     'plot_dir': common['data_files_dir'],

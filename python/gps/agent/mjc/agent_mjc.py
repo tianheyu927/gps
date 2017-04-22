@@ -208,7 +208,7 @@ class AgentMuJoCo(Agent):
 
 
     def sample(self, policy, condition, verbose=True, save=True, noisy=True, record_image=False, record_gif=None, \
-                record_gif_fps=None, include_no_target=False):
+                record_gif_fps=None, include_no_target=False, task_idx=None):
         """
         Runs a trial and constructs a new sample containing information
         about the trial.
@@ -232,7 +232,6 @@ class AgentMuJoCo(Agent):
         elif 'get_image_features' in dir(policy):
             feature_fn = policy.get_image_features
         new_sample = self._init_sample(condition, feature_fn=feature_fn, record_image=record_image, include_no_target=include_no_target)
-
         mj_X = self._hyperparams['x0'][condition]
         U = np.zeros([self.T, self.dU])
         if self._hyperparams['record_reward']:
@@ -260,7 +259,11 @@ class AgentMuJoCo(Agent):
         for t in range(self.T):
             X_t = new_sample.get_X(t=t)
             obs_t = new_sample.get_obs(t=t)
-            mj_U = policy.act(X_t, obs_t, t, noise[t, :])
+            # For MAML. Specify the index of the task in order to get demos
+            if task_idx is not None:
+                mj_U = policy.act(X_t, obs_t, t, noise[t, :], idx=task_idx)
+            else:
+                mj_U = policy.act(X_t, obs_t, t, noise[t, :])
             if self._hyperparams['record_reward']:
                 R[t] = -(np.linalg.norm(X_t[4:7] - X_t[7:10]) + np.square(mj_U).sum())
             U[t, :] = mj_U

@@ -16,6 +16,7 @@ COLOR_MAP = {
 
 COLOR_RANGE = [i / 5 for i in xrange(5)]
 COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE[1:] for k in COLOR_RANGE]
+COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
 
 
@@ -114,7 +115,7 @@ def weighted_reacher(finger_density=1.0, arm_density=None):
     return mjcmodel
 
 
-def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.1,-.1)):
+def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.1,-.1), distractor_pos=None, distractor_color=None):
     mjcmodel = default_model('reacher', regen_fn=lambda: colored_reacher(ncubes, target_color, cube_size, target_pos))
     worldbody = mjcmodel.root.worldbody()
     if type(target_color) is str:
@@ -151,12 +152,18 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     available_colors = color_map.keys()
     available_colors.remove(target_color)
     for i in range(ncubes-1):
-        pos = np.random.rand(3)
+        if distractor_pos is None:
+            pos = np.random.rand(3)
+        else:
+            pos = distractor_pos[i]
         pos = pos*0.5-0.25
         pos[2] = 0.01
         body = worldbody.body(name="cube_%d"%i,pos=pos)
-
-        color = np.random.choice(available_colors)
+        
+        if distractor_color is None:
+            color = np.random.choice(available_colors)
+        else:
+            color = distractor_color[i]
         body.geom(rgba=color_map[color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
 
     # Actuators

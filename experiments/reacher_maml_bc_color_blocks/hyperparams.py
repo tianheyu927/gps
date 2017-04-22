@@ -45,21 +45,30 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_more'
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks'
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 
 np.random.seed(47)
 DEMO_CONDITIONS = 32 #20
-COLOR_CONDITIONS = 80 #80
+COLOR_CONDITIONS = 100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
+N_CUBES = 6
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_CONDITIONS)}
+distractor_pos = {i: [] for i in xrange(COLOR_CONDITIONS)}
+distractor_color = {i: [] for i in xrange(COLOR_CONDITIONS)}
+
 for i in xrange(COLOR_CONDITIONS):
     for _ in range(DEMO_CONDITIONS):
         demo_pos_body_offset[i].append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+    available_colors = range(COLOR_CONDITIONS)
+    available_colors.remove(i)
+    for j in xrange(N_CUBES-1):
+        distractor_pos[i].append(np.random.rand(3))
+        distractor_color[i].append(np.random.choice(available_colors))
 
 pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
                    np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
@@ -121,7 +130,7 @@ agent = {
 
 pol_agent = [{
     'type': AgentMuJoCo,
-    'models': colored_reacher(target_color=j),
+    'models': colored_reacher(target_color=j, distractor_pos=distractor_pos[j], distractor_color=distractor_color[j]),
     'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
@@ -153,13 +162,13 @@ pol_agent = [{
         'target_ee_idx': range(7, 10),
         'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i], np.array([0., 0., 0.])])
                             for i in xrange(DEMO_CONDITIONS)],
-        'success_upper_bound': 0.03,
+        'success_upper_bound': 0.05,
     },
 } for j in xrange(COLOR_CONDITIONS)]
 
 demo_agent = [{
     'type': AgentMuJoCo,
-    'models': colored_reacher(target_color=j),
+    'models': colored_reacher(target_color=j, distractor_pos=distractor_pos[j], distractor_color=distractor_color[j]),
     'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
@@ -243,7 +252,7 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
-        'num_filters': [15, 15, 15],
+        'num_filters': [20, 20, 20], #20, 20, 20
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
@@ -257,21 +266,23 @@ algorithm['policy_opt'] = {
     'T': agent['T'],
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': pol_agent,
+    'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
-    'use_dropout': False,
-    'keep_prob': 0.9,
+    'use_dropout': True,
+    'keep_prob': 0.8,
     'decay': 0.9,
-    'iterations': 100000,  # 5000
+    'iterations': 50000,
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': 10, #20
-    'step_size': 1e-1, # step size of gradient step
+    'n_val': 10, #10
+    'step_size': 1e-5, #1e-5 # step size of gradient step
     'num_updates': 1, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
-    'update_batch_size': 1, # batch size for each task
+    'update_batch_size': 1, # batch size for each task, used to be 1
     'log_dir': '/tmp/data/maml_bc',
-    'save_dir': '/tmp/data/maml_bc_model_ln_small',
+    'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_dropout',
+    # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_demo_3',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',

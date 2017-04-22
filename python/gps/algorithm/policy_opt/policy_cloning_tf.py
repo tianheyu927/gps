@@ -37,7 +37,8 @@ class PolicyCloningTf(PolicyOptTf):
             else:
                 self.update(trainO, trainU, 1.0, 1.0, test_obs=None,\
                             test_acts=None, behavior_clone=True)
-            self.eval_success_rate(test_agent)
+            if type(demo_file) is list:
+                self.eval_success_rate(test_agent)
 
         self.test_agent = None  # don't pickle agent
         self.demos = None

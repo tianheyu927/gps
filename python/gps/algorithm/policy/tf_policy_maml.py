@@ -20,10 +20,14 @@ class TfPolicyMAML(Policy):
         sess: tf session.
         device_string: tf device string for running on either gpu or cpu.
     """
-    def __init__(self, dU, obs_tensor, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
+    # def __init__(self, dU, obs_tensor, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
+    def __init__(self, dU, inputa, actiona, inputb, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
         Policy.__init__(self)
         self.dU = dU
-        self.obs_tensor = obs_tensor
+        # self.obs_tensor = obs_tensor
+        self.inputa = inputa
+        self.actiona = actiona
+        self.inputb = inputb
         self.act_op = act_op
         self.feat_op = feat_op
         self.image_op = image_op
@@ -48,7 +52,7 @@ class TfPolicyMAML(Policy):
                                                          self.copy_params_assign_placeholders[i])
                                                  for i in range(len(self.copy_params))]
 
-    def act(self, x, obs, t, noise):
+    def act(self, x, obs, t, noise, idx):
         """
         Return an action for a state.
         Args:
@@ -56,22 +60,33 @@ class TfPolicyMAML(Policy):
             obs: Observation vector.
             t: Time step.
             noise: Action noise. This will be scaled by the variance.
+            idx: The index of the task. Use this to get the demos.
         """
 
         # Normalize obs.
         if len(obs.shape) == 1:
             obs = np.expand_dims(obs, axis=0)
-        obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
+        if self.scale is not None and self.bias is not None:
+            obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
+        # This following code seems to be buggy
+        # TODO: figure out why this doesn't work
+        # if t == 0:
+        #     assert hasattr(self, 'fast_weights_value')
+        #     self.set_copy_params(self.fast_weights_value[idx])
         # if self.batch_norm:
-        #     action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs, self.phase_op: 0}) # testing
+        #     action_mean = self.run(self.act_op, feed_dict={self.inputa: obs, self.phase_op: 0}) # testing
         # else:
         if self.norm_type == 'vbn':
             assert hasattr(self, 'reference_batch')
             if self.reference_out is not None:
-                action_mean = self.run([self.reference_out, self.act_op], feed_dict={self.obs_tensor: obs, self.reference_op: self.reference_batch})[1]
+                action_mean = self.run([self.reference_out, self.act_op], feed_dict={self.inputa: obs, self.reference_op: self.reference_batch})[1]
             else:
-                action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs, self.reference_op: self.reference_batch})
-        action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs})
+                action_mean = self.run(self.act_op, feed_dict={self.inputa: obs, self.reference_op: self.reference_batch})
+        # action_mean = self.run(self.act_op, feed_dict={self.inputa: obs}) #need to set act_op to be act_op_b if using set_params
+        assert hasattr(self, 'selected_demoO')
+        action_mean = self.run(self.act_op, feed_dict={self.inputa: self.selected_demoO[idx],
+                                                      self.actiona: self.selected_demoU[idx],
+                                                      self.inputb: obs})
         if noise is None:
             u = action_mean
         else:
@@ -113,7 +128,7 @@ class TfPolicyMAML(Policy):
         return {self.copy_params[i].name:param_values[i] for i in range(len(self.copy_params))}
 
     def set_copy_params(self, param_values):
-        value_list = [param_values[self.copy_params[i].name] for i in range(len(self.copy_params))]
+        value_list = [param_values[self.copy_params[i].name.split('/')[-1][:3]] for i in range(len(self.copy_params))]
         feeds = {self.copy_params_assign_placeholders[i]:value_list[i] for i in range(len(self.copy_params))}
         self.run(self.copy_params_assign_ops, feed_dict=feeds)
 
