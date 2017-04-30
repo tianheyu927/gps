@@ -5,6 +5,7 @@ import copy
 import logging
 import numpy.matlib
 import random
+import os
 from gps.sample.sample import Sample
 
 from gps.sample.sample import Sample
@@ -269,6 +270,7 @@ def get_bc_demos(gps):
         if demos[0] is None:
             gps.demo_gen = GenDemo(gps._hyperparams)
             gps.demo_gen.generate(demo_file, gps.agent)
+            os._exit(1) # for bash script to work automatically
     if type(demos) is not dict:
         print 'Num demos:', demos['demoX'].shape[0]
     gps.algorithm = gps._hyperparams['algorithm']['type'](gps._hyperparams['algorithm'])

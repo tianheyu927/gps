@@ -14,9 +14,14 @@ COLOR_MAP = {
     'cyan': [0, 1, 1, 1],
 }
 
-COLOR_RANGE = [i / 5 for i in xrange(5)]
-COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE[1:] for k in COLOR_RANGE]
-COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
+# COLOR_RANGE = [i / 5 for i in xrange(5)]
+# COLOR_RANGE = [i / 8 for i in xrange(8)]
+COLOR_RANGE = [i / 10 for i in xrange(10)]
+DOUBLE_COLOR_RANGE = [i / 20 for i in xrange(20)]
+# COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE[1:] for k in COLOR_RANGE]
+COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in DOUBLE_COLOR_RANGE]
+COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
+# COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
 
 
@@ -178,6 +183,57 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     background.geom(name='background_box', type='box', rgba=background_color, size=[100,100,.1], contype=3, conaffinity=3)
     return mjcmodel
 
+def colored_pointmass(ncubes=6, target_color="red", cube_size=0.012, target_position=np.array([1.3, 0.5, 0]), distractor_pos=None, distractor_color=None):
+    mjcmodel = pointmass_model('pointmass')
+    worldbody = mjcmodel.root.worldbody()
+
+    # Particle
+    body = worldbody.body(name='particle', pos="0 0 0")
+    # body.geom(name="particle_geom", type="capsule", fromto="-0.01 0 0 0.01 0 0", size="0.05")
+    body.geom(name="particle_geom", type="sphere", density=density, size="0.05")
+    body.site(name="particle_site", pos="0 0 0", size="0.01")
+    body.joint(name="ball_x", type="slide", pos="0 0 0", axis="1 0 0")
+    body.joint(name="ball_y", type="slide", pos="0 0 0", axis="0 1 0")
+
+    if type(target_color) is str:
+        color_map = COLOR_MAP
+    else:
+        color_map = COLOR_MAP_CONT
+   
+    # Target
+    _target_pos = [target_pos[0], target_pos[1], 0.01]
+    body = worldbody.body(name="target",pos=_target_pos)
+    body.geom(rgba=color_map[target_color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
+    body.site(name="target",pos="0 0 0",size="0.01")
+
+    # Distractor cubes
+    available_colors = color_map.keys()
+    available_colors.remove(target_color)
+    for i in range(ncubes-1):
+        if distractor_pos is None:
+            pos = np.random.rand(3)
+        else:
+            pos = distractor_pos[i]
+        pos = pos*0.5-0.25
+        pos[2] = 0.01
+        body = worldbody.body(name="cube_%d"%i,pos=pos)
+        
+        if distractor_color is None:
+            color = np.random.choice(available_colors)
+        else:
+            color = distractor_color[i]
+        body.geom(rgba=color_map[color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
+
+    # Actuators
+    actuator = mjcmodel.root.actuator()
+    actuator.motor(joint="ball_x", ctrlrange=[-control_limit, control_limit], ctrllimited="true")
+    actuator.motor(joint="ball_y", ctrlrange=[-control_limit, control_limit], ctrllimited="true")
+
+    #Background
+    background = worldbody.body(name='background_body', pos=[0,0,-1], axisangle=[0,1,0,0.05])
+    background_color = [0,0,0,1] #[0.2,0.2,0.2,1]
+    background.geom(name='background_box', type='box', rgba=background_color, size=[100,100,.1], contype=3, conaffinity=3)
+    return mjcmodel
 
 def obstacle_pointmass(target_position=np.array([1.3, 0.5, 0]), wall_center=0.0, hole_height=1.0, control_limit=100,
                        add_hole_indicator=False):

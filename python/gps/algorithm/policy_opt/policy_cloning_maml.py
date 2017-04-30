@@ -73,7 +73,7 @@ class PolicyCloningMAML(PolicyOptTf):
         self.update_batch_size = self._hyperparams.get('update_batch_size', 1)
         self.meta_batch_size = self._hyperparams.get('meta_batch_size', 10)
         self.num_updates = self._hyperparams.get('num_updates', 1)
-        self.meta_lr = self._hyperparams.get('lr', 1e-2) #1e-3
+        self.meta_lr = self._hyperparams.get('lr', 1e-3) #1e-3
         self.weight_decay = self._hyperparams.get('weight_decay', 0.005)
         
         self.T = self._hyperparams.get('T', 50)
@@ -87,7 +87,8 @@ class PolicyCloningMAML(PolicyOptTf):
         self.policy = TfPolicyMAML(dU, self.inputa, self.actiona, self.inputb,
                                 self.test_act_op, self.reference_tensor, self.reference_out,
                                self.feat_op, self.image_op, self.norm_type,
-                               np.zeros(dU), self._sess, self.graph, self.device_string, 
+                               0.5*np.ones(dU), self._sess, self.graph, self.device_string, 
+                            #   np.zeros(dU), self._sess, self.graph, self.device_string, 
                                copy_param_scope=self._hyperparams['copy_param_scope'])
         # List of indices for state (vector) data and image (tensor) data in observation.
         self.x_idx, self.img_idx, i = [], [], 0
@@ -100,27 +101,28 @@ class PolicyCloningMAML(PolicyOptTf):
             else:
                 self.x_idx = self.x_idx + list(range(i, i+dim))
             i += dim
-
+        self.policy.img_idx = self.img_idx
         with self.graph.as_default():
             init_op = tf.global_variables_initializer()
         self.run(init_op)
         # For loading demos
         if hyperparams.get('agent', False):
-            test_agent = hyperparams['agent'][:80]  # Required for sampling
+            test_agent = hyperparams['agent']  # Required for sampling
             if type(test_agent) is not list:
                 test_agent = [test_agent]
-        demo_file = hyperparams['demo_file'][:80]
+        demo_file = hyperparams['demo_file']
         
         if hyperparams.get('agent', False):
-            restore_iter = hyperparams.get('restore_iter', 0)
+            self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
-            if restore_iter > 0:
-                self.restore_model(hyperparams['save_dir'] + '_%d' % restore_iter)
+            if self.restore_iter > 0:
+                self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
                 import pdb; pdb.set_trace()
                 # TODO: also implement resuming training from restored model
             else:
                 self.update()
                 # import pdb; pdb.set_trace()
+            os._exit(1); # debugging
             self.eval_fast_weights()
             self.eval_success_rate(test_agent)
 
@@ -205,11 +207,11 @@ class PolicyCloningMAML(PolicyOptTf):
         return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
-        n_layers = 3 # TODO TODO this used to be 3.
+        n_layers = 4 # TODO TODO this used to be 3.
         layer_size = 40  # TODO TODO This used to be 20.
         dim_hidden = (n_layers - 1)*[layer_size]
         dim_hidden.append(dim_output)
-        filter_size = 2 # used to be 5 for fp
+        filter_size = 3 # used to be 2
         num_filters = network_config['num_filters']
         im_height = network_config['image_height']
         im_width = network_config['image_width']
@@ -249,7 +251,7 @@ class PolicyCloningMAML(PolicyOptTf):
         return vbn(tensor, update=update)
 
     def forward(self, image_input, state_input, weights, update=False, is_training=True, network_config=None):
-        n_layers = 3 # 3
+        n_layers = 4 # 3
         norm_type = self.norm_type
         decay = network_config.get('decay', 0.9)
         use_dropout = self._hyperparams.get('use_dropout', False)
@@ -304,8 +306,8 @@ class PolicyCloningMAML(PolicyOptTf):
         # fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
         
         conv_out_flat = tf.reshape(conv_layer_2, [-1, self.conv_out_size])
-        if use_dropout:
-            conv_out_flat = dropout(conv_out_flat, keep_prob=0.8, is_training=is_training, name='dropout_input')
+        # if use_dropout:
+            # conv_out_flat = dropout(conv_out_flat, keep_prob=0.8, is_training=is_training, name='dropout_input')
         fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
         
         fc_output = tf.add(fc_input, 0)
@@ -394,6 +396,8 @@ class PolicyCloningMAML(PolicyOptTf):
                 # Is mask used here?
                 fast_weights = dict(zip(weights.keys(), [weights[key] - self.step_size*gradients[key] for key in weights.keys()]))
                 output = self.forward(inputb, state_inputb, fast_weights, network_config=network_config)
+                # For dropout/batchnorm, make the postupdate forward pass in test mode.
+                # output = self.forward(inputb, state_inputb, fast_weights, update = update, is_training=False, network_config=network_config)
                 test_outputb = self.forward(inputb, state_inputb, fast_weights, update=update, is_training=False, network_config=network_config)
                 local_outputbs.append(output)
                 val_local_outputbs.append(test_outputb)
@@ -406,6 +410,7 @@ class PolicyCloningMAML(PolicyOptTf):
                     gradients = dict(zip(fast_weights.keys(), tf.gradients(loss, fast_weights.values())))
                     fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
                     output = self.forward(inputb, state_inputb, fast_weights, network_config=network_config)
+                    # output = self.forward(inputb, state_inputb, fast_weights, update=update, is_training=False, network_config=network_config)
                     test_output = self.forward(inputb, state_inputb, fast_weights, update=update, is_training=False, network_config=network_config)
                     local_outputbs.append(output)
                     val_local_outputbs.append(test_output)
@@ -450,34 +455,39 @@ class PolicyCloningMAML(PolicyOptTf):
         n_val = self._hyperparams['n_val'] # number of demos for testing
         N_demos = np.sum(demo['demoO'].shape[0] for i, demo in demos.iteritems())
         print "Number of demos: %d" % N_demos
-        idx = range(n_folders)
-        shuffle(idx)
-        self.val_idx = sorted(idx[:n_val])
-        self.train_idx = sorted(idx[n_val:])
+        idx = np.arange(n_folders)
+        # shuffle(idx)
+        self.val_idx = np.sort(np.random.choice(idx, size=n_val, replace=False))
+        mask = np.array([(i in self.val_idx) for i in idx])
+        self.train_idx = np.sort(idx[~mask])
         # Normalizing observations
         if self.policy.scale is None or self.policy.bias is None:
-            obs = np.vstack((demos[i]['demoO'] for i in self.train_idx))
-            obs = obs.reshape(-1, self._dO)
+            states = np.vstack((demos[i]['demoX'] for i in self.train_idx))
+            states = states.reshape(-1, len(self.x_idx))
             self.policy.x_idx = self.x_idx
             # 1e-3 to avoid infs if some state dimensions don't change in the
             # first batch of samples
             self.policy.scale = np.diag(
-                1.0 / np.maximum(np.std(obs[:, self.x_idx], axis=0), 1e-3))
+                1.0 / np.maximum(np.std(states, axis=0), 1e-3))
             self.policy.bias = - np.mean(
-                obs[:, self.x_idx].dot(self.policy.scale), axis=0)
+                states.dot(self.policy.scale), axis=0)
             for key in demos.keys():
-                demos[key]['demoO'] = demos[key]['demoO'].reshape(-1, self._dO)
-                demos[key]['demoO'][:, self.x_idx] = demos[key]['demoO'][:, self.x_idx].dot(self.policy.scale) + self.policy.bias
-                demos[key]['demoO'] = demos[key]['demoO'].reshape(-1, self.T, self._dO)
-            obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.policy.scale) + self.policy.bias
-            if self.norm_type == 'vbn':
-                self.generate_reference_batch(obs)
+                demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.x_idx))
+                demos[key]['demoX'] = demos[key]['demoX'].dot(self.policy.scale) + self.policy.bias
+                demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.x_idx))
         self.demos = demos
-        self.val_demos = {key: demos[key] for key in self.val_idx}
-        self.train_demos = {key: demos[key] for key in self.train_idx}
+        self.val_demos = {key: demos[key].copy() for key in self.val_idx}
+        self.train_demos = {key: demos[key].copy() for key in self.train_idx}
         policy_demo_idx = [np.random.choice(n_demo, replace=False, size=self.update_batch_size) for n_demo in [self.demos[i]['demoO'].shape[0] for i in xrange(n_folders)]]
-        self.policy.selected_demoO = [demos[i]['demoO'][policy_demo_idx[i]] for i in xrange(n_folders)]
-        self.policy.selected_demoU = [demos[i]['demoU'][policy_demo_idx[i]] for i in xrange(n_folders)]
+        self.policy.selected_demoO = []
+        self.policy.selected_demoU = []
+        for i in xrange(n_folders):
+            # Does this screw the dimensions?
+            O = demos[i]['demoO'][policy_demo_idx[i]].astype(np.uint8).astype(float).copy()
+            O /= 255.0
+            O = np.concatenate((demos[i]['demoX'][policy_demo_idx[i]], O), axis=2)
+            self.policy.selected_demoO.append(O)
+            self.policy.selected_demoU.append(demos[i]['demoU'][policy_demo_idx[i]].copy())
         print "Selected demo is %d" % self.policy.selected_demoO[0].shape[0]
         self.policy.demos = demos #debug
 
@@ -498,19 +508,21 @@ class PolicyCloningMAML(PolicyOptTf):
     def generate_data_batch(self, train=True):
         if train:
             demos = self.train_demos
-            folder_idx = list(np.array(self.train_idx).copy())
+            folder_idx = self.train_idx.copy()
         else:
             demos = self.val_demos
-            folder_idx = list(np.array(self.val_idx).copy())
+            folder_idx = self.val_idx.copy()
         batch_size = self.meta_batch_size
         update_batch_size = self.update_batch_size
-        shuffle(folder_idx)
-        batch_idx = folder_idx[:batch_size]
+        # shuffle(folder_idx)
+        # batch_idx = folder_idx[:batch_size]
+        batch_idx = np.random.choice(folder_idx, size=batch_size, replace=False)
         batch_demos = {key: demos[key] for key in batch_idx}
         n_demo = batch_demos[batch_idx[0]]['demoX'].shape[0]
         idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size+1)
         U = batch_demos[batch_idx[0]]['demoU'][idx_i]
-        O = batch_demos[batch_idx[0]]['demoO'][idx_i]
+        X = batch_demos[batch_idx[0]]['demoX'][idx_i]
+        O = np.concatenate((X, batch_demos[batch_idx[0]]['demoO'][idx_i].astype(np.uint8).astype(float)), axis=2)
         # idx_i = np.random.choice(np.arange(n_demo*self.T), replace=False, size=update_batch_size*self.T*2)
         # U = ((batch_demos[batch_idx[0]]['demoU']).reshape(-1, self._dU))[idx_i].reshape(-1, self.T, self._dU)
         # O = ((batch_demos[batch_idx[0]]['demoO']).reshape(-1, self._dO))[idx_i].reshape(-1, self.T, self._dO)
@@ -518,12 +530,13 @@ class PolicyCloningMAML(PolicyOptTf):
             n_demo = batch_demos[batch_idx[i]]['demoX'].shape[0]
             idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size+1)
             U = np.concatenate((U, batch_demos[batch_idx[i]]['demoU'][idx_i]))
-            O = np.concatenate((O, batch_demos[batch_idx[i]]['demoO'][idx_i]))
+            O = np.concatenate((O, np.concatenate((batch_demos[batch_idx[i]]['demoX'][idx_i], batch_demos[batch_idx[i]]['demoO'][idx_i].astype(np.uint8).astype(float)), axis=2)))
             # idx_i = np.random.choice(np.arange(n_demo*self.T), replace=False, size=update_batch_size*self.T*2)
             # new_U = (batch_demos[batch_idx[i]]['demoU']).reshape(-1, self._dU)[idx_i].reshape(-1, self.T, self._dU)
             # new_O = (batch_demos[batch_idx[i]]['demoO']).reshape(-1, self._dO)[idx_i].reshape(-1, self.T, self._dO)
             # U = np.concatenate((U, new_U))
             # O = np.concatenate((O, new_O))
+        O[:, :, self.img_idx] /= 255.0 # convert to [0, 1] scale
         U = U.reshape(batch_size, (1+update_batch_size)*self.T, -1)
         O = O.reshape(batch_size, (1+update_batch_size)*self.T, -1)
         return O, U
@@ -539,12 +552,17 @@ class PolicyCloningMAML(PolicyOptTf):
         SAVE_INTERVAL = 1000
         TOTAL_ITERS = self._hyperparams['iterations']
         prelosses, postlosses = [], []
-        log_dir = self._hyperparams['log_dir'] + '_%s' % datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        # log_dir = self._hyperparams['log_dir'] + '_%s' % datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        log_dir = self._hyperparams['log_dir'] # for debugging
         save_dir = self._hyperparams['save_dir'] #'_model' #'_model_ln'
         train_writer = tf.train.SummaryWriter(log_dir, self.graph)
         # actual training.
         with Timer('Training'):
-            for itr in range(TOTAL_ITERS):
+            if self.restore_iter == 0:
+                training_range = range(TOTAL_ITERS)
+            else:
+                training_range = range(self.restore_iter+1, self.restore_iter+1+TOTAL_ITERS)
+            for itr in training_range:
                 obs, tgt_mu = self.generate_data_batch()
                 inputa = obs[:, :self.update_batch_size*self.T, :]
                 inputb = obs[:, self.update_batch_size*self.T:, :]

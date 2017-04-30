@@ -48,3 +48,7 @@ class DataLogger(object):
         except IOError:
             LOGGER.debug('Unpickle error. Cannot find file: %s', filename)
             return None
+    
+    # def clear_memo(self):
+    #     """ Clear memory for multiple pickles. """
+    #     pickle.Pickler.clear_memo()

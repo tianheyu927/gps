@@ -261,12 +261,14 @@ class AgentMuJoCo(Agent):
             obs_t = new_sample.get_obs(t=t)
             # For MAML. Specify the index of the task in order to get demos
             if task_idx is not None:
-                mj_U = policy.act(X_t, obs_t, t, noise[t, :], idx=task_idx)
+                mj_U, noise_U = policy.act(X_t, obs_t, t, noise[t, :], idx=task_idx)
             else:
                 mj_U = policy.act(X_t, obs_t, t, noise[t, :])
             if self._hyperparams['record_reward']:
                 R[t] = -(np.linalg.norm(X_t[4:7] - X_t[7:10]) + np.square(mj_U).sum())
-            U[t, :] = mj_U
+            U[t, :] = mj_U.copy()
+            if task_idx is not None:
+                mj_U = noise_U
             if verbose:
                 self._world[condition].plot(mj_X)
             if (t + 1) < self.T:

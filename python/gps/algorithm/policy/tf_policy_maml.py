@@ -39,6 +39,7 @@ class TfPolicyMAML(Policy):
         self.scale = None  # must be set from elsewhere based on observations
         self.bias = None
         self.x_idx = None
+        self.img_idx = None
         self.reference_op = reference_op
         self.reference_out = reference_out
 
@@ -68,6 +69,7 @@ class TfPolicyMAML(Policy):
             obs = np.expand_dims(obs, axis=0)
         if self.scale is not None and self.bias is not None:
             obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
+        obs[:, self.img_idx] /= 255.0
         # This following code seems to be buggy
         # TODO: figure out why this doesn't work
         # if t == 0:
@@ -91,7 +93,7 @@ class TfPolicyMAML(Policy):
             u = action_mean
         else:
             u = action_mean + self.chol_pol_covar.T.dot(noise)
-        return np.squeeze(u)  # the DAG computations are batched by default, but we use batch size 1.
+        return np.squeeze(action_mean), np.squeeze(u)  # the DAG computations are batched by default, but we use batch size 1.
 
     def run(self, op, feed_dict=None):
         with tf.device(self.device_string):

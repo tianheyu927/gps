@@ -145,7 +145,7 @@ class GenDemo(object):
                             for k in xrange(N):
                                 demo = self.agent.sample(
                                     pol, j, # Should be changed back to controller if using linearization
-                                    verbose=(k < self._hyperparams['verbose_trials']), noisy=False, record_image=True,
+                                    verbose=(k < self._hyperparams['verbose_trials']), noisy=True, record_image=True,
                                     include_no_target=True
                                     )
                                 demos[i].append(demo)
@@ -208,7 +208,8 @@ class GenDemo(object):
                     demo_list = SampleList(demos)
                     demo_store = {'demoX': demo_list.get_X(),
                                   'demoU': demo_list.get_U(),
-                                  'demoO': demo_list.get_obs(),
+                                #   'demoO': demo_list.get_obs(),
+                                  'demoO': demo_list.get_obs()[:, :, 10:].astype(np.uint8), #only saving the integet part (for reacher only)
                                   'demoConditions': demo_idx_conditions}
                 else:
                     for m in xrange(demo_M):
@@ -226,3 +227,5 @@ class GenDemo(object):
                 demo_file,
                 copy.copy(demo_store)
             )
+            # Clear memory for sequential pickles. Has some issue right now.
+            # self.data_logger.clear_memo()

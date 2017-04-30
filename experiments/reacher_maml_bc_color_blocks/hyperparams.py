@@ -51,8 +51,8 @@ DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks'
 TRAIN_CONDITIONS = 8
 
 np.random.seed(47)
-DEMO_CONDITIONS = 32 #20
-COLOR_CONDITIONS = 100 #80
+DEMO_CONDITIONS = 160 #64
+COLOR_CONDITIONS = 1999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 N_CUBES = 6
@@ -130,6 +130,7 @@ agent = {
 
 pol_agent = [{
     'type': AgentMuJoCo,
+    # for testing
     'models': colored_reacher(target_color=j, distractor_pos=distractor_pos[j], distractor_color=distractor_color[j]),
     'exp_name': 'reacher',
     'x0': np.zeros(4),
@@ -268,20 +269,20 @@ algorithm['policy_opt'] = {
     'agent': pol_agent,
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
-    'use_dropout': True,
-    'keep_prob': 0.8,
+    'use_dropout': False,
+    'keep_prob': 0.9,
     'decay': 0.9,
-    'iterations': 50000,
+    'iterations': 3000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': 10, #10
-    'step_size': 1e-5, #1e-5 # step size of gradient step
+    'n_val': 50, #50
+    'step_size': 1e-4, #1e-5 # step size of gradient step
     'num_updates': 1, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'update_batch_size': 1, # batch size for each task, used to be 1
     'log_dir': '/tmp/data/maml_bc',
-    'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_dropout',
+    'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-4_cnn_normalized_batch5_noise',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_demo_3',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
@@ -305,6 +306,7 @@ config = {
     },
     'agent': agent,
     'demo_agent': demo_agent,
+    'pol_agent': pol_agent,
     'gui_on': False,
     'algorithm': algorithm,
     'conditions': common['conditions'],

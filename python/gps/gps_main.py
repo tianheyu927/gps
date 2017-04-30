@@ -582,7 +582,9 @@ def main():
                 help='test the policies with multiple seeds sequentially')
     parser.add_argument('--restore', metavar='N', type=int,
                 help='restore weights from iteration N (for BC only)')
-
+    parser.add_argument('--start', metavar='N', type=int,
+                help='start color index')
+    
     args = parser.parse_args()
 
     exp_name = args.experiment
@@ -592,6 +594,7 @@ def main():
     measure = args.measure
     visualize = args.visualize
     restore_iter = args.restore
+    start_idx = args.start
 
     from gps import __file__ as gps_filepath
     gps_filepath = os.path.abspath(gps_filepath)
@@ -817,6 +820,10 @@ def main():
     else:
         if restore_iter and hyperparams.config['algorithm'].get('bc', False):
             hyperparams.config['algorithm']['policy_opt']['restore_iter'] = restore_iter
+        if type(start_idx) is int:
+            hyperparams.config['common']['NN_demo_file'] = hyperparams.config['common']['NN_demo_file'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
+            hyperparams.config['demo_agent'] = hyperparams.config['demo_agent'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
+            hyperparams.config['pol_agent'] = hyperparams.config['pol_agent'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
         gps = GPSMain(hyperparams.config)
         if hyperparams.config['gui_on']:
             # run_gps = threading.Thread(
