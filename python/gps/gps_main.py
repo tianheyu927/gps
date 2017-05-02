@@ -584,6 +584,8 @@ def main():
                 help='restore weights from iteration N (for BC only)')
     parser.add_argument('--start', metavar='N', type=int,
                 help='start color index')
+    parser.add_argument('--maml_idx', metavar='N', type=int,
+                help='mamal color index')
     
     args = parser.parse_args()
 
@@ -595,6 +597,7 @@ def main():
     visualize = args.visualize
     restore_iter = args.restore
     start_idx = args.start
+    maml_idx = args.maml_idx
 
     from gps import __file__ as gps_filepath
     gps_filepath = os.path.abspath(gps_filepath)
@@ -824,6 +827,12 @@ def main():
             hyperparams.config['common']['NN_demo_file'] = hyperparams.config['common']['NN_demo_file'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
             hyperparams.config['demo_agent'] = hyperparams.config['demo_agent'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
             hyperparams.config['pol_agent'] = hyperparams.config['pol_agent'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
+        if type(maml_idx) is int:
+            hyperparams.config['common']['NN_demo_file'] = hyperparams.config['common']['NN_demo_file'][maml_idx*100:min((maml_idx+1)*100, hyperparams.COLOR_CONDITIONS)]
+            hyperparams.config['demo_agent'] = hyperparams.config['demo_agent'][maml_idx*100:min((maml_idx+1)*100, hyperparams.COLOR_CONDITIONS)]
+            hyperparams.config['pol_agent'] = hyperparams.config['pol_agent'][maml_idx*100:min((maml_idx+1)*100, hyperparams.COLOR_CONDITIONS)]
+            hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['NN_demo_file']
+            hyperparams.config['algorithm']['policy_opt']['agent'] = hyperparams.config['pol_agent']
         gps = GPSMain(hyperparams.config)
         if hyperparams.config['gui_on']:
             # run_gps = threading.Thread(

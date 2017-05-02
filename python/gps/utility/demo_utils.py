@@ -269,6 +269,7 @@ def get_bc_demos(gps):
         demos[0] = gps.data_logger.unpickle(demo_file[0])
         if demos[0] is None:
             gps.demo_gen = GenDemo(gps._hyperparams)
+            # gps.demo_gen.generate_multi(demo_file, gps.agent)
             gps.demo_gen.generate(demo_file, gps.agent)
             os._exit(1) # for bash script to work automatically
     if type(demos) is not dict:

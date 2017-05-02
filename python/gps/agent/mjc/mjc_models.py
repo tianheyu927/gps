@@ -17,9 +17,9 @@ COLOR_MAP = {
 # COLOR_RANGE = [i / 5 for i in xrange(5)]
 # COLOR_RANGE = [i / 8 for i in xrange(8)]
 COLOR_RANGE = [i / 10 for i in xrange(10)]
-DOUBLE_COLOR_RANGE = [i / 20 for i in xrange(20)]
+# DOUBLE_COLOR_RANGE = [i / 20 for i in xrange(20)]
 # COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE[1:] for k in COLOR_RANGE]
-COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in DOUBLE_COLOR_RANGE]
+COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
 COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
 # COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
@@ -183,14 +183,14 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     background.geom(name='background_box', type='box', rgba=background_color, size=[100,100,.1], contype=3, conaffinity=3)
     return mjcmodel
 
-def colored_pointmass(ncubes=6, target_color="red", cube_size=0.012, target_position=np.array([1.3, 0.5, 0]), distractor_pos=None, distractor_color=None):
+def colored_pointmass(ncubes=6, target_color="red", cube_size=0.025, target_position=np.array([1.3, 0.5, 0]), distractor_pos=None, distractor_color=None):
     mjcmodel = pointmass_model('pointmass')
     worldbody = mjcmodel.root.worldbody()
 
     # Particle
     body = worldbody.body(name='particle', pos="0 0 0")
     # body.geom(name="particle_geom", type="capsule", fromto="-0.01 0 0 0.01 0 0", size="0.05")
-    body.geom(name="particle_geom", type="sphere", density=density, size="0.05")
+    body.geom(name="particle_geom", type="sphere", rgba=[.4,.4,1,1], size="0.05")
     body.site(name="particle_site", pos="0 0 0", size="0.01")
     body.joint(name="ball_x", type="slide", pos="0 0 0", axis="1 0 0")
     body.joint(name="ball_y", type="slide", pos="0 0 0", axis="0 1 0")
@@ -201,7 +201,7 @@ def colored_pointmass(ncubes=6, target_color="red", cube_size=0.012, target_posi
         color_map = COLOR_MAP_CONT
    
     # Target
-    _target_pos = [target_pos[0], target_pos[1], 0.01]
+    _target_pos = [target_pos[0], target_pos[1], 0.0]
     body = worldbody.body(name="target",pos=_target_pos)
     body.geom(rgba=color_map[target_color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
     body.site(name="target",pos="0 0 0",size="0.01")
@@ -214,8 +214,8 @@ def colored_pointmass(ncubes=6, target_color="red", cube_size=0.012, target_posi
             pos = np.random.rand(3)
         else:
             pos = distractor_pos[i]
-        pos = pos*0.5-0.25
-        pos[2] = 0.01
+        pos = pos*2.0-1.0
+        pos[2] = 0.0
         body = worldbody.body(name="cube_%d"%i,pos=pos)
         
         if distractor_color is None:
@@ -328,6 +328,36 @@ def weighted_pointmass(target_position=np.array([1.3, 0.5, 0]), density=0.01, co
     actuator = mjcmodel.root.actuator()
     actuator.motor(joint="ball_x", ctrlrange=[-control_limit, control_limit], ctrllimited="true")
     actuator.motor(joint="ball_y", ctrlrange=[-control_limit, control_limit], ctrllimited="true")
+    return mjcmodel
+    
+def pointmass(target_position=np.array([1.3, 0.5, 0])):
+    """
+    An example usage of MJCModel building the pointmass task
+    Args:
+        target_position: the position of the target.
+    Returns:
+        An MJCModel
+    """
+    mjcmodel = pointmass_model('pointmass')
+    worldbody = mjcmodel.root.worldbody()
+
+    # Particle
+    body = worldbody.body(name='particle', pos="0 0 0")
+    # body.geom(name="particle_geom", type="capsule", fromto="-0.01 0 0 0.01 0 0", size="0.05")
+    body.geom(name="particle_geom", type="sphere", size="0.05")
+    body.site(name="particle_site", pos="0 0 0", size="0.01")
+    body.joint(name="ball_x", type="slide", pos="0 0 0", axis="1 0 0")
+    body.joint(name="ball_y", type="slide", pos="0 0 0", axis="0 1 0")
+
+    # Target
+    body = worldbody.body(name="target", pos=target_position)
+    # body.geom(name="target_geom", type="capsule", fromto="-0.01 0 0 0.01 0 0", size="0.05", rgba="0 0.9 0.1 1")
+    body.geom(name="target_geom", type="sphere", size="0.05", rgba="0 0.9 0.1 1")
+
+    # Actuators
+    actuator = mjcmodel.root.actuator()
+    actuator.motor(joint="ball_x", ctrllimited="true")
+    actuator.motor(joint="ball_y", ctrllimited="true")
     return mjcmodel
 
 

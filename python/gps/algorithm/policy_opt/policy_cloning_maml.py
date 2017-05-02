@@ -117,7 +117,8 @@ class PolicyCloningMAML(PolicyOptTf):
             self.extract_supervised_data(demo_file)
             if self.restore_iter > 0:
                 self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
-                import pdb; pdb.set_trace()
+                # import pdb; pdb.set_trace()
+                self.update()
                 # TODO: also implement resuming training from restored model
             else:
                 self.update()
@@ -385,7 +386,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 actionas = [actiona]*num_updates
                 
                 # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
-                local_outputa = self.forward(inputa, state_inputa, weights, network_config=network_config)[0]
+                local_outputa = self.forward(inputa, state_inputa, weights, network_config=network_config)
                 # test_outputa, _, moving_mean_test, moving_variance_test = self.forward(inputa, state_inputa, weights, is_training=False, network_config=network_config)
                 test_outputa = self.forward(inputa, state_inputa, weights, update=update, is_training=False, network_config=network_config)
                 # weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in weights.values()]) / tf.to_float(self.update_batch_size*self.T)
@@ -482,7 +483,6 @@ class PolicyCloningMAML(PolicyOptTf):
         self.policy.selected_demoO = []
         self.policy.selected_demoU = []
         for i in xrange(n_folders):
-            # Does this screw the dimensions?
             O = demos[i]['demoO'][policy_demo_idx[i]].astype(np.uint8).astype(float).copy()
             O /= 255.0
             O = np.concatenate((demos[i]['demoX'][policy_demo_idx[i]], O), axis=2)
@@ -561,7 +561,10 @@ class PolicyCloningMAML(PolicyOptTf):
             if self.restore_iter == 0:
                 training_range = range(TOTAL_ITERS)
             else:
-                training_range = range(self.restore_iter+1, self.restore_iter+1+TOTAL_ITERS)
+                if self.restore_iter == 5000: #hard-coded
+                    training_range = range(5001, 6000)
+                else:
+                    training_range = range(self.restore_iter+1, self.restore_iter+1+TOTAL_ITERS)
             for itr in training_range:
                 obs, tgt_mu = self.generate_data_batch()
                 inputa = obs[:, :self.update_batch_size*self.T, :]
@@ -611,7 +614,7 @@ class PolicyCloningMAML(PolicyOptTf):
                     train_writer.add_summary(results[0], itr)
                     print 'Test results: average preloss is %.2f, average postloss is %.2f' % (np.mean(results[1]), np.mean(results[2]))
                 
-                if itr != 0 and (itr % SAVE_INTERVAL == 0 or itr == TOTAL_ITERS - 1):
+                if itr != 0 and (itr % SAVE_INTERVAL == 0 or itr == training_range[-1]):
                     self.save_model(save_dir + '_%d' % itr)
 
         # Keep track of tensorflow iterations for loading solver states.
