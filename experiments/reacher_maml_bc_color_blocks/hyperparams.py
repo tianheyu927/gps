@@ -45,14 +45,14 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks'
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_more'
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 
 np.random.seed(47)
-DEMO_CONDITIONS = 160 #64
-COLOR_CONDITIONS = 999#511 #100 #80
+DEMO_CONDITIONS = 64 #160 #32
+COLOR_CONDITIONS = 100#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 N_CUBES = 6
@@ -75,7 +75,7 @@ pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
                    np.array([-0.2, 0.1, 0.0]), np.array([-0.2, 0.0, 0.0]),
                    np.array([-0.1, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])]
 
-SEED = 0
+SEED = 0 #0
 NUM_DEMOS = 1
 
 common = {
@@ -272,17 +272,19 @@ algorithm['policy_opt'] = {
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
-    'iterations': 3000, #about 20 epochs
+    'iterations': 100000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': 50, #50
-    'step_size': 1e-4, #1e-5 # step size of gradient step
+    'n_val': 10, #50
+    'step_size': 1e-5, #1e-5 # step size of gradient step
     'num_updates': 1, # take one gradient step
-    'meta_batch_size': 5, #10, # number of tasks during training
+    'meta_batch_size': 1, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'update_batch_size': 1, # batch size for each task, used to be 1
     'log_dir': '/tmp/data/maml_bc',
-    'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-4_cnn_normalized_batch5_noise',
+    # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_3e-4_cnn_normalized_batch1_noise_bugfix_step3',
+    # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-4_cnn_normalized_batch1_noise_bugfix_step1_dropout',
+    'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_normalized_batch1_noise_bugfix_step1',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_demo_3',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,

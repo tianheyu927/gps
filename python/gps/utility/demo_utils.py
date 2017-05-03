@@ -13,6 +13,7 @@ from gps.sample.sample_list import SampleList
 from gps.proto.gps_pb2 import END_EFFECTOR_POINTS
 from gps.utility.data_logger import DataLogger
 from gps.utility.general_utils import flatten_lists, Timer
+from multiprocessing import Pool
 
 LOGGER = logging.getLogger(__name__)
 
@@ -67,6 +68,17 @@ def extract_demos(demo_file):
                 demos['demoConditions'] = np.concatenate((demos['demoConditions'], new_demos['demoConditions']))
                 demos['agent_idx'] = np.concatenate((demos['agent_idx'], i*np.ones(new_demos['demoX'].shape[0])))
     return demos['demoX'], demos['demoU'], demos['demoO'], demos.get('demoConditions', None), demos['agent_idx']
+
+def extract_demo_dict_multi(demo_file):
+    pool = Pool(processes=5)
+    N = len(demo_file)
+    params = [demo_file[:N/5], demo_file[N/5:2*(N/5)], demo_file[2*(N/5):3*(N/5)], demo_file[3*(N/5):4*(N/5)], demo_file[4*(N/5):]]
+    results = pool.map(extract_demo_dict, params)
+    demos = results[0].values()
+    for i in xrange(1, 5):
+        demos.extend(results[i].values())
+    demos = {k:demos[k] for k in xrange(N)}
+    return demos
 
 def extract_demo_dict(demo_file):
     if type(demo_file) is not list:

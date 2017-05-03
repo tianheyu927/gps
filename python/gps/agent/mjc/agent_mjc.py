@@ -263,11 +263,11 @@ class AgentMuJoCo(Agent):
             if task_idx is not None:
                 mj_U, noise_U = policy.act(X_t, obs_t, t, noise[t, :], idx=task_idx)
             else:
-                mj_U = policy.act(X_t, obs_t, t, noise[t, :])
+                mj_U, noise_U = policy.act(X_t, obs_t, t, noise[t, :])
             if self._hyperparams['record_reward']:
                 R[t] = -(np.linalg.norm(X_t[4:7] - X_t[7:10]) + np.square(mj_U).sum())
             U[t, :] = mj_U.copy()
-            if task_idx is not None:
+            if task_idx is None: # make demos to BC noisy
                 mj_U = noise_U
             if verbose:
                 self._world[condition].plot(mj_X)

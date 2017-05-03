@@ -20,7 +20,7 @@ from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
 from gps.algorithm.policy_opt.tf_model_example import *
 from gps.algorithm.policy_opt.tf_utils import TfSolver
 from gps.sample.sample_list import SampleList
-from gps.utility.demo_utils import xu_to_sample_list, extract_demo_dict
+from gps.utility.demo_utils import xu_to_sample_list, extract_demo_dict, extract_demo_dict_multi
 from gps.utility.general_utils import BatchSampler, compute_distance, mkdir_p, Timer
 
 ANNEAL_INTERVAL = 20000 # this used to be 5000
@@ -48,10 +48,10 @@ class PolicyCloningMAML(PolicyOptTf):
             else:
                 self.gpu_device = self._hyperparams['gpu_id']
                 self.device_string = "/gpu:" + str(self.gpu_device)
-                self._sess = tf.Session(graph=self.graph)
-                # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
-                # tf_config = tf.ConfigProto(gpu_options=gpu_options)
-                # self._sess = tf.Session(graph=self.graph, config=tf_config)
+                # self._sess = tf.Session(graph=self.graph)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+                tf_config = tf.ConfigProto(gpu_options=gpu_options)
+                self._sess = tf.Session(graph=self.graph, config=tf_config)
         else:
             self._sess = tf.Session(graph=self.graph)
         self.act_op = None  # mu_hat
@@ -118,12 +118,12 @@ class PolicyCloningMAML(PolicyOptTf):
             if self.restore_iter > 0:
                 self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
                 # import pdb; pdb.set_trace()
-                self.update()
+                # self.update()
                 # TODO: also implement resuming training from restored model
             else:
                 self.update()
                 # import pdb; pdb.set_trace()
-            os._exit(1); # debugging
+            # os._exit(1) # debugging
             self.eval_fast_weights()
             self.eval_success_rate(test_agent)
 
@@ -208,11 +208,11 @@ class PolicyCloningMAML(PolicyOptTf):
         return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
-        n_layers = 4 # TODO TODO this used to be 3.
-        layer_size = 40  # TODO TODO This used to be 20.
+        n_layers = 3 # TODO TODO this used to be 3.
+        layer_size = 20  # TODO TODO This used to be 20.
         dim_hidden = (n_layers - 1)*[layer_size]
         dim_hidden.append(dim_output)
-        filter_size = 3 # used to be 2
+        filter_size = 2 # used to be 2
         num_filters = network_config['num_filters']
         im_height = network_config['image_height']
         im_width = network_config['image_width']
@@ -252,7 +252,7 @@ class PolicyCloningMAML(PolicyOptTf):
         return vbn(tensor, update=update)
 
     def forward(self, image_input, state_input, weights, update=False, is_training=True, network_config=None):
-        n_layers = 4 # 3
+        n_layers = 3 # 3
         norm_type = self.norm_type
         decay = network_config.get('decay', 0.9)
         use_dropout = self._hyperparams.get('use_dropout', False)
@@ -451,7 +451,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 total_train_obs: all training observations
                 total_train_U: all training actions
         """
-        demos = extract_demo_dict(demo_file)
+        demos = extract_demo_dict_multi(demo_file)
         n_folders = len(demos.keys())
         n_val = self._hyperparams['n_val'] # number of demos for testing
         N_demos = np.sum(demo['demoO'].shape[0] for i, demo in demos.iteritems())
@@ -483,7 +483,7 @@ class PolicyCloningMAML(PolicyOptTf):
         self.policy.selected_demoO = []
         self.policy.selected_demoU = []
         for i in xrange(n_folders):
-            O = demos[i]['demoO'][policy_demo_idx[i]].astype(np.uint8).astype(float).copy()
+            O = demos[i]['demoO'][policy_demo_idx[i]].astype(float).copy()
             O /= 255.0
             O = np.concatenate((demos[i]['demoX'][policy_demo_idx[i]], O), axis=2)
             self.policy.selected_demoO.append(O)
@@ -522,7 +522,7 @@ class PolicyCloningMAML(PolicyOptTf):
         idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size+1)
         U = batch_demos[batch_idx[0]]['demoU'][idx_i]
         X = batch_demos[batch_idx[0]]['demoX'][idx_i]
-        O = np.concatenate((X, batch_demos[batch_idx[0]]['demoO'][idx_i].astype(np.uint8).astype(float)), axis=2)
+        O = np.concatenate((X, batch_demos[batch_idx[0]]['demoO'][idx_i].astype(float)), axis=2)
         # idx_i = np.random.choice(np.arange(n_demo*self.T), replace=False, size=update_batch_size*self.T*2)
         # U = ((batch_demos[batch_idx[0]]['demoU']).reshape(-1, self._dU))[idx_i].reshape(-1, self.T, self._dU)
         # O = ((batch_demos[batch_idx[0]]['demoO']).reshape(-1, self._dO))[idx_i].reshape(-1, self.T, self._dO)
@@ -530,7 +530,7 @@ class PolicyCloningMAML(PolicyOptTf):
             n_demo = batch_demos[batch_idx[i]]['demoX'].shape[0]
             idx_i = np.random.choice(np.arange(n_demo), replace=False, size=update_batch_size+1)
             U = np.concatenate((U, batch_demos[batch_idx[i]]['demoU'][idx_i]))
-            O = np.concatenate((O, np.concatenate((batch_demos[batch_idx[i]]['demoX'][idx_i], batch_demos[batch_idx[i]]['demoO'][idx_i].astype(np.uint8).astype(float)), axis=2)))
+            O = np.concatenate((O, np.concatenate((batch_demos[batch_idx[i]]['demoX'][idx_i], batch_demos[batch_idx[i]]['demoO'][idx_i].astype(float)), axis=2)))
             # idx_i = np.random.choice(np.arange(n_demo*self.T), replace=False, size=update_batch_size*self.T*2)
             # new_U = (batch_demos[batch_idx[i]]['demoU']).reshape(-1, self._dU)[idx_i].reshape(-1, self.T, self._dU)
             # new_O = (batch_demos[batch_idx[i]]['demoO']).reshape(-1, self._dO)[idx_i].reshape(-1, self.T, self._dO)
@@ -552,8 +552,8 @@ class PolicyCloningMAML(PolicyOptTf):
         SAVE_INTERVAL = 1000
         TOTAL_ITERS = self._hyperparams['iterations']
         prelosses, postlosses = [], []
-        # log_dir = self._hyperparams['log_dir'] + '_%s' % datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        log_dir = self._hyperparams['log_dir'] # for debugging
+        log_dir = self._hyperparams['log_dir'] + '_%s' % datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        # log_dir = self._hyperparams['log_dir'] # for debugging
         save_dir = self._hyperparams['save_dir'] #'_model' #'_model_ln'
         train_writer = tf.train.SummaryWriter(log_dir, self.graph)
         # actual training.
@@ -561,10 +561,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self.restore_iter == 0:
                 training_range = range(TOTAL_ITERS)
             else:
-                if self.restore_iter == 5000: #hard-coded
-                    training_range = range(5001, 6000)
-                else:
-                    training_range = range(self.restore_iter+1, self.restore_iter+1+TOTAL_ITERS)
+                training_range = range(self.restore_iter+1, self.restore_iter+1+TOTAL_ITERS)
             for itr in training_range:
                 obs, tgt_mu = self.generate_data_batch()
                 inputa = obs[:, :self.update_batch_size*self.T, :]
