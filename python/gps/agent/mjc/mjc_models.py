@@ -159,10 +159,12 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     for i in range(ncubes-1):
         if distractor_pos is None:
             pos = np.random.rand(3)
+            pos[0] = 0.4*pos[0]-0.3
+            pos[1] = 0.4*pos[1]-0.1
         else:
             pos = distractor_pos[i]
-        pos = pos*0.5-0.25
-        pos[2] = 0.01
+        # pos = pos*0.5-0.25
+        pos += np.array([.1,-.1,.01])
         body = worldbody.body(name="cube_%d"%i,pos=pos)
         
         if distractor_color is None:

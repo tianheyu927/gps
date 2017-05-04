@@ -1,4 +1,4 @@
-for i in {1..4} #{0..12}
+for i in {0..9} #{0..12}
     do
         python python/gps/gps_main.py --start $i reacher_maml_bc_color_blocks
     done

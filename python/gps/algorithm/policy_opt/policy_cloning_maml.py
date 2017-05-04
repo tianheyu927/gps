@@ -659,7 +659,7 @@ class PolicyCloningMAML(PolicyOptTf):
         train_dists = []
         val_dists = []
         for i in xrange(len(test_agent)):
-            agent = test_agent[i]['type'](test_agent[i])
+            agent = test_agent[i][j]['type'](test_agent[i])
             conditions = self.demos[i]['demoConditions']
             target_eepts = np.array(test_agent[i]['target_end_effector'])[conditions]
             if len(target_eepts.shape) == 1:

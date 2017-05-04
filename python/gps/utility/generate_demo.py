@@ -25,7 +25,7 @@ from random import shuffle
 sys.path.append('/'.join(str.split(__file__, '/')[:-2]))
 from gps.agent.mjc.agent_mjc import AgentMuJoCo
 from gps.utility.data_logger import DataLogger, open_zip
-from gps.utility.general_utils import compute_distance, Timer
+from gps.utility.general_utils import compute_distance, Timer, mkdir_p
 from gps.sample.sample_list import SampleList
 from gps.algorithm.algorithm_utils import gauss_fit_joint_prior
 from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
@@ -140,13 +140,27 @@ class GenDemo(object):
                     assert len(self.algorithms) == 1
                     pol = self.algorithms[0].policy_opt.policy
                     for i in xrange(len(agent_config)):
-                        self.agent = agent_config[i]['type'](agent_config[i])
                         for j in xrange(M):
                             for k in xrange(N):
-                                demo = self.agent.sample(
+                                agent = agent_config[i]['type'](agent_config[i])
+                                if 'record_gif' in self._hyperparams:
+                                    gif_config = self._hyperparams['record_gif']
+                                    if k < gif_config.get('gifs_per_condition', float('inf')):
+                                        gif_fps = gif_config.get('fps', None)
+                                        gif_dir = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/')
+                                        gif_dir = gif_dir + 'color_%d/' % i
+                                        mkdir_p(gif_dir)
+                                        gif_name = os.path.join(gif_dir,'cond%d.samp%d.gif' % (j, k))
+                                    else:
+                                        gif_name=None
+                                        gif_fps = None
+                                else:
+                                    gif_name=None
+                                    gif_fps = None
+                                demo = agent.sample(
                                     pol, j, # Should be changed back to controller if using linearization
                                     verbose=(k < self._hyperparams['verbose_trials']), noisy=True, record_image=True,
-                                    include_no_target=True
+                                    include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps
                                     )
                                 demos[i].append(demo)
                                 demo_idx_conditions[i].append(j)

@@ -118,8 +118,12 @@ class AgentMuJoCo(Agent):
             for j in range(len(self._hyperparams['pos_body_idx'][i])):
                 idx = self._hyperparams['pos_body_idx'][i][j]
                 # TODO: this should actually add [i][j], but that would break things
-                self._model[i]['body_pos'][idx, :] += \
-                        self._hyperparams['pos_body_offset'][i]
+                if len(self._hyperparams['pos_body_idx'][i]) == 1:
+                    self._model[i]['body_pos'][idx, :] += \
+                            self._hyperparams['pos_body_offset'][i]
+                else:
+                    self._model[i]['body_pos'][idx, :] += \
+                            self._hyperparams['pos_body_offset'][i][j]
 
         # TODO: Seems like using multiple files wouldn't work with this.
         self._joint_idx = list(range(self._model[0]['nq']))

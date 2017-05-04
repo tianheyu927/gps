@@ -45,13 +45,13 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_more'
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks'
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 
 np.random.seed(47)
-DEMO_CONDITIONS = 64 #160 #32
+DEMO_CONDITIONS = 12 #64 #160 #32
 COLOR_CONDITIONS = 100#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
@@ -60,15 +60,29 @@ N_CUBES = 6
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_CONDITIONS)}
 distractor_pos = {i: [] for i in xrange(COLOR_CONDITIONS)}
 distractor_color = {i: [] for i in xrange(COLOR_CONDITIONS)}
+# cube_pos = {i: [] for i in xrange(COLOR_CONDITIONS)}
+# cube_color = {i: [] for i in xrange(COLOR_CONDITIONS)}
 
+# for i in xrange(COLOR_CONDITIONS):
+#     for _ in range(DEMO_CONDITIONS):
+#         demo_pos_body_offset[i].append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
+#     available_colors = range(COLOR_CONDITIONS)
+#     available_colors.remove(i)
+#     for j in xrange(N_CUBES-1):
+#         distractor_pos[i].append(np.random.rand(3))
+#         distractor_color[i].append(np.random.choice(available_colors))
 for i in xrange(COLOR_CONDITIONS):
-    for _ in range(DEMO_CONDITIONS):
-        demo_pos_body_offset[i].append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
-    available_colors = range(COLOR_CONDITIONS)
-    available_colors.remove(i)
-    for j in xrange(N_CUBES-1):
-        distractor_pos[i].append(np.random.rand(3))
-        distractor_color[i].append(np.random.choice(available_colors))
+    sampled_colors = np.random.choice(range(COLOR_CONDITIONS), size=N_CUBES, replace=False)
+    for j in xrange(DEMO_CONDITIONS):
+        cube_pos = np.random.rand(N_CUBES, 2)
+        for k in xrange(N_CUBES):
+            body_offset = np.zeros((N_CUBES, 3))
+            body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
+            body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
+            body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
+            demo_pos_body_offset[sampled_colors[k]].append(body_offset)
+            distractor_color[sampled_colors[k]] = sampled_colors[np.arange(N_CUBES) != k]
+            # distractor_pos[sampled_colors[k]].append(cube_pos[np.arange(N_CUBES) != k])
 
 pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
                    np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
@@ -131,7 +145,7 @@ agent = {
 pol_agent = [{
     'type': AgentMuJoCo,
     # for testing
-    'models': colored_reacher(target_color=j, distractor_pos=distractor_pos[j], distractor_color=distractor_color[j]),
+    'models': colored_reacher(target_color=j, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color[j]),
     'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
@@ -141,8 +155,8 @@ pol_agent = [{
     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
     'modify_cost_on_sample': False,
     'pos_body_offset': demo_pos_body_offset[j],
-    'pos_body_idx': np.array([4]),
-    'conditions': DEMO_CONDITIONS,
+    'pos_body_idx': np.arange(4, 4+N_CUBES), #np.array([4]),
+    'conditions': len(demo_pos_body_offset[j]),
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
                       END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
@@ -155,21 +169,21 @@ pol_agent = [{
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i], np.array([0., 0., 0.])])
-        for i in range(DEMO_CONDITIONS)],
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+        for i in range(len(demo_pos_body_offset[j]))],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
         'target_ee_idx': range(7, 10),
-        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i], np.array([0., 0., 0.])])
-                            for i in xrange(DEMO_CONDITIONS)],
+        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+                            for i in xrange(len(demo_pos_body_offset[j]))],
         'success_upper_bound': 0.05,
     },
 } for j in xrange(COLOR_CONDITIONS)]
 
 demo_agent = [{
     'type': AgentMuJoCo,
-    'models': colored_reacher(target_color=j, distractor_pos=distractor_pos[j], distractor_color=distractor_color[j]),
+    'models': colored_reacher(target_color=j, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color[j]),
     'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
@@ -179,8 +193,8 @@ demo_agent = [{
     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
     'modify_cost_on_sample': False,
     'pos_body_offset': demo_pos_body_offset[j],
-    'pos_body_idx': np.array([4]),
-    'conditions': DEMO_CONDITIONS,
+    'pos_body_idx': np.arange(4, 4+N_CUBES), #np.array([4]),
+    'conditions': len(demo_pos_body_offset[j]),
     'T': 50,
     # 'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
     #                   END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
@@ -197,18 +211,17 @@ demo_agent = [{
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i], np.array([0., 0., 0.])])
-        for i in range(DEMO_CONDITIONS)],
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+        for i in range(len(demo_pos_body_offset[j]))],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
         'target_ee_idx': range(7, 10),
-        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i], np.array([0., 0., 0.])])
-                            for i in xrange(DEMO_CONDITIONS)],
+        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+                            for i in xrange(len(demo_pos_body_offset[j]))],
         'success_upper_bound': 0.03,
     },
 } for j in xrange(COLOR_CONDITIONS)]
-
 
 algorithm = {
     'type': BehaviorCloning,
@@ -276,7 +289,7 @@ algorithm['policy_opt'] = {
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': 10, #50
-    'step_size': 1e-5, #1e-5 # step size of gradient step
+    'step_size': 1e-4, #1e-5 # step size of gradient step
     'num_updates': 1, # take one gradient step
     'meta_batch_size': 1, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
@@ -284,7 +297,7 @@ algorithm['policy_opt'] = {
     'log_dir': '/tmp/data/maml_bc',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_3e-4_cnn_normalized_batch1_noise_bugfix_step3',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-4_cnn_normalized_batch1_noise_bugfix_step1_dropout',
-    'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_normalized_batch1_noise_bugfix_step1',
+    'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-4_cnn_normalized_batch1_noise_bugfix_step1_new',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_demo_3',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
@@ -304,6 +317,7 @@ config = {
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs'),
         'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs'),
+        'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
         'gifs_per_condition': 1,
     },
     'agent': agent,
