@@ -140,9 +140,9 @@ class GenDemo(object):
                     assert len(self.algorithms) == 1
                     pol = self.algorithms[0].policy_opt.policy
                     for i in xrange(len(agent_config)):
+                        agent = agent_config[i]['type'](agent_config[i])
                         for j in xrange(M):
                             for k in xrange(N):
-                                agent = agent_config[i]['type'](agent_config[i])
                                 if 'record_gif' in self._hyperparams:
                                     gif_config = self._hyperparams['record_gif']
                                     if k < gif_config.get('gifs_per_condition', float('inf')):
