@@ -235,6 +235,7 @@ void PyMJCWorld2::InitViewer(int width, int height, float cx, float cy, float cz
     _PlotInit(width, height, cx, cy, cz, px, py, pz);
 }
 
+
 void PyMJCWorld2::Idle(const bn::ndarray& x) {
     FAIL_IF_FALSE(x.get_dtype() == MJTNUM_DTYPE && x.get_nd() == 1 && x.get_flags() & bn::ndarray::C_CONTIGUOUS);
     _PlotInit();

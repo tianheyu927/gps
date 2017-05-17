@@ -73,6 +73,8 @@ class AgentMuJoCo(Agent):
         for field in ('x0', 'x0var', 'pos_body_idx', 'pos_body_offset',
                       'noisy_body_idx', 'noisy_body_var', 'filename'):
             self._hyperparams[field] = setup(self._hyperparams[field], conds)
+        if 'color_idx' in self._hyperparams:
+            self._hyperparams['color_idx'] = setup(self._hyperparams['color_idx'], conds)
 
     def randomize_world(self, condition):
         if self._hyperparams['randomize_world']:
@@ -116,6 +118,7 @@ class AgentMuJoCo(Agent):
 
         for i in range(self._hyperparams['conditions']):
             for j in range(len(self._hyperparams['pos_body_idx'][i])):
+                # import pdb; pdb.set_trace()
                 idx = self._hyperparams['pos_body_idx'][i][j]
                 # TODO: this should actually add [i][j], but that would break things
                 if len(self._hyperparams['pos_body_idx'][i]) == 1:
@@ -124,6 +127,18 @@ class AgentMuJoCo(Agent):
                 else:
                     self._model[i]['body_pos'][idx, :] += \
                             self._hyperparams['pos_body_offset'][i][j]
+            # if 'color_idx' in self._hyperparams:
+            #     for j in range(len(self._hyperparams['color_idx'][i])):
+            #         # import pdb; pdb.set_trace()
+            #         idx = self._hyperparams['color_idx'][i][j]
+            #         # TODO: this should actually add [i][j], but that would break things
+            #         if len(self._hyperparams['color_idx'][i]) == 1:
+            #             self._model[i]['geom_rgba'][idx, :] = \
+            #                     self._hyperparams['distractor_color'][i]
+            #         else:
+            #             import pdb; pdb.set_trace()
+            #             self._model[i]['geom_rgba'][idx, :] = \
+            #                     self._hyperparams['distractor_color'][i][j]
 
         # TODO: Seems like using multiple files wouldn't work with this.
         self._joint_idx = list(range(self._model[0]['nq']))
@@ -212,7 +227,7 @@ class AgentMuJoCo(Agent):
 
 
     def sample(self, policy, condition, verbose=True, save=True, noisy=True, record_image=False, record_gif=None, \
-                record_gif_fps=None, include_no_target=False, task_idx=None):
+                record_gif_fps=None, include_no_target=False, task_idx=None, reset=True, generate_demo=False):
         """
         Runs a trial and constructs a new sample containing information
         about the trial.
@@ -258,7 +273,7 @@ class AgentMuJoCo(Agent):
                 var = self._hyperparams['noisy_body_var'][condition][i]
                 self._model[condition]['body_pos'][idx, :] += \
                         var * np.random.randn(1, 3)
-
+        
         # Take the sample.
         for t in range(self.T):
             X_t = new_sample.get_X(t=t)
@@ -268,10 +283,14 @@ class AgentMuJoCo(Agent):
                 mj_U, noise_U = policy.act(X_t, obs_t, t, noise[t, :], idx=task_idx)
             else:
                 mj_U, noise_U = policy.act(X_t, obs_t, t, noise[t, :])
+            mj_U = mj_U.astype(mj_X.dtype)
+            noise_U = noise_U.astype(mj_X.dtype)
+            if not generate_demo:
+                mj_U = noise_U
             if self._hyperparams['record_reward']:
                 R[t] = -(np.linalg.norm(X_t[4:7] - X_t[7:10]) + np.square(mj_U).sum())
             U[t, :] = mj_U.copy()
-            if task_idx is None: # make demos to BC noisy
+            if generate_demo: # make demos to BC noisy
                 mj_U = noise_U
             if verbose:
                 self._world[condition].plot(mj_X)
@@ -286,7 +305,6 @@ class AgentMuJoCo(Agent):
                 self._data = self._world[condition].get_data()
                 self._set_sample(new_sample, mj_X, t, condition, feature_fn=feature_fn, record_image=record_image, include_no_target=include_no_target)
 
-
         if record_gif and imageio:
             # record a gif of sample.
             images = new_sample.get(RGB_IMAGE)
@@ -298,14 +316,16 @@ class AgentMuJoCo(Agent):
             if record_gif_fps is None:
                 record_gif_fps = 1./self._hyperparams['dt']
             imageio.mimsave(record_gif, images, fps=record_gif_fps)
-            new_sample.reset(RGB_IMAGE)
-            new_sample.reset(RGB_IMAGE_SIZE)
+            if reset:
+                new_sample.reset(RGB_IMAGE)
+                new_sample.reset(RGB_IMAGE_SIZE)
 
         new_sample.set(ACTION, U)
         if self._hyperparams['record_reward']:
             new_sample.set(GYM_REWARD, R)
         if save:
             self._samples[condition].append(new_sample)
+
         return new_sample
 
     def _init(self, condition):
@@ -361,6 +381,13 @@ class AgentMuJoCo(Agent):
             sample.set(CONDITION_DATA, self._hyperparams['condition_data'][condition], t=0)
 
         # save initial image to meta data
+        # import pdb; pdb.set_trace()
+        # if self._hyperparams['render']:
+        #     cam_pos = self._hyperparams['camera_pos']
+        #     self._world[condition].init_viewer(AGENT_MUJOCO['image_width'],
+        #                                AGENT_MUJOCO['image_height'],
+        #                                cam_pos[0], cam_pos[1], cam_pos[2],
+        #                                cam_pos[3], cam_pos[4], cam_pos[5])
         self._world[condition].plot(self._hyperparams['x0'][condition])
 
         if self._hyperparams['render']:

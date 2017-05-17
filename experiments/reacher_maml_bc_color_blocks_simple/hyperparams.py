@@ -45,80 +45,55 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_three_position_1000_colors' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
-N_VAL = 10
+N_VAL = 100 #100
 np.random.seed(49)
-DEMO_CONDITIONS = 12 #64 #160 #32
-COLOR_CONDITIONS = 100#511 #100 #80
+DEMO_CONDITIONS = 6 #64 #160 #32
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
-N_CUBES = 6
-CUBE_SIZE = 0.024
+COLOR_CONDITIONS = 999#1000
+N_CUBES = 3
+CUBE_SIZE = 0.03
+# target_color = np.array(['red', 'blue', 'green'])#, 'white', 'yellow', 'purple', 'cyan'])
+# demo_pos_body_offset = [[np.array([[-0.1, 0.2, 0.0], [-0.1, 0.0, 0.0]]),
+#                         np.array([[-0.1, 0.0, 0.0], [-0.1, 0.2, 0.0]])],
+#                         [np.array([[-0.1, 0.2, 0.0], [-0.1, 0.0, 0.0]]),
+#                         np.array([[-0.1, 0.0, 0.0], [-0.1, 0.2, 0.0]])]]
+
+# demo_pos_body_offset = [np.array([[-0.1, 0.2, 0.0], [-0.1, 0.0, 0.0]]),
+#                         np.array([[-0.1, 0.0, 0.0], [-0.1, 0.2, 0.0]])]
+
+demo_pos_body_offset = [np.array([[-0.1, 0.2, 0.0], [-0.2, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+                        np.array([[-0.1, 0.2, 0.0], [0.0, 0.0, 0.0], [-0.2, 0.0, 0.0]]),
+                        np.array([[-0.2, 0.0, 0.0], [-0.1, 0.2, 0.0], [0.0, 0.0, 0.0]]),
+                        np.array([[-0.2, 0.0, 0.0], [0.0, 0.0, 0.0], [-0.1, 0.2, 0.0]]),
+                        np.array([[0.0, 0.0, 0.0], [-0.1, 0.2, 0.0], [-0.2, 0.0, 0.0]]),
+                        np.array([[0.0, 0.0, 0.0], [-0.2, 0.0, 0.0], [-0.1, 0.2, 0.0]])]
+
 COLOR_TRIALS = COLOR_CONDITIONS * N_CUBES
 # Validation colors and training colors
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 
-demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
 distractor_pos = {i: [] for i in xrange(COLOR_TRIALS)}
 distractor_color_idx = {i: [] for i in xrange(COLOR_TRIALS)}
 target_color = {i:None for i in xrange(COLOR_TRIALS)}
-# cube_pos = {i: [] for i in xrange(COLOR_CONDITIONS)}
-# cube_color = {i: [] for i in xrange(COLOR_CONDITIONS)}
 
-# for i in xrange(COLOR_CONDITIONS):
-#     for _ in range(DEMO_CONDITIONS):
-#         demo_pos_body_offset[i].append(np.array([0.4*np.random.rand()-0.3, 0.4*np.random.rand()-0.1 ,0]))
-#     available_colors = range(COLOR_CONDITIONS)
-#     available_colors.remove(i)
-#     for j in xrange(N_CUBES-1):
-#         distractor_pos[i].append(np.random.rand(3))
-#         distractor_color[i].append(np.random.choice(available_colors))
-# for i in xrange(COLOR_CONDITIONS):
-#     sampled_colors = np.random.choice(range(COLOR_CONDITIONS), size=N_CUBES, replace=False)
-#     for k in xrange(N_CUBES):
-#         target_color[i*N_CUBES + k] = sampled_colors[k]
-#         distractor_color_idx[i*N_CUBES + k] = sampled_colors[np.arange(N_CUBES) != k]
-#     for j in xrange(DEMO_CONDITIONS):
-#         cube_pos = np.random.rand(N_CUBES, 2)
-#         for k in xrange(N_CUBES):
-#             body_offset = np.zeros((N_CUBES, 3))
-#             body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
-#             body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
-#             body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
-#             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
-
-# TODO: make val colors?
 for i in xrange(COLOR_CONDITIONS - N_VAL):
     sampled_colors = np.random.choice(TRAIN_COLORS, size=N_CUBES, replace=False)
     for k in xrange(N_CUBES):
         target_color[i*N_CUBES + k] = sampled_colors[k]
         distractor_color_idx[i*N_CUBES + k] = sampled_colors[np.arange(N_CUBES) != k]
-    for j in xrange(DEMO_CONDITIONS):
-        cube_pos = np.random.rand(N_CUBES, 2)
-        for k in xrange(N_CUBES):
-            body_offset = np.zeros((N_CUBES, 3))
-            body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
-            body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
-            body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
-            demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
+
 # Let validation color be the last 10*6=60 colors
 for i in xrange(COLOR_CONDITIONS - N_VAL, COLOR_CONDITIONS):
     sampled_colors = np.random.choice(VAL_COLORS, size=N_CUBES, replace=False)
     for k in xrange(N_CUBES):
         target_color[i*N_CUBES + k] = sampled_colors[k]
         distractor_color_idx[i*N_CUBES + k] = sampled_colors[np.arange(N_CUBES) != k]
-    for j in xrange(DEMO_CONDITIONS):
-        cube_pos = np.random.rand(N_CUBES, 2)
-        for k in xrange(N_CUBES):
-            body_offset = np.zeros((N_CUBES, 3))
-            body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
-            body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
-            body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
-            demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 
 pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
                    np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
@@ -132,7 +107,7 @@ common = {
     'experiment_name': 'my_experiment' + '_' + \
             datetime.strftime(datetime.now(), '%m-%d-%y_%H-%M'),
     'experiment_dir': EXP_DIR,
-    'data_files_dir': EXP_DIR + 'data_files_demo%d_%d/' % (NUM_DEMOS, SEED),
+    'data_files_dir': EXP_DIR + 'data_files_full_color_demo%d_%d/' % (NUM_DEMOS, SEED),
     # 'data_files_dir': EXP_DIR + 'data_files_LG_demo5_%d/' % SEED,
     'target_filename': EXP_DIR + 'target.npz',
     'log_filename': EXP_DIR + 'log.txt',
@@ -190,7 +165,7 @@ pol_agent = [{
     'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
     'modify_cost_on_sample': False,
-    'pos_body_offset': demo_pos_body_offset[j],
+    'pos_body_offset': demo_pos_body_offset,
     'pos_body_idx': np.arange(4, 4+N_CUBES), #np.array([4]),
     # 'distractor_color': distractor_color[j],
     'color_idx': np.arange(5, 4+N_CUBES),
@@ -207,13 +182,13 @@ pol_agent = [{
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
         'target_ee_idx': range(7, 10),
-        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i][0], np.array([0., 0., 0.])])
                             for i in xrange(DEMO_CONDITIONS)],
         'success_upper_bound': 0.05,
     },
@@ -230,7 +205,7 @@ demo_agent = [{
     'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
     'modify_cost_on_sample': False,
-    'pos_body_offset': demo_pos_body_offset[j],
+    'pos_body_offset': demo_pos_body_offset,
     'pos_body_idx': np.arange(4, 4+N_CUBES), #np.array([4]),
     'distractor_color': distractor_color_idx[j],
     'color_idx': np.arange(5, 4+N_CUBES),
@@ -251,13 +226,13 @@ demo_agent = [{
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
         'target_ee_idx': range(7, 10),
-        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[i][0], np.array([0., 0., 0.])])
                             for i in xrange(DEMO_CONDITIONS)],
         'success_upper_bound': 0.03,
     },
@@ -323,24 +298,24 @@ algorithm['policy_opt'] = {
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'color_hints': True,
+    'color_hints': False,
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 100000, #about 20 epochs
+    'iterations': 80000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': N_VAL*N_CUBES, #50
-    'step_size': 1e-4, #1e-5 # step size of gradient step
-    'num_updates': 3, # take one gradient step
-    'meta_batch_size': 1, #10, # number of tasks during training
+    'step_size': 1e-3, #1e-5 # step size of gradient step
+    'num_updates': 1, # take one gradient step
+    'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
-    'update_batch_size': 2, # batch size for each task, used to be 1
-    'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
+    'update_batch_size': 1, # batch size for each task, used to be 1
+    'log_dir': '/tmp/data/maml_bc_full_color_3_pos/4_layer_40_dim_40_3x3_filters_1_step_1e_3_mbs_5_ubs_1_update1_larger_box',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_3e-4_cnn_normalized_batch1_noise_bugfix_step3',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-4_cnn_normalized_batch1_noise_bugfix_step1_dropout',
-    'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
+    'save_dir': '/tmp/data/maml_bc_full_color_3_pos_4_layers_40_dim_1e-3_mbs_5_ubs_1_update1_no_hints_larger_box',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_demo_3',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,

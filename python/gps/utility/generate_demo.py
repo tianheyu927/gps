@@ -139,8 +139,10 @@ class GenDemo(object):
                 else:
                     assert len(self.algorithms) == 1
                     pol = self.algorithms[0].policy_opt.policy
+                    start_idx = self._hyperparams.get('start_idx', 0)
                     for i in xrange(len(agent_config)):
                         agent = agent_config[i]['type'](agent_config[i])
+                        M = agent_config[i]['conditions']
                         for j in xrange(M):
                             for k in xrange(N):
                                 if 'record_gif' in self._hyperparams:
@@ -148,7 +150,7 @@ class GenDemo(object):
                                     if k < gif_config.get('gifs_per_condition', float('inf')):
                                         gif_fps = gif_config.get('fps', None)
                                         gif_dir = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/')
-                                        gif_dir = gif_dir + 'color_%d/' % i
+                                        gif_dir = gif_dir + 'color_%d/' % (i+start_idx*60)
                                         mkdir_p(gif_dir)
                                         gif_name = os.path.join(gif_dir,'cond%d.samp%d.gif' % (j, k))
                                     else:
@@ -159,8 +161,8 @@ class GenDemo(object):
                                     gif_fps = None
                                 demo = agent.sample(
                                     pol, j, # Should be changed back to controller if using linearization
-                                    verbose=(k < self._hyperparams['verbose_trials']), noisy=True, record_image=True,
-                                    include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps
+                                    verbose=(k < self._hyperparams['verbose_trials']), noisy=True, record_image=True, generate_demo=True,
+                                    include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps, reset=False #don't reset images
                                     )
                                 demos[i].append(demo)
                                 demo_idx_conditions[i].append(j)

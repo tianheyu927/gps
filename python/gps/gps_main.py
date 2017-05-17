@@ -824,8 +824,9 @@ def main():
         if restore_iter and hyperparams.config['algorithm'].get('bc', False):
             hyperparams.config['algorithm']['policy_opt']['restore_iter'] = restore_iter
         if type(start_idx) is int:
-            hyperparams.config['common']['NN_demo_file'] = hyperparams.config['common']['NN_demo_file'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
-            hyperparams.config['demo_agent'] = hyperparams.config['demo_agent'][start_idx*10:min((start_idx+1)*10, hyperparams.COLOR_CONDITIONS)]
+            hyperparams.config['common']['NN_demo_file'] = hyperparams.config['common']['NN_demo_file'][start_idx*60:min((start_idx+1)*60, hyperparams.COLOR_TRIALS)]
+            hyperparams.config['demo_agent'] = hyperparams.config['demo_agent'][start_idx*60:min((start_idx+1)*60, hyperparams.COLOR_TRIALS)]
+            hyperparams.config['start_idx'] = start_idx
             # hyperparams.config['pol_agent'] = hyperparams.config['pol_agent'][start_idx*40:min((start_idx+1)*40, hyperparams.COLOR_CONDITIONS)]
         if type(maml_idx) is int:
             hyperparams.config['common']['NN_demo_file'] = hyperparams.config['common']['NN_demo_file'][maml_idx*100:min((maml_idx+1)*100, hyperparams.COLOR_CONDITIONS)]

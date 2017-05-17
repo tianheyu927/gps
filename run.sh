@@ -1,8 +1,8 @@
-for i in {0..9} #{0..12}
+for i in {1..49} #{0..12}
     do
-        python python/gps/gps_main.py --start $i reacher_maml_bc_color_blocks
+        python python/gps/gps_main.py --start $i reacher_maml_bc_color_blocks_simple
     done
-python python/gps/gps_main.py reacher_maml_bc_color_blocks
+# python python/gps/gps_main.py reacher_maml_bc_color_blocks
 # rm ~/gps/data/reacher_color_blocks/*
 # for i in {3..9} #{0..12}
 #     do

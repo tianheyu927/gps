@@ -39,8 +39,8 @@ class LinearGaussianPolicy(Policy):
             noise: Action noise. This will be scaled by the variance.
         """
         u = self.K[t].dot(x) + self.k[t]
-        u += self.chol_pol_covar[t].T.dot(noise)
-        return u
+        noisy_u = u + self.chol_pol_covar[t].T.dot(noise)
+        return u, noisy_u
 
     def fold_k(self, noise):
         """

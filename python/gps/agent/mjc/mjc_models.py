@@ -14,13 +14,13 @@ COLOR_MAP = {
     'cyan': [0, 1, 1, 1],
 }
 
-COLOR_RANGE = [i / 5 for i in xrange(5)]
+# COLOR_RANGE = [i / 5 for i in xrange(5)]
 # COLOR_RANGE = [i / 8 for i in xrange(8)]
-# COLOR_RANGE = [i / 10 for i in xrange(10)]
+COLOR_RANGE = [i / 10 for i in xrange(10)]
 # DOUBLE_COLOR_RANGE = [i / 20 for i in xrange(20)]
-COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE for k in COLOR_RANGE]
-# COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
-# COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
+# COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE for k in COLOR_RANGE]
+COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
+COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
 # COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
 
@@ -119,11 +119,10 @@ def weighted_reacher(finger_density=1.0, arm_density=None):
 
     return mjcmodel
 
-
 def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.1,-.1), distractor_pos=None, distractor_color=None):
     mjcmodel = default_model('reacher', regen_fn=lambda: colored_reacher(ncubes, target_color, cube_size, target_pos))
     worldbody = mjcmodel.root.worldbody()
-    if type(target_color) is str:
+    if type(target_color) is str or type(target_color) is np.string_:
         color_map = COLOR_MAP
     else:
         color_map = COLOR_MAP_CONT
@@ -358,8 +357,8 @@ def pointmass(target_position=np.array([1.3, 0.5, 0])):
 
     # Actuators
     actuator = mjcmodel.root.actuator()
-    actuator.motor(joint="ball_x", ctrllimited="true")
-    actuator.motor(joint="ball_y", ctrllimited="true")
+    actuator.motor(joint="ball_x", ctrlrange="-50.0 50.0", ctrllimited="true")
+    actuator.motor(joint="ball_y", ctrlrange="-50.0 50.0", ctrllimited="true")
     return mjcmodel
 
 

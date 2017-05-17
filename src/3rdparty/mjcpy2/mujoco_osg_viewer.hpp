@@ -17,6 +17,7 @@ public:
 	void StartAsyncRendering();
 	void StopAsyncRendering(); //
 	void SetModel(const mjModel*);
+	void SetColor(const mjModel*);
 	void SetData(const mjData*);
 	void _UpdateTransforms();
 	void SetCamera(float x, float y, float z, float px, float py, float pz);

@@ -300,6 +300,22 @@ osg::Node* createOSGNode(const mjModel* model, int i_geom) {
 }
 
 
+void MujocoOSGViewer::SetColor (const mjModel* m) {
+    m_geomTFs.clear();
+    for (int i=0; i < m->ngeom; ++i) {
+        osg::MatrixTransform* geom_tf = new osg::MatrixTransform;
+        m_geomTFs.push_back(geom_tf);
+        if (i==0) {m_root->addChild(geom_tf);}
+        else {m_robot->addChild(geom_tf);}
+        osg::Node* node = createOSGNode(m,i);
+       // FAIL_IF_FALSE(!!node);
+        if (!!node) {
+            geom_tf->addChild(node);
+        }
+        else printf("SKIPPING\n");
+
+    }
+}
 
 MujocoOSGViewer::MujocoOSGViewer()
 : m_data(NULL), m_model(NULL)
@@ -395,6 +411,7 @@ void MujocoOSGViewer::RenderOnce() {
     _UpdateTransforms();
     m_viewer.frame();
 }
+
 
 void MujocoOSGViewer::_UpdateTransforms() {
     for (int i=0; i < m_model->ngeom; ++i) {

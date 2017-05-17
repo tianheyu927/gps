@@ -15,7 +15,7 @@ def safe_get(name, *args, **kwargs):
 def init_weights(shape, name=None):
     shape = tuple(shape)
     weights = np.random.normal(scale=0.01, size=shape).astype('f')
-    return safe_get(name, list(shape), initializer=tf.constant_initializer(weights))
+    return safe_get(name, list(shape), initializer=tf.constant_initializer(weights), dtype=tf.float32)
 
 def init_fc_weights_xavier(shape, name=None):
     fc_initializer =  tf.contrib.layers.xavier_initializer(dtype=tf.float32)
@@ -26,7 +26,7 @@ def init_conv_weights_xavier(shape, name=None):
     return safe_get(name, list(shape), initializer=conv_initializer, dtype=tf.float32)
     
 def init_bias(shape, name=None):
-    return safe_get(name, initializer=tf.zeros(shape, dtype='float'))
+    return safe_get(name, initializer=tf.zeros(shape, dtype=tf.float32))
 
 
 def batched_matrix_vector_multiply(vector, matrix):
@@ -463,8 +463,11 @@ def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, netw
 
     return nnet, fc_vars, last_conv_vars
 
-def conv2d(img, w, b, strides=[1, 1, 1, 1]):
-    layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
+def conv2d(img, w, b, strides=[1, 1, 1, 1], is_dilated=False):
+    if is_dilated:
+        layer = tf.nn.atrous_conv2d(img, w, rate=2, padding='SAME') + b
+    else:
+        layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
     return layer
     # if not batch_norm:
     #     return tf.nn.relu(layer), tf.constant(1.0), tf.constant(1.0)

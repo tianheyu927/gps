@@ -37,9 +37,9 @@ class PolicyOptTf(PolicyOpt):
         self.device_string = "/cpu:0"
         if self._hyperparams['use_gpu'] == 1:
             if not self._hyperparams.get('uses_vision', False):
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.08)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
-                self._sess = tf_Session(graph=graph, config=tf_config)
+                self._sess = tf.Session(graph=self.graph, config=tf_config)
             else:
                 self.gpu_device = self._hyperparams['gpu_id']
                 self.device_string = "/gpu:" + str(self.gpu_device)
@@ -48,7 +48,10 @@ class PolicyOptTf(PolicyOpt):
                 # tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 # self._sess = tf_Session(graph=graph, config=tf_config)
         else:
-            self._sess = tf.Session(graph=self.graph)
+            # TODO: fix this. Now use gpu by default no matter if we set use_gpu to be true or not
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+            tf_config = tf.ConfigProto(gpu_options=gpu_options)
+            self._sess = tf.Session(graph=self.graph, config=tf_config)
         self.act_op = None  # mu_hat
         self.feat_op = None # features
         self.image_op = None # image

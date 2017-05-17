@@ -147,7 +147,7 @@ state_cost = {
 
 action_cost = {
     'type': CostAction,
-    'wu': np.array([1., 1.])*1e-4
+    'wu': np.array([1., 1.])*1e-2
 }
 
 algorithm['cost'] = {
