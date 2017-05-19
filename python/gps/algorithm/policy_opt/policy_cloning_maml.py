@@ -49,7 +49,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 self.gpu_device = self._hyperparams['gpu_id']
                 self.device_string = "/gpu:" + str(self.gpu_device)
                 # self._sess = tf.Session(graph=self.graph)
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.35)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
         else:
@@ -107,10 +107,14 @@ class PolicyCloningMAML(PolicyOptTf):
         self.run(init_op)
         # For loading demos
         if hyperparams.get('agent', False):
-            test_agent = hyperparams['agent']  # Required for sampling
+            test_agent = hyperparams['agent']
+            # test_agent = hyperparams['agent'][:1500]  # Required for sampling
+            # test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
+        # demo_file = hyperparams['demo_file'][:1500]
+        # demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
@@ -118,7 +122,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self.restore_iter > 0:
                 self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
                 # import pdb; pdb.set_trace()
-                self.update()
+                # self.update()
                 # TODO: also implement resuming training from restored model
             else:
                 self.update()
@@ -208,8 +212,8 @@ class PolicyCloningMAML(PolicyOptTf):
         return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
-        n_layers = 4 # TODO TODO this used to be 3.
-        layer_size = 40  # TODO TODO This used to be 20.
+        n_layers = network_config.get('n_layers', 4) # TODO TODO this used to be 3.
+        layer_size = network_config.get('layer_size', 100)  # TODO TODO This used to be 20.
         dim_hidden = (n_layers - 1)*[layer_size]
         dim_hidden.append(dim_output)
         filter_size = 3 # used to be 2
@@ -257,7 +261,7 @@ class PolicyCloningMAML(PolicyOptTf):
         return vbn(tensor, update=update)
 
     def forward(self, image_input, state_input, weights, update=False, is_training=True, network_config=None):
-        n_layers = 4 # 3
+        n_layers = network_config.get('n_layers', 4) # 3
         norm_type = self.norm_type
         decay = network_config.get('decay', 0.9)
         use_dropout = self._hyperparams.get('use_dropout', False)
@@ -514,7 +518,7 @@ class PolicyCloningMAML(PolicyOptTf):
             self.val_idx = []
         # Normalizing observations
         if self.policy.scale is None or self.policy.bias is None:
-            states = np.vstack((demos[i]['demoX'] for i in self.train_idx))
+            states = np.vstack((demos[i]['demoX'] for i in self.train_idx)) # hardcoded here to solve the memory issue
             states = states.reshape(-1, len(self.x_idx))
             self.policy.x_idx = self.x_idx
             # 1e-3 to avoid infs if some state dimensions don't change in the

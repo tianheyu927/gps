@@ -45,22 +45,25 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
-N_VAL = 10
+N_VAL = 100
 np.random.seed(49)
-DEMO_CONDITIONS = 12 #64 #160 #32
-COLOR_CONDITIONS = 100#511 #100 #80
+DEMO_CONDITIONS = 10 #6 #12
+COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
-N_CUBES = 6
-CUBE_SIZE = 0.024
-COLOR_TRIALS = COLOR_CONDITIONS * N_CUBES
+N_CUBES = 3
+CUBE_SIZE = 0.03
+
 # Validation colors and training colors
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
+VAL_TRIALS = 50
+TRAIN_TRIALS = 500
+COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
 distractor_pos = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -92,7 +95,7 @@ target_color = {i:None for i in xrange(COLOR_TRIALS)}
 #             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 
 # TODO: make val colors?
-for i in xrange(COLOR_CONDITIONS - N_VAL):
+for i in xrange(TRAIN_TRIALS):
     sampled_colors = np.random.choice(TRAIN_COLORS, size=N_CUBES, replace=False)
     for k in xrange(N_CUBES):
         target_color[i*N_CUBES + k] = sampled_colors[k]
@@ -106,7 +109,7 @@ for i in xrange(COLOR_CONDITIONS - N_VAL):
             body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 # Let validation color be the last 10*6=60 colors
-for i in xrange(COLOR_CONDITIONS - N_VAL, COLOR_CONDITIONS):
+for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
     sampled_colors = np.random.choice(VAL_COLORS, size=N_CUBES, replace=False)
     for k in xrange(N_CUBES):
         target_color[i*N_CUBES + k] = sampled_colors[k]
@@ -314,6 +317,8 @@ algorithm['policy_opt'] = {
         'image_height': IMAGE_HEIGHT,
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
+        'n_layers': 4,
+        'layer_size': 100,
         'bc': True,
     },
     'use_gpu': 1,
@@ -323,7 +328,7 @@ algorithm['policy_opt'] = {
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'color_hints': True,
+    'color_hints': False,
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
@@ -331,17 +336,16 @@ algorithm['policy_opt'] = {
     'iterations': 100000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': N_VAL*N_CUBES, #50
-    'step_size': 1e-4, #1e-5 # step size of gradient step
-    'num_updates': 3, # take one gradient step
-    'meta_batch_size': 1, #10, # number of tasks during training
+    'n_val': VAL_TRIALS*N_CUBES, #50
+    'step_size': 1e-3, #1e-5 # step size of gradient step
+    'num_updates': 1, # take one gradient step
+    'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
-    'update_batch_size': 2, # batch size for each task, used to be 1
-    'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_3e-4_cnn_normalized_batch1_noise_bugfix_step3',
-    # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-4_cnn_normalized_batch1_noise_bugfix_step1_dropout',
-    'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    # 'save_dir': '/tmp/data/maml_bc_model_ln_small_fixed_1e-5_cnn_demo_3',
+    'update_batch_size': 1, # batch size for each task, used to be 1
+    # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
+    'log_dir': '/tmp/data/maml_bc_1000/4_layer_100_dim_40_3x3_filters_1_step_1e_3_mbs_1_ubs_1_update1_10_pos',
+    # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
+    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_fixed_1e-3_cnn_normalized_batch5_noise_mbs_1_ubs_1_update1_10_pos',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',
