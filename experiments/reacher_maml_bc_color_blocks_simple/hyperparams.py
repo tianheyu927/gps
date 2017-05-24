@@ -308,15 +308,15 @@ algorithm['policy_opt'] = {
     'iterations': 40000, #40000 #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': N_VAL*N_CUBES, #int(N_VAL*N_CUBES/2), #50
-    'step_size': 1e-3, #1e-5 # step size of gradient step
-    'num_updates': 1, # take one gradient step
+    'n_val': int(N_VAL*N_CUBES/2), #50
+    'step_size': 3e-4, #1e-5 # step size of gradient step
+    'num_updates': 2, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'update_batch_size': 1, # batch size for each task, used to be 1
-    'log_dir': '/tmp/data/maml_bc_three_pos_1000/4_layer_100_dim_40_3x3_filters_1_step_1e_3_mbs_5_ubs_1_update1_larger_box',
+    'log_dir': '/tmp/data/maml_bc_three_pos_1000/4_layer_100_dim_40_3x3_filters_1_step_3e_4_mbs_5_ubs_1_update2_larger_box',
     # 'log_dir': '/tmp/data/maml_bc_three_pos/5_layer_60_dim_30_3x3_filters_1_step_1e_3_mbs_5_ubs_1_update1_larger_box',
-    'save_dir': '/tmp/data/maml_bc_three_pos_1000_4_layers_100_dim_40_3x3_filters_1e-3_mbs_5_ubs_1_update1_no_hints_larger_box',
+    'save_dir': '/tmp/data/maml_bc_three_pos_1000_4_layers_100_dim_40_3x3_filters_3e-4_mbs_5_ubs_1_update2_no_hints_larger_box',
     # 'save_dir': '/tmp/data/maml_bc_three_pos_5_layers_60_dim_30_3x3_filters_1e-3_mbs_5_ubs_1_update1_no_hints_larger_box',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,

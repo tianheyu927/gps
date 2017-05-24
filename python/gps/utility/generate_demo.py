@@ -5,6 +5,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 mpl.use('Qt4Agg')
 
+
 import sys
 import os
 import os.path
@@ -88,6 +89,8 @@ class GenDemo(object):
 
             N = self._hyperparams['algorithm']['num_demos']
             demo_M = self._hyperparams['algorithm']['demo_M']
+            start_idx = self._hyperparams.get('start_idx', 0)
+            batch = self._hyperparams.get('batch', 0)
             if type(agent_config) is list:
                 demos = {i:[] for i in xrange(len(agent_config))}
                 demo_idx_conditions = {i:[] for i in xrange(len(agent_config))}
@@ -139,7 +142,6 @@ class GenDemo(object):
                 else:
                     assert len(self.algorithms) == 1
                     pol = self.algorithms[0].policy_opt.policy
-                    start_idx = self._hyperparams.get('start_idx', 0)
                     for i in xrange(len(agent_config)):
                         agent = agent_config[i]['type'](agent_config[i])
                         M = agent_config[i]['conditions']
@@ -150,7 +152,7 @@ class GenDemo(object):
                                     if k < gif_config.get('gifs_per_condition', float('inf')):
                                         gif_fps = gif_config.get('fps', None)
                                         gif_dir = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/')
-                                        gif_dir = gif_dir + 'color_%d/' % (i+start_idx*50)
+                                        gif_dir = gif_dir + 'color_%d/' % (i+start_idx*batch)
                                         mkdir_p(gif_dir)
                                         gif_name = os.path.join(gif_dir,'cond%d.samp%d.gif' % (j, k))
                                     else:
@@ -171,10 +173,16 @@ class GenDemo(object):
                 self.filter(demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M)
             else:
                 for i in xrange(len(agent_config)):
-                    with Timer('Saving demo file %d' % i):
-                        self.filter(demos[i], demo_idx_conditions[i], agent_config[i], ioc_agent, demo_file[i], demo_M)
+                    with Timer('Saving demo file %d' % (i + start_idx*batch)):
+                        if agent_config[i].get('save_images', False):
+                            gif_config = self._hyperparams['record_gif']
+                            gif_dir = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/')
+                            gif_dir = gif_dir + 'color_%d/' % (i+start_idx*batch)
+                        else:
+                            gif_dir = None
+                        self.filter(demos[i], demo_idx_conditions[i], agent_config[i], ioc_agent, demo_file[i], demo_M, gif_dir=gif_dir)
 
-        def filter(self, demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M):
+        def filter(self, demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M, gif_dir=None):
             """
             Filter out failed demos.
             Args:
@@ -209,7 +217,6 @@ class GenDemo(object):
                 demo_idx_conditions = [cond for (i, cond) in enumerate(demo_idx_conditions) if i not in failed_idx]
                 demos = demos_filtered
 
-
                 # Filter max demos per condition
                 condition_to_demo = {
                     cond: [demo for (i, demo) in enumerate(demos) if demo_idx_conditions[i]==cond][:max_per_condition]
@@ -220,19 +227,31 @@ class GenDemo(object):
                 shuffle(demos)
                 # import pdb; pdb.set_trace()
                 for demo in demos: demo.reset_agent(ioc_agent) # save images as observations!
-                if demo_M != M or M == 1:
+                if not agent_config.get('save_images', False):
+                    if demo_M != M or M == 1:
+                        demo_list = SampleList(demos)
+                        demo_store = {'demoX': demo_list.get_X(),
+                                      'demoU': demo_list.get_U(),
+                                    #   'demoO': demo_list.get_obs(),
+                                      'demoO': demo_list.get_obs()[:, :, 10:].astype(np.uint8), #only saving the integet part (for reacher only)
+                                      'demoConditions': demo_idx_conditions}
+                    else:
+                        for m in xrange(demo_M):
+                            shuffle(condition_to_demo[m])
+                        demo_list = [SampleList(condition_to_demo[m]) for m in xrange(demo_M)]
+                        demo_store = {'demoX': [demo_list[m].get_X() for m in xrange(demo_M)], 'demoU': [demo_list[m].get_U() for m in xrange(demo_M)], \
+                                        'demoO': [demo_list[m].get_obs() for m in xrange(demo_M)], 'demoConditions': demo_idx_conditions}
+                else:
                     demo_list = SampleList(demos)
                     demo_store = {'demoX': demo_list.get_X(),
                                   'demoU': demo_list.get_U(),
-                                #   'demoO': demo_list.get_obs(),
-                                  'demoO': demo_list.get_obs()[:, :, 10:].astype(np.uint8), #only saving the integet part (for reacher only)
                                   'demoConditions': demo_idx_conditions}
-                else:
-                    for m in xrange(demo_M):
-                        shuffle(condition_to_demo[m])
-                    demo_list = [SampleList(condition_to_demo[m]) for m in xrange(demo_M)]
-                    demo_store = {'demoX': [demo_list[m].get_X() for m in xrange(demo_M)], 'demoU': [demo_list[m].get_U() for m in xrange(demo_M)], \
-                                    'demoO': [demo_list[m].get_obs() for m in xrange(demo_M)], 'demoConditions': demo_idx_conditions}
+                    # TODO: save observations as images.
+                    assert gif_dir is not None
+                    for cond in xrange(M):
+                        if cond not in demo_idx_conditions:
+                            gif_name = os.path.join(gif_dir,'cond%d.samp0.gif' % cond)
+                            os.remove(gif_name)
             else:
                 shuffle(demos)
                 for demo in demos: demo.reset_agent(ioc_agent)

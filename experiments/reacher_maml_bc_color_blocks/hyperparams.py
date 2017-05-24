@@ -51,7 +51,7 @@ DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000' #reac
 TRAIN_CONDITIONS = 8
 N_VAL = 100
 np.random.seed(49)
-DEMO_CONDITIONS = 10 #6 #12
+DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
@@ -142,6 +142,7 @@ common = {
     'demo_exp_dir': DEMO_DIR,
     'demo_controller_file': DEMO_DIR + 'data_files_28/algorithm_itr_29.pkl', #28 conditions
     'nn_demo': True, # Use neural network demonstrations. For experiment only
+    'demo_data_dir': DATA_DIR,
     'NN_demo_file': [os.path.join(DATA_DIR, 'demos_%d.pkl' % i) for i in xrange(COLOR_TRIALS)],
     'LG_demo_file': [os.path.join(DATA_DIR, 'demos_%d.pkl' % i) for i in xrange(COLOR_TRIALS)],
     'conditions': TOTAL_CONDITIONS,
@@ -264,6 +265,7 @@ demo_agent = [{
                             for i in xrange(DEMO_CONDITIONS)],
         'success_upper_bound': 0.03,
     },
+    'save_images': True,
 } for j in xrange(COLOR_TRIALS)]
 
 algorithm = {
@@ -318,7 +320,7 @@ algorithm['policy_opt'] = {
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 100,
+        'layer_size': 80,
         'bc': True,
     },
     'use_gpu': 1,
@@ -333,19 +335,21 @@ algorithm['policy_opt'] = {
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 100000, #about 20 epochs
+    'iterations': 39000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
-    'step_size': 1e-3, #1e-5 # step size of gradient step
-    'num_updates': 1, # take one gradient step
+    'step_size': 1e-4, #1e-5 # step size of gradient step
+    'num_updates': 3, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
+    'use_grad_reg': False,
+    'grad_reg': 0.005,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/maml_bc_1000/4_layer_100_dim_40_3x3_filters_1_step_1e_3_mbs_1_ubs_1_update1_10_pos',
+    'log_dir': '/tmp/data/maml_bc_1000/4_layer_80_dim_40_3x3_filters_1_step_1e_4_mbs_5_ubs_1_update3_10_pos',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_fixed_1e-3_cnn_normalized_batch5_noise_mbs_1_ubs_1_update1_10_pos',
+    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_80_dim_40_3x3_filters_fixed_1e-4_cnn_normalized_batch5_noise_mbs_5_ubs_1_update3_10_pos',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',
@@ -366,6 +370,7 @@ config = {
         'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs'),
         'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
         'gifs_per_condition': 1,
+        'fps': demo_agent[0]['T'],
     },
     'agent': agent,
     'demo_agent': demo_agent,

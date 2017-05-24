@@ -108,11 +108,15 @@ class PolicyCloningMAML(PolicyOptTf):
         # For loading demos
         if hyperparams.get('agent', False):
             test_agent = hyperparams['agent']
+            # test_agent = hyperparams['agent'][:1200]  # Required for sampling
+            # test_agent.extend(hyperparams['agent'][-100:])
             # test_agent = hyperparams['agent'][:1500]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
+        # demo_file = hyperparams['demo_file'][:1200]
+        # demo_file.extend(hyperparams['demo_file'][-100:])
         # demo_file = hyperparams['demo_file'][:1500]
         # demo_file.extend(hyperparams['demo_file'][-150:])
         
@@ -122,7 +126,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self.restore_iter > 0:
                 self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
                 # import pdb; pdb.set_trace()
-                # self.update()
+                self.update()
                 # TODO: also implement resuming training from restored model
             else:
                 self.update()
@@ -221,8 +225,12 @@ class PolicyCloningMAML(PolicyOptTf):
         im_height = network_config['image_height']
         im_width = network_config['image_width']
         num_channels = network_config['image_channels']
+        is_dilated = self._hyperparams.get('is_dilated', False)
         weights = {}
-        self.conv_out_size = int(im_width/(8.0)*im_height/(8.0)*num_filters[2]) # 3 layers each with stride 2
+        if is_dilated:
+            self.conv_out_size = int(im_width*im_height*num_filters[2])
+        else:
+            self.conv_out_size = int(im_width/(8.0)*im_height/(8.0)*num_filters[2]) # 3 layers each with stride 2
         # self.conv_out_size = int(im_width/(16.0)*im_height/(16.0)*num_filters[3]) # 3 layers each with stride 2
 
         # conv weights
@@ -373,6 +381,7 @@ class PolicyCloningMAML(PolicyOptTf):
             # self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3), trainable=False))
             # self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3)))
             self.step_size = self._hyperparams.get('step_size', 1e-3)
+            self.grad_reg = self._hyperparams.get('grad_reg', 0.005)
             if self._hyperparams.get('color_hints', False):
                 self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
             
@@ -467,6 +476,12 @@ class PolicyCloningMAML(PolicyOptTf):
                     # fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
                     local_lossesb.append(euclidean_loss_layer(output, actionb, None, behavior_clone=True))
                     val_local_lossesb.append(euclidean_loss_layer(test_output, actionb, None, behavior_clone=True))
+                if self._hyperparams.get('use_grad_reg'):
+                    fast_gradient_reg = 0.0
+                    for key in gradients.keys():
+                        fast_gradient_reg += self.grad_reg*tf.reduce_sum(tf.abs(gradients[key]))
+                    local_lossesb[-1] += self._hyperparams['grad_reg'] *fast_gradient_reg / self.update_batch_size
+                    val_local_lossesb[-1] += self._hyperparams['grad_reg'] *fast_gradient_reg / self.update_batch_size
                 # local_fn_output = [local_outputa, local_outputbs, test_outputa, local_lossa, local_lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test]
                 # local_fn_output = [local_outputa, local_outputbs, test_outputa, local_lossa, local_lossesb, flat_img_inputa, fp, conv_layer_2, outputs, test_outputs, mean, variance, moving_mean, moving_variance, moving_mean_new, moving_variance_new]
                 fast_weights_values = [fast_weights[key] for key in self.sorted_weight_keys]

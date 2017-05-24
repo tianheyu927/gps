@@ -45,7 +45,7 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_100_positions_3_colors' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_500_positions_3_colors' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
@@ -54,8 +54,8 @@ np.random.seed(49) #49
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
 COLOR_CONDITIONS = 3#999
-DEMO_CONDITIONS = 100 #64 #160 #32
-VAL_CONDITIONS = 10
+DEMO_CONDITIONS = 500 #64 #160 #32
+VAL_CONDITIONS = 50
 N_CUBES = 3
 CUBE_SIZE = 0.03
 target_color = np.array(['red', 'blue', 'green'])#, 'white', 'yellow', 'purple', 'cyan'])
@@ -384,7 +384,7 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
-        'num_filters': [40, 40, 40], #20, 20, 20
+        'num_filters': [30, 30, 30], #20, 20, 20
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
@@ -393,7 +393,7 @@ algorithm['policy_opt'] = {
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 100,
+        'layer_size': 50,
         'bc': True,
     },
     'use_gpu': 1,
@@ -412,14 +412,14 @@ algorithm['policy_opt'] = {
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': N_VAL, #int(N_VAL*N_CUBES/2), #50
-    'step_size': 1e-3, #1e-5 # step size of gradient step
-    'num_updates': 1, # take one gradient step
+    'step_size': 1e-4, #1e-5 # step size of gradient step
+    'num_updates': 3, # take one gradient step
     'meta_batch_size': 3, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'update_batch_size': 1, # batch size for each task, used to be 1
-    'log_dir': '/tmp/data/maml_bc_100_pos_3_colors/4_layer_100_dim_40_3x3_filters_1_step_1e_3_mbs_3_ubs_1_update1_larger_box',
+    'log_dir': '/tmp/data/maml_bc_500_pos_3_colors/4_layer_50_dim_30_3x3_filters_1_step_1e_4_mbs_3_ubs_1_update3_larger_box',
     # 'log_dir': '/tmp/data/maml_bc_three_pos/5_layer_60_dim_30_3x3_filters_1_step_1e_3_mbs_5_ubs_1_update1_larger_box',
-    'save_dir': '/tmp/data/maml_bc_100_pos_3_colors_4_layers_100_dim_40_3x3_filters_1e-3_mbs_3_ubs_1_update1_no_hints_larger_box',
+    'save_dir': '/tmp/data/maml_bc_500_pos_3_colors_4_layers_50_dim_30_3x3_filters_1e-4_mbs_3_ubs_1_update3_no_hints_larger_box',
     # 'save_dir': '/tmp/data/maml_bc_three_pos_5_layers_60_dim_30_3x3_filters_1e-3_mbs_5_ubs_1_update1_no_hints_larger_box',
     'plot_dir': common['data_files_dir'],
     'uses_vision': True,
