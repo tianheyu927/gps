@@ -3,6 +3,7 @@ from __future__ import division
 from datetime import datetime
 import os.path
 import numpy as np
+from scipy.spatial.distance import cdist
 import copy
 import operator
 
@@ -45,7 +46,7 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
@@ -94,7 +95,7 @@ target_color = {i:None for i in xrange(COLOR_TRIALS)}
 #             body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
 #             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 
-# TODO: make val colors?
+# TODO: make sure objects not overlapping by checking pairwise distance
 for i in xrange(TRAIN_TRIALS):
     sampled_colors = np.random.choice(TRAIN_COLORS, size=N_CUBES, replace=False)
     for k in xrange(N_CUBES):
@@ -102,6 +103,12 @@ for i in xrange(TRAIN_TRIALS):
         distractor_color_idx[i*N_CUBES + k] = sampled_colors[np.arange(N_CUBES) != k]
     for j in xrange(DEMO_CONDITIONS):
         cube_pos = np.random.rand(N_CUBES, 2)
+        pair_dist = cdist(cube_pos, cube_pos)
+        pair_dist = pair_dist[pair_dist != 0]
+        while np.any(pair_dist < CUBE_SIZE*5.0):
+            cube_pos = np.random.rand(N_CUBES, 2)
+            pair_dist = cdist(cube_pos, cube_pos)
+            pair_dist = pair_dist[pair_dist != 0]
         for k in xrange(N_CUBES):
             body_offset = np.zeros((N_CUBES, 3))
             body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
@@ -116,6 +123,12 @@ for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
         distractor_color_idx[i*N_CUBES + k] = sampled_colors[np.arange(N_CUBES) != k]
     for j in xrange(DEMO_CONDITIONS):
         cube_pos = np.random.rand(N_CUBES, 2)
+        pair_dist = cdist(cube_pos, cube_pos)
+        pair_dist = pair_dist[pair_dist != 0]
+        while np.any(pair_dist < CUBE_SIZE*5.0):
+            cube_pos = np.random.rand(N_CUBES, 2)
+            pair_dist = cdist(cube_pos, cube_pos)
+            pair_dist = pair_dist[pair_dist != 0]
         for k in xrange(N_CUBES):
             body_offset = np.zeros((N_CUBES, 3))
             body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
@@ -319,7 +332,7 @@ algorithm['policy_opt'] = {
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 100,
+        'layer_size': 50,
         'bc': True,
     },
     'use_gpu': 1,
@@ -338,8 +351,8 @@ algorithm['policy_opt'] = {
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
-    'step_size': 5e-4, #1e-5 # step size of gradient step
-    'num_updates': 3, # take one gradient step
+    'step_size': 1e-4, #1e-5 # step size of gradient step
+    'num_updates': 5, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'use_grad_reg': False,
@@ -349,9 +362,9 @@ algorithm['policy_opt'] = {
     'clip_max': 20.0,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/maml_bc_1000/4_layer_100_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_images',
+    'log_dir': '/tmp/data/maml_bc_1000/4_layer_50_dim_40_3x3_filters_1_step_1e_4_mbs_5_ubs_1_update5_10_pos_clip_20_images',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_fixed_5e-4_cnn_normalized_batch5_noise_mbs_5_ubs_1_update3_10_pos_clip_20_images',
+    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_50_dim_40_3x3_filters_fixed_1e-4_cnn_normalized_batch5_noise_mbs_5_ubs_1_update5_10_pos_clip_20_images',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'uses_vision': True,

@@ -1,4 +1,4 @@
-for i in {2..32} #{0..12}
+for i in {0..32} #{0..12}
     do
         python python/gps/gps_main.py --start $i --batch 50 reacher_maml_bc_color_blocks
     done

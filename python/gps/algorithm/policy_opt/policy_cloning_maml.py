@@ -182,7 +182,7 @@ class PolicyCloningMAML(PolicyOptTf):
             else:
                 image_tensors = None
             if image_tensors is not None:
-                image_tensors = tf.reshape(image_tensors, [self.meta_batch_size, (self.update_batch_size+1)*self.T, -1])
+                # image_tensors = tf.reshape(image_tensors, [self.meta_batch_size, (self.update_batch_size+1)*self.T, -1])
                 inputa = tf.slice(image_tensors, [0, 0, 0], [-1, self.update_batch_size*self.T, -1])
                 inputb = tf.slice(image_tensors, [0, self.update_batch_size*self.T, 0], [-1, -1, -1])
                 input_tensors = {'inputa': inputa, 'inputb': inputb}
@@ -617,12 +617,14 @@ class PolicyCloningMAML(PolicyOptTf):
             # TODO: load observations from images instead
             selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i]]
             O = imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (i, selected_cond))
-            if len(O.shape) == 2:
-                O = O.reshape([-1] + list(O.shape))
+            if len(O.shape) == 4:
+                O = np.expand_dims(O, axis=0)
+            O = np.tranpose(O, [0, 1, 4, 3, 2]) # transpose to mujoco setting for images
+            O = O.reshape(O.shape[0], self.T, -1)
             O /= 255.0
             X = self.demos[i]['demoX'][policy_demo_idx[i]].copy()
             if len(X.shape) == 2:
-                X = X.reshape([-1] + list(X.shape))
+                X = np.expand_dims(X, axis=0)
             self.policy.selected_demoO.append(O)
             self.policy.selected_demoX.append(X)
             self.policy.selected_demoU.append(self.demos[i]['demoU'][policy_demo_idx[i]].copy())
@@ -659,7 +661,7 @@ class PolicyCloningMAML(PolicyOptTf):
             sampled_train_idx = random.sample(self.train_idx, self.meta_batch_size)
             for idx in sampled_train_idx:
                 sampled_folder = self.train_img_folders[idx]
-                image_paths = os.listdir(sampled_folder)
+                image_paths = natsorted(os.listdir(sampled_folder))
                 assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
                 sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
                 sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
@@ -669,7 +671,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
                 for idx in sampled_val_idx:
                     sampled_folder = self.val_img_folders[idx]
-                    image_paths = os.listdir(sampled_folder)
+                    image_paths = natsorted(os.listdir(sampled_folder))
                     assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
                     sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
                     sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
@@ -692,8 +694,9 @@ class PolicyCloningMAML(PolicyOptTf):
         image_reader = tf.WholeFileReader()
         _, image_file = image_reader.read(filename_queue)
         image = tf.image.decode_gif(image_file)
-        # should be T x H x W x C
+        # should be T x C x W x H
         image.set_shape((self.T, im_height, im_width, num_channels))
+        image = tf.transpose(image, perm=[0, 3, 2, 1]) # transpose to mujoco setting for images
         image = tf.reshape(image, [self.T, -1])
         image = tf.cast(image, tf.float32)
         image /= 255.0
@@ -708,7 +711,12 @@ class PolicyCloningMAML(PolicyOptTf):
                 num_threads=num_preprocess_threads,
                 capacity=min_queue_examples + 3 * batch_image_size,
                 )
-        return tf.pack(images)
+        all_images = []
+        for i in xrange(self.meta_batch_size):
+            image = images[i*(self.update_batch_size+1):(i+1)*(self.update_batch_size+1)]
+            image = tf.reshape(image, [(self.update_batch_size+1)*self.T, -1])
+            all_images.append(image)
+        return tf.pack(all_images)
         
     def generate_data_batch(self, itr, train=True):
         if train:
@@ -719,12 +727,10 @@ class PolicyCloningMAML(PolicyOptTf):
             idxes = self.val_batch_idx[itr]
         batch_size = self.meta_batch_size
         update_batch_size = self.update_batch_size
-        U = [demos[k]['demoU'][v] for k, v in idxes.items()]
-        X = [demos[k]['demoX'][v] for k, v in idxes.items()]
-        U = np.concatenate(U, axis=2)
-        X = np.concatenate(X, axis=2)
-        U = U.reshape(batch_size, (1+update_batch_size)*self.T, -1)
-        X = X.reshape(batch_size, (1+update_batch_size)*self.T, -1)
+        U = [demos[k]['demoU'][v].reshape((1+update_batch_size)*self.T, -1) for k, v in idxes.items()]
+        X = [demos[k]['demoX'][v].reshape((1+update_batch_size)*self.T, -1) for k, v in idxes.items()]
+        U = np.array(U)
+        X = np.array(X)
         assert U.shape[2] == self._dU
         assert X.shape[2] == len(self.x_idx)
         return X, U
