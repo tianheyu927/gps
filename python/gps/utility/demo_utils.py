@@ -89,6 +89,18 @@ def extract_demo_dict(demo_file):
             with Timer('Extracting demo file %d' % i):
                 demos[i] = DataLogger().unpickle(demo_file[i])
     return demos
+    
+def get_images(paths, nb_samples=None, shuffle=True):
+    if nb_samples is not None:
+        sampler = lambda x: random.sample(x, nb_samples)
+    else:
+        sampler = lambda x: x
+    images = [os.path.join(path, image) \
+        for path in paths \
+        for image in sampler(os.listdir(path))]
+    if shuffle:
+        random.shuffle(images)
+    return images
 
 def xu_to_sample_list(agent, X, U):
     num = X.shape[0]

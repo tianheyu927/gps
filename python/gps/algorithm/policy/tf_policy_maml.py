@@ -21,13 +21,15 @@ class TfPolicyMAML(Policy):
         device_string: tf device string for running on either gpu or cpu.
     """
     # def __init__(self, dU, obs_tensor, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
-    def __init__(self, dU, inputa, actiona, inputb, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
+    def __init__(self, dU, obsa, statea, actiona, obsb, stateb, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
         Policy.__init__(self)
         self.dU = dU
         # self.obs_tensor = obs_tensor
-        self.inputa = inputa
+        self.obsa = obsa
+        self.statea = statea
         self.actiona = actiona
-        self.inputb = inputb
+        self.obsb = obsb
+        self.stateb = stateb
         self.act_op = act_op
         self.feat_op = feat_op
         self.image_op = image_op
@@ -70,6 +72,8 @@ class TfPolicyMAML(Policy):
         if self.scale is not None and self.bias is not None:
             obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
         obs[:, self.img_idx] /= 255.0
+        state = obs[:, self.x_idx]
+        obs = obs[:, self.img_idx]
         # This following code seems to be buggy
         # TODO: figure out why this doesn't work
         # if t == 0:
@@ -81,14 +85,16 @@ class TfPolicyMAML(Policy):
         if self.norm_type == 'vbn':
             assert hasattr(self, 'reference_batch')
             if self.reference_out is not None:
-                action_mean = self.run([self.reference_out, self.act_op], feed_dict={self.inputa: obs, self.reference_op: self.reference_batch})[1]
+                action_mean = self.run([self.reference_out, self.act_op], feed_dict={self.obsa: obs, self.statea: state, self.reference_op: self.reference_batch})[1]
             else:
-                action_mean = self.run(self.act_op, feed_dict={self.inputa: obs, self.reference_op: self.reference_batch})
+                action_mean = self.run(self.act_op, feed_dict={self.obsa: obs, self.statea: state, self.reference_op: self.reference_batch})
         # action_mean = self.run(self.act_op, feed_dict={self.inputa: obs}) #need to set act_op to be act_op_b if using set_params
         assert hasattr(self, 'selected_demoO')
-        action_mean = self.run(self.act_op, feed_dict={self.inputa: self.selected_demoO[idx],
+        action_mean = self.run(self.act_op, feed_dict={self.obsa: self.selected_demoO[idx],
+                                                      self.statea: self.selected_demoX[idx],
                                                       self.actiona: self.selected_demoU[idx],
-                                                      self.inputb: obs})
+                                                      self.obsb: obs,
+                                                      self.stateb: state})
         if noise is None:
             u = action_mean
         else:
@@ -110,7 +116,7 @@ class TfPolicyMAML(Policy):
         if len(obs.shape) == 1:
             obs = np.expand_dims(obs, axis=0)
         # Assume that features don't depend on the robot config, so don't normalize by scale and bias.
-        feat = self.run(self.feat_op, feed_dict={self.obs_tensor: obs})
+        feat = self.run(self.feat_op, feed_dict={self.obs_a: obs[:, self.img_idx], self.statea: obs[:, self.x_idx]})
         return feat  # This used to be feat[0] because we would only ever call it with a batch size of 1. Now this isn't true.
 
     def get_image_features(self, image):
