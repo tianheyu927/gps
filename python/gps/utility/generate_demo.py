@@ -150,8 +150,7 @@ class GenDemo(object):
                                 if 'record_gif' in self._hyperparams:
                                     gif_config = self._hyperparams['record_gif']
                                     if k < gif_config.get('gifs_per_condition', float('inf')):
-                                        # gif_fps = gif_config.get('fps', None)
-                                        gif_fps = T
+                                        gif_fps = gif_config.get('fps', None)
                                         gif_dir = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/')
                                         gif_dir = gif_dir + 'color_%d/' % (i+start_idx*batch)
                                         mkdir_p(gif_dir)

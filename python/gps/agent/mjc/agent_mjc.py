@@ -309,9 +309,7 @@ class AgentMuJoCo(Agent):
             # record a gif of sample.
             images = new_sample.get(RGB_IMAGE)
             size = list(new_sample.get(RGB_IMAGE_SIZE))
-            # import pdb; pdb.set_trace()
             images = images.reshape([-1]+size)
-            # TODO: why transpose here?
             images = np.transpose(images, [0,3,2,1]) #[0,2,3,1]
             LOGGER.debug('Saving gif sample to :%s', record_gif)
             if record_gif_fps is None:
