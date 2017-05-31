@@ -46,7 +46,6 @@ class PolicyCloningLSTM(PolicyOptTf):
         self.tf_iter = 0
         self.graph = tf.Graph()
         self.checkpoint_file = self._hyperparams['checkpoint_prefix']
-        self.batch_size = self._hyperparams['batch_size']
         self.device_string = "/cpu:0"
         if self._hyperparams['use_gpu'] == 1:
             if not self._hyperparams.get('uses_vision', False):
@@ -57,7 +56,7 @@ class PolicyCloningLSTM(PolicyOptTf):
                 self.gpu_device = self._hyperparams['gpu_id']
                 self.device_string = "/gpu:" + str(self.gpu_device)
                 # self._sess = tf.Session(graph=self.graph)
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.35)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
         else:
@@ -80,7 +79,7 @@ class PolicyCloningLSTM(PolicyOptTf):
         self._hyperparams['network_params'].update({'decay': self._hyperparams.get('decay', 0.99)})
         # MAML hyperparams
         self.update_batch_size = self._hyperparams.get('update_batch_size', 1)
-        self.batch_size = self._hyperparams.get('batch_size', 10)
+        self.meta_batch_size = self._hyperparams.get('meta_batch_size', 10)
         self.num_updates = self._hyperparams.get('num_updates', 1)
         self.meta_lr = self._hyperparams.get('lr', 1e-3) #1e-3
         self.weight_decay = self._hyperparams.get('weight_decay', 0.005)
@@ -239,6 +238,7 @@ class PolicyCloningLSTM(PolicyOptTf):
         im_width = network_config['image_width']
         num_channels = network_config['image_channels']
         is_dilated = self._hyperparams.get('is_dilated', False)
+        lstm_size = self._hyperparams.get('lstm_size', 512)
         weights = {}
         if is_dilated:
             self.conv_out_size = int(im_width*im_height*num_filters[2])
@@ -261,12 +261,12 @@ class PolicyCloningLSTM(PolicyOptTf):
         # weights['bc4'] = init_bias([num_filters[3]], name='bc4')
         
         # LSTM cell
-        self.lstm = tf.contrib.rnn.LSTMBlockCell(lstm_size)
-        self.lstm_initial_state = safe_get('lstm_initial_state', initializer=tf.zeros([self.update_batch_size, lstm.state_size], dtype=tf.float32))
+        self.lstm = tf.nn.rnn_cell.BasicRNNCell(lstm_size)
+        self.lstm_initial_state = safe_get('lstm_initial_state', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size], dtype=tf.float32))
         
         # fc weights
         # in_shape = 40 # dimension after feature computation
-        in_shape = self.lstm.output_size # hard-coded for last conv layer output
+        in_shape = self.lstm.output_size + self.lstm.state_size # hard-coded for last conv layer output
         if self._hyperparams.get('color_hints', False):
             in_shape += 3
         for i in xrange(n_layers):
@@ -305,7 +305,7 @@ class PolicyCloningLSTM(PolicyOptTf):
                 conv_layer_1 = dropout(self.vbn(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_2', update=update), keep_prob=prob, is_training=is_training, name='dropout_2')
                 conv_layer_2 = dropout(self.vbn(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_3', update=update), keep_prob=prob, is_training=is_training, name='dropout_3')       
         else:
-            if not use_dropout:
+            if True:#not use_dropout:
                 conv_layer_0 = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
                 conv_layer_1 = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
                 conv_layer_2 = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)       
@@ -326,18 +326,24 @@ class PolicyCloningLSTM(PolicyOptTf):
         # LSTM forward
         state = self.lstm_initial_state
         lstm_output = []
-        for t in self.T:
-            fc_input, next_state = self.lstm(lstm_input[:, t, :], state)
-            fc_output = tf.concat(1, [fc_input, state])
-            for i in xrange(n_layers):
-                fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
-                if i != n_layers - 1:
-                    fc_output = tf.nn.relu(fc_output)
-                    if use_dropout:
-                        fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training)
-            fc_output = tf.expand_dims(fc_output, axis=1) # N x 1 x dU
-            lstm_output.append(fc_output)
-        lstm_output = tf.concat(2, lstm_output)
+        with tf.variable_scope('LSTM', reuse=None) as lstm_scope:
+            for t in xrange(self.T):
+                try:
+                    fc_input, next_state = self.lstm(lstm_input[:, t, :], state)
+                except ValueError:
+                    lstm_scope.reuse_variables()
+                    fc_input, next_state = self.lstm(lstm_input[:, t, :], state)
+                fc_output = tf.concat(1, [fc_input, next_state])
+                for i in xrange(n_layers):
+                    fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
+                    if i != n_layers - 1:
+                        fc_output = tf.nn.relu(fc_output)
+                        if use_dropout:
+                            fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training)
+                fc_output = tf.expand_dims(fc_output, axis=1) # N x 1 x dU
+                lstm_output.append(fc_output)
+                state = next_state
+        lstm_output = tf.concat(1, lstm_output)
         return lstm_output
 
     def construct_model(self, input_tensors=None, prefix='Training_', dim_input=27, dim_output=7, batch_size=25, network_config=None):
@@ -383,13 +389,11 @@ class PolicyCloningLSTM(PolicyOptTf):
             # Construct layers weight & bias
             # TODO: since we flip to reuse automatically, this code below is unnecessary
             if 'weights' not in dir(self):
-                lstm_size = self._hyperparams.get('lstm_size', 512)
                 self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
                 self.sorted_weight_keys = natsorted(self.weights.keys())
             else:
                 training_scope.reuse_variables()
                 weights = self.weights
-                lstm = self.lstm
             if self._hyperparams.get('color_hints', False):
                 self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
             

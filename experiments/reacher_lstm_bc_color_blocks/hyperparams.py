@@ -46,7 +46,7 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
@@ -351,13 +351,12 @@ algorithm['policy_opt'] = {
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
-    'batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'use_clip': False,
     'clip_min': -10.0,
     'clip_max': 10.0,
     'meta_batch_size': 5,
-    'update_batch_size': 5, # batch size for each task, used to be 1
+    'update_batch_size': 3, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
     'log_dir': '/tmp/data/lstm_bc_1000/4_layer_200_dim_40_3x3_filters_512_lstm_size_10_pos_images',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
