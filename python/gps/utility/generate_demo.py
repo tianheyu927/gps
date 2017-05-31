@@ -224,7 +224,7 @@ class GenDemo(object):
                 }
                 LOGGER.debug('Successes per condition: %s', str([len(demo_list) for demo_list in condition_to_demo.values()]))
                 demos = [demo for cond in condition_to_demo for demo in condition_to_demo[cond]]
-                shuffle(demos)
+                # shuffle(demos) # don't shuffle to make load on the fly work.
                 # import pdb; pdb.set_trace()
                 for demo in demos: demo.reset_agent(ioc_agent) # save images as observations!
                 if not agent_config.get('save_images', False):

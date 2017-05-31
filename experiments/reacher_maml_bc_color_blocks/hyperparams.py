@@ -332,7 +332,7 @@ algorithm['policy_opt'] = {
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 200,
+        'layer_size': 400,
         'bc': True,
     },
     'use_gpu': 1,
@@ -351,7 +351,7 @@ algorithm['policy_opt'] = {
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
-    'step_size': 5e-4, #1e-5 # step size of gradient step
+    'step_size': 1e-3, #1e-5 # step size of gradient step
     'num_updates': 3, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
@@ -362,9 +362,9 @@ algorithm['policy_opt'] = {
     'clip_max': 10.0,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_5_images',
+    'log_dir': '/tmp/data/maml_bc_1000/4_layer_400_dim_40_3x3_filters_1_step_1e_3_mbs_5_ubs_1_update3_10_pos_clip_10_images',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_cnn_normalized_batch5_noise_mbs_5_ubs_1_update3_10_pos_clip_5_images',
+    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_400_dim_40_3x3_filters_fixed_1e-3_cnn_normalized_batch5_noise_mbs_5_ubs_1_update3_10_pos_clip_10_images',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'uses_vision': True,

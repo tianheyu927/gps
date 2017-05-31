@@ -183,8 +183,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 image_tensors = None
             if image_tensors is not None:
                 # image_tensors = tf.reshape(image_tensors, [self.meta_batch_size, (self.update_batch_size+1)*self.T, -1])
-                inputa = tf.slice(image_tensors, [0, 0, 0], [-1, self.update_batch_size*self.T, -1])
-                inputb = tf.slice(image_tensors, [0, self.update_batch_size*self.T, 0], [-1, -1, -1])
+                # inputa = tf.slice(image_tensors, [0, 0, 0], [-1, self.update_batch_size*self.T, -1])
+                # inputb = tf.slice(image_tensors, [0, self.update_batch_size*self.T, 0], [-1, -1, -1])
+                inputa = image_tensors[:, :self.update_batch_size*self.T, :]
+                inputb = image_tensors[:, self.update_batch_size*self.T:, :]
                 input_tensors = {'inputa': inputa, 'inputb': inputb}
             else:
                 input_tensors = None
@@ -198,6 +200,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 self.state_tensor = self.statea
                 self.action_tensor = self.actiona
                 self.act_op = outputas
+                self.outputbs = outputbs
                 self.test_act_op = test_output # post-update output
                 self.image_op = flat_img_inputb
                 self.fast_weights = {key: fast_weights_values[i] for i, key in enumerate(self.sorted_weight_keys)}
@@ -502,6 +505,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 grads = tf.gradients(local_lossa, weights.values())
                 if self._hyperparams.get('stop_grad', False):
                     grads = [tf.stop_gradient(grad) for grad in grads]
+                if self._hyperparams.get('use_clip', False):
+                    clip_min = self._hyperparams['clip_min']
+                    clip_max = self._hyperparams['clip_max']
+                    grads = [tf.clip_by_value(grad, clip_min, clip_max) for grad in grads]
                 gradients = dict(zip(weights.keys(), grads))
                 if self._hyperparams.get('color_hints', False):
                     color_grad = tf.gradients(local_lossa, self.color_hints)[0]
@@ -538,6 +545,10 @@ class PolicyCloningMAML(PolicyOptTf):
                         state_inputb_new = tf.concat(1, [state_inputb, color_hints_b])
                     if self._hyperparams.get('stop_grad', False):
                         grads = [tf.stop_gradient(grad) for grad in grads]
+                    if self._hyperparams.get('use_clip', False):
+                        clip_min = self._hyperparams['clip_min']
+                        clip_max = self._hyperparams['clip_max']
+                        grads = [tf.clip_by_value(grad, clip_min, clip_max) for grad in grads]
                     gradients = dict(zip(fast_weights.keys(), grads))
                     fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
                     if 'Training' in prefix:
@@ -803,8 +814,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 if itr != 0 and itr % PRINT_INTERVAL == 0:
                     print 'Iteration %d: average preloss is %.2f, average postloss is %.2f' % (itr, np.mean(prelosses), np.mean(postlosses))
                     prelosses, postlosses = [], []
-                    import pdb; pdb.set_trace()
-    
+
                 if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
                     if len(self.val_idx) > 0:
                         input_tensors = [self.val_summ_op, self.val_total_loss1, self.val_total_losses2[self.num_updates-1]]
