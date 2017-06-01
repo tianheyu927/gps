@@ -196,7 +196,7 @@ class PolicyCloningLSTM(PolicyOptTf):
             # with tf.control_dependencies(update_ops):
             # self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.total_losses2[self.num_updates - 1], global_step=self.global_step)
             if 'Training' in prefix:
-                self.train_op = tf.train.AdamOptimizer(self.meta_lr).minimize(self.total_losses2[self.num_updates - 1])
+                self.train_op = tf.train.AdamOptimizer(self.meta_lr).minimize(self.total_loss)
                 # Add summaries
                 summ = [tf.summary.scalar(prefix + 'loss', self.total_loss)] # tf.scalar_summary('Learning rate', learning_rate)
                 # train_summ.append(tf.scalar_summary('Moving Mean', self.moving_mean))
@@ -343,7 +343,7 @@ class PolicyCloningLSTM(PolicyOptTf):
                 fc_output = tf.expand_dims(fc_output, axis=1) # N x 1 x dU
                 lstm_output.append(fc_output)
                 state = next_state
-        lstm_output = tf.concat(1, lstm_output)
+        lstm_output = tf.reshape(tf.concat(1, lstm_output), [-1, self._dU])
         return lstm_output
 
     def construct_model(self, input_tensors=None, prefix='Training_', dim_input=27, dim_output=7, batch_size=25, network_config=None):
@@ -641,7 +641,7 @@ class PolicyCloningLSTM(PolicyOptTf):
                         input_tensors = [self.val_summ_op, self.val_total_loss]
                         val_state, val_act = self.generate_data_batch(itr, train=False)
                         feed_dict = {self.state: val_state,
-                                    self.action: val_act,
+                                    self.action: val_act}
                         # if self.use_batchnorm:
                         #     feed_dict[self.phase] = 0
                         if self.norm_type == 'vbn':

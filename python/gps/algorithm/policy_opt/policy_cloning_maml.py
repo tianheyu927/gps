@@ -135,7 +135,7 @@ class PolicyCloningMAML(PolicyOptTf):
         if self.restore_iter > 0:
             self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
             # import pdb; pdb.set_trace()
-            self.update()
+            # self.update()
             # TODO: also implement resuming training from restored model
         else:
             self.update()
@@ -144,12 +144,10 @@ class PolicyCloningMAML(PolicyOptTf):
 
         # Replace input tensors to be placeholders for rolling out learned policy
         self.init_network(self.graph, prefix='Testing')
-        # Generate selected demos for preupdate pass during testing
-        self.generate_testing_demos()
         # Initialize policy with noise
         self.var = self._hyperparams['init_var'] * np.ones(dU)
         self.policy = TfPolicyMAML(dU, self.obsa, self.statea, self.actiona, self.obsb, self.stateb,
-                                self.test_act_op, self.reference_tensor, self.reference_out,
+                                self.act_op, self.test_act_op, self.reference_tensor, self.reference_out,
                                self.feat_op, self.image_op, self.norm_type,
                                0.5*np.ones(dU), self._sess, self.graph, self.device_string, 
                             #   np.zeros(dU), self._sess, self.graph, self.device_string, 
@@ -158,8 +156,11 @@ class PolicyCloningMAML(PolicyOptTf):
         self.policy.bias = self.bias
         self.policy.x_idx = self.x_idx
         self.policy.img_idx = self.img_idx
+        # Generate selected demos for preupdate pass during testing
+        self.generate_testing_demos()
         
-        self.eval_fast_weights()
+        # TODO: This has a bug. Fix it at some point.
+        # self.eval_fast_weights()
         self.eval_success_rate(test_agent)
 
         self.test_agent = None  # don't pickle agent
@@ -195,7 +196,7 @@ class PolicyCloningMAML(PolicyOptTf):
                                           network_config=self._hyperparams['network_params'])
             # outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test = result
             outputas, outputbs, test_output, lossesa, lossesb, flat_img_inputb, fast_weights_values = result
-            if 'Training' in prefix:#if 'Testing' in prefix:
+            if 'Testing' in prefix:
                 self.obs_tensor = self.obsa
                 self.state_tensor = self.statea
                 self.action_tensor = self.actiona
@@ -638,18 +639,18 @@ class PolicyCloningMAML(PolicyOptTf):
     
     def generate_testing_demos(self):
         n_folders = len(self.demos.keys())
-        policy_demo_idx = [np.random.choice(n_demo, replace=False, size=self.update_batch_size) for n_demo in [self.demos[i]['demoO'].shape[0] for i in xrange(n_folders)]]
+        policy_demo_idx = [np.random.choice(n_demo, replace=False, size=self.update_batch_size) for n_demo in [self.demos[i]['demoX'].shape[0] for i in xrange(n_folders)]]
         self.policy.selected_demoO = []
         self.policy.selected_demoX = []
         self.policy.selected_demoU = []
         for i in xrange(n_folders):
             # TODO: load observations from images instead
-            selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i]]
+            selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i][0]] # TODO: make this work for update_batch_size > 1
             O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (i, selected_cond)))[:, :, :, :3]
             if len(O.shape) == 4:
                 O = np.expand_dims(O, axis=0)
-            O = np.tranpose(O, [0, 1, 4, 3, 2]) # transpose to mujoco setting for images
-            O = O.reshape(O.shape[0], self.T, -1)
+            O = np.transpose(O, [0, 1, 4, 3, 2]) # transpose to mujoco setting for images
+            O = O.reshape(O.shape[0], self.T, -1).astype(np.float32)
             O /= 255.0
             X = self.demos[i]['demoX'][policy_demo_idx[i]].copy()
             if len(X.shape) == 2:
