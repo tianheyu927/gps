@@ -14,7 +14,7 @@ from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.cost.cost_state import CostState
 from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_sum import CostSum
-from gps.algorithm.policy_opt.policy_cloning_lstm import PolicyCloningLSTM
+from gps.algorithm.policy_opt.policy_cloning_final_state import PolicyCloningFinalState
 from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
@@ -321,7 +321,7 @@ algorithm['cost'] = [{
 
 
 algorithm['policy_opt'] = {
-    'type': PolicyCloningLSTM,
+    'type': PolicyCloningFinalState,
     'network_params': {
         'num_filters': [40, 40, 40], #20, 20, 20
         'obs_include': agent['obs_include'],
@@ -333,7 +333,6 @@ algorithm['policy_opt'] = {
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
         'layer_size': 200,
-        'lstm_size': 512,
         'bc': True,
     },
     'use_gpu': 1,
@@ -356,11 +355,11 @@ algorithm['policy_opt'] = {
     'clip_min': -10.0,
     'clip_max': 10.0,
     'meta_batch_size': 5,
-    'update_batch_size': 3, # batch size for each task, used to be 1
+    'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/lstm_bc_1000/4_layer_200_dim_40_3x3_filters_512_lstm_size_10_pos_images',
+    'log_dir': '/tmp/data/final_state_bc_1000/4_layer_200_dim_40_3x3_filters_10_pos_images',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/tmp/data/lstm_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_512_lstm_size_10_pos_images',
+    'save_dir': '/tmp/data/final_state_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_10_pos_images',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'uses_vision': True,

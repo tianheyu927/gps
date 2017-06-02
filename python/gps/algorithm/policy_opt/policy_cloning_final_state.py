@@ -33,7 +33,7 @@ from gps.utility.general_utils import BatchSampler, compute_distance, mkdir_p, T
 
 ANNEAL_INTERVAL = 20000 # this used to be 5000
 
-class PolicyCloningMAML(PolicyOptTf):
+class PolicyCloningFinalState(PolicyOptTf):
     """ Set up weighted neural network norm loss with learned parameters. """
     def __init__(self, hyperparams, dO, dU):
         config = copy.deepcopy(POLICY_OPT_TF)
@@ -120,9 +120,9 @@ class PolicyCloningMAML(PolicyOptTf):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
 
-        # self.init_network(self.graph, restore_iter=self.restore_iter)
-        # self.init_network(self.graph, restore_iter=self.restore_iter, prefix='Validation_')
-        self.init_network(self.graph, prefix='Testing')
+        self.init_network(self.graph, restore_iter=self.restore_iter)
+        self.init_network(self.graph, restore_iter=self.restore_iter, prefix='Validation_')
+        # self.init_network(self.graph, prefix='Testing')
         
         with self.graph.as_default():
             self.saver = tf.train.Saver()
@@ -141,7 +141,7 @@ class PolicyCloningMAML(PolicyOptTf):
         else:
             self.update()
             # import pdb; pdb.set_trace()
-        # os._exit(1) # debugging
+        os._exit(1) # debugging
 
         # Replace input tensors to be placeholders for rolling out learned policy
         # self.init_network(self.graph, prefix='Testing')
@@ -195,30 +195,20 @@ class PolicyCloningMAML(PolicyOptTf):
                 result = self.construct_model(input_tensors=input_tensors, prefix=prefix, dim_input=self._dO, dim_output=self._dU,
                                           network_config=self._hyperparams['network_params'])
             # outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test = result
-            inputa, outputas, outputbs, test_output, lossesa, lossesb, flat_img_inputb, fast_weights_values = result
+            test_output, loss, flat_img_inputb = result
             if 'Testing' in prefix:
                 self.obs_tensor = self.obsa
                 self.state_tensor = self.statea
                 self.action_tensor = self.actiona
-                self.act_op = outputas
-                self.outputbs = outputbs
-                self.inputa = inputa
                 self.test_act_op = test_output # post-update output
                 self.image_op = flat_img_inputb
-                self.fast_weights = {key: fast_weights_values[i] for i, key in enumerate(self.sorted_weight_keys)}
 
-            trainable_vars = tf.trainable_variables()
-            total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(self.meta_batch_size)
-            total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
-            
+            total_loss = tf.reduce_sum(losses) / tf.to_float(self.meta_batch_size)
+
             if 'Training' in prefix:
-                self.total_loss1 = total_loss1
-                self.total_losses2 = total_losses2
-                self.lossesa = lossesa # for testing
-                self.lossesb = lossesb[-1] # for testing
+                self.total_loss = total_loss
             elif 'Validation' in prefix:
-                self.val_total_loss1 = total_loss1
-                self.val_total_losses2 = total_losses2
+                self.val_total_loss = total_loss
             # self.val_total_loss1 = tf.contrib.copy_graph.get_copied_op(total_loss1, self.graph)
             # self.val_total_losses2 = [tf.contrib.copy_graph.get_copied_op(total_losses2[i], self.graph) for i in xrange(len(total_losses2))]
  
@@ -229,32 +219,28 @@ class PolicyCloningMAML(PolicyOptTf):
             # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             # with tf.control_dependencies(update_ops):
             # self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.total_losses2[self.num_updates - 1], global_step=self.global_step)
-            flat_img_inputb = tf.reshape(flat_img_inputb, [self.meta_batch_size, self.T, 3, 80, 64])
-            flat_img_inputb = tf.transpose(flat_img_inputb, perm=[0,1,4,3,2])
+            # flat_img_inputb = tf.reshape(flat_img_inputb, [self.meta_batch_size, self.T, 3, 80, 64])
+            # flat_img_inputb = tf.transpose(flat_img_inputb, perm=[0,1,4,3,2])
             if 'Training' in prefix:
-                self.train_op = tf.train.AdamOptimizer(self.meta_lr).minimize(self.total_losses2[self.num_updates - 1])
+                self.train_op = tf.train.AdamOptimizer(self.meta_lr).minimize(self.total_loss)
                 # Add summaries
-                summ = [tf.summary.scalar(prefix + 'Pre-update_loss', self.total_loss1)] # tf.scalar_summary('Learning rate', learning_rate)
+                summ = [tf.summary.scalar(prefix + 'loss', self.total_loss)] # tf.scalar_summary('Learning rate', learning_rate)
                 # train_summ.append(tf.scalar_summary('Moving Mean', self.moving_mean))
                 # train_summ.append(tf.scalar_summary('Moving Variance', self.moving_variance))
                 # train_summ.append(tf.scalar_summary('Moving Mean Test', self.moving_mean_test))
                 # train_summ.append(tf.scalar_summary('Moving Variance Test', self.moving_variance_test))
-                for i in xrange(self.meta_batch_size):
-                    summ.append(tf.summary.image('Training_image_%d' % i, flat_img_inputb[i]*255.0, max_outputs=50))
-                for j in xrange(self.num_updates):
-                    summ.append(tf.summary.scalar(prefix + 'Post-update_loss_step_%d' % j, self.total_losses2[j]))
-                    self.train_summ_op = tf.summary.merge(summ)
+                # for i in xrange(self.meta_batch_size):
+                #     summ.append(tf.summary.image('Training_image_%d' % i, flat_img_inputb[i]*255.0, max_outputs=50))
+                self.train_summ_op = tf.summary.merge(summ)
             elif 'Validation' in prefix:
                 # Add summaries
-                summ = [tf.summary.scalar(prefix + 'Pre-update_loss', self.val_total_loss1)] # tf.scalar_summary('Learning rate', learning_rate)
+                summ = [tf.summary.scalar(prefix + 'loss', self.val_total_loss)] # tf.scalar_summary('Learning rate', learning_rate)
                 # train_summ.append(tf.scalar_summary('Moving Mean', self.moving_mean))
                 # train_summ.append(tf.scalar_summary('Moving Variance', self.moving_variance))
                 # train_summ.append(tf.scalar_summary('Moving Mean Test', self.moving_mean_test))
                 # train_summ.append(tf.scalar_summary('Moving Variance Test', self.moving_variance_test))
-                for i in xrange(self.meta_batch_size):
-                    summ.append(tf.summary.image('Validation_image_%d' % i, flat_img_inputb[i]*255.0, max_outputs=50))
-                for j in xrange(self.num_updates):
-                    summ.append(tf.summary.scalar(prefix + 'Post-update_loss_step_%d' % j, self.val_total_losses2[j]))
+                # for i in xrange(self.meta_batch_size):
+                    # summ.append(tf.summary.image('Validation_image_%d' % i, flat_img_inputb[i]*255.0, max_outputs=50))
                 self.val_summ_op = tf.summary.merge(summ)
 
     def construct_image_input(self, nn_input, x_idx, img_idx, network_config=None):
@@ -305,7 +291,7 @@ class PolicyCloningMAML(PolicyOptTf):
         
         # fc weights
         # in_shape = 40 # dimension after feature computation
-        in_shape = self.conv_out_size + len(self.x_idx) # hard-coded for last conv layer output
+        in_shape = 2*(self.conv_out_size + len(self.x_idx)) # hard-coded for last conv layer output
         if self._hyperparams.get('color_hints', False):
             in_shape += 3
         for i in xrange(n_layers):
@@ -324,16 +310,13 @@ class PolicyCloningMAML(PolicyOptTf):
         vbn = getattr(self, name)
         return vbn(tensor, update=update)
 
-    def forward(self, image_input, state_input, weights, update=False, is_training=True, network_config=None):
+    def conv_forward(self, image_input, state_input, weights, update=False, is_training=True, network_config=None):
         n_layers = network_config.get('n_layers', 4) # 3
         norm_type = self.norm_type
         decay = network_config.get('decay', 0.9)
         use_dropout = self._hyperparams.get('use_dropout', False)
         prob = self._hyperparams.get('keep_prob', 0.5)
         is_dilated = self._hyperparams.get('is_dilated', False)
-        # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
-        # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
-        # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)            
         if norm_type == 'vbn':
             if not use_dropout:
                 conv_layer_0 = self.vbn(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_1', update=update)
@@ -352,53 +335,32 @@ class PolicyCloningMAML(PolicyOptTf):
             else:
                 conv_layer_0 = dropout(norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_1')
                 conv_layer_1 = dropout(norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_2')
-                conv_layer_2 = dropout(norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_3')       
-        # _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
-        # num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
-        # x_map = np.empty([num_rows, num_cols], np.float32)
-        # y_map = np.empty([num_rows, num_cols], np.float32)
-
-        # for i in range(num_rows):
-        #     for j in range(num_cols):
-        #         x_map[i, j] = (i - num_rows / 2.0) / num_rows
-        #         y_map[i, j] = (j - num_cols / 2.0) / num_cols
-
-        # x_map = tf.convert_to_tensor(x_map)
-        # y_map = tf.convert_to_tensor(y_map)
-
-        # x_map = tf.reshape(x_map, [num_rows * num_cols])
-        # y_map = tf.reshape(y_map, [num_rows * num_cols])
-
-        # # rearrange features to be [batch_size, num_fp, num_rows, num_cols]
-        # features = tf.reshape(tf.transpose(conv_layer_2, [0,3,1,2]),
-        #                       [-1, num_rows*num_cols])
-        # softmax = tf.nn.softmax(features)
-
-        # fp_x = tf.reduce_sum(tf.mul(x_map, softmax), [1], keep_dims=True)
-        # fp_y = tf.reduce_sum(tf.mul(y_map, softmax), [1], keep_dims=True)
-
-        # fp = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
-
-        # fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
+                conv_layer_2 = dropout(norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_3')
         
         conv_out_flat = tf.reshape(conv_layer_2, [-1, self.conv_out_size])
         # conv_out_flat = tf.reshape(conv_layer_3, [-1, self.conv_out_size])
         # if use_dropout:
             # conv_out_flat = dropout(conv_out_flat, keep_prob=0.8, is_training=is_training, name='dropout_input')
-        fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
+        conv_out = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
+        return conv_out
         
-        fc_output = tf.add(fc_input, 0)
-        
-        outputs = []
-        for i in xrange(n_layers):
-            fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
-            if i != n_layers - 1:
-                fc_output = tf.nn.relu(fc_output)
-                if use_dropout:
-                    fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i)
-            outputs.append(fc_output)
-        # return fc_output, fp, moving_mean, moving_variance
-        return fc_output
+        def fc_forward(self, inputa, inputb, weights, update=False, is_training=True, network_config=None):
+            # inputa is the final image, N x 1 x dO and inputb is the whole demo trajectory, N x T x dO
+            # fc_output should be N x T x (2*dO)
+            fc_output = []
+            for t in xrange(self.T):
+                fc_input = tf.concat(2, [tf.expand_dims(inputa[:, t, :], axis=1), inputb])
+                fc_output.append(fc_input)
+            fc_output = tf.concat(1, fc_output)
+            for i in xrange(n_layers):
+                fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
+                if i != n_layers - 1:
+                    fc_output = tf.nn.relu(fc_output)
+                    if use_dropout:
+                        fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i)
+                outputs.append(fc_output)
+            # return fc_output, fp, moving_mean, moving_variance
+            return fc_output
 
     def construct_model(self, input_tensors=None, prefix='Training_', dim_input=27, dim_output=7, batch_size=25, network_config=None):
         """
@@ -448,8 +410,10 @@ class PolicyCloningMAML(PolicyOptTf):
             actionb = self.actionb
             reference_tensor = self.reference_tensor
         
-        inputa = tf.concat(2, [statea, obsa])
-        inputb = tf.concat(2, [stateb, obsb])
+        statea = tf.expand_dims(statea[:, -1, :], axis=1)
+        obsa = tf.expand_dims(obsa[:, -1, :], axis=1)
+        inputa = tf.concat(2, [statea, obsa]) # N x 1 x dO
+        inputb = tf.concat(2, [stateb, obsb]) # N x T x dO
         
         with tf.variable_scope('model', reuse=None) as training_scope:
             # Construct layers weight & bias
@@ -460,20 +424,7 @@ class PolicyCloningMAML(PolicyOptTf):
             else:
                 training_scope.reuse_variables()
                 weights = self.weights
-            # self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3), trainable=False))
-            # self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3)))
-            self.step_size = self._hyperparams.get('step_size', 1e-3)
-            self.grad_reg = self._hyperparams.get('grad_reg', 0.005)
-            if self._hyperparams.get('color_hints', False):
-                self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
-            
-            num_updates = self.num_updates
-            lossesa, outputsa = [], []
-            lossesb = [[] for _ in xrange(num_updates)]
-            outputsb = [[] for _ in xrange(num_updates)]
-            
-            # TODO: add variable that indicates the color?
-            
+
             def batch_metalearn(inp, update=False):
                 inputa, inputb, actiona, actionb = inp #image input
                 inputa = tf.reshape(inputa, [-1, dim_input])
@@ -484,93 +435,20 @@ class PolicyCloningMAML(PolicyOptTf):
                 # Convert to image dims
                 inputa, _, state_inputa = self.construct_image_input(inputa, x_idx, img_idx, network_config=network_config)
                 inputb, flat_img_inputb, state_inputb = self.construct_image_input(inputb, x_idx, img_idx, network_config=network_config)
-                if self._hyperparams.get('color_hints', False):
-                    color_hints_a = tf.transpose(tf.gather(tf.transpose(tf.zeros_like(state_inputa)), range(3)))
-                    color_hints_a += self.color_hints
-                    state_inputa_new = tf.concat(1, [state_inputa, color_hints_a])
-                else:
-                    state_inputa_new = state_inputa
 
-                local_outputbs, local_lossesb = [], []
-                # Assume fixed data for each update
-                inputas = [inputa]*num_updates
-                state_inputas = [state_inputa_new]*num_updates
-                actionas = [actiona]*num_updates
                 if 'Training' in prefix:
                     # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
-                    local_outputa = self.forward(inputa, state_inputa_new, weights, network_config=network_config)
+                    local_outputa = self.conv_forward(inputa, state_inputa, weights, network_config=network_config)
+                    local_outputb = self.conv_forward(inputa, state_inputa, weights, network_config=network_config)
+                    local_output = self.fc_forward(local_outputa, local_outputb, weights, network_config=network_config)
                 else:
                     # local_outputa, _, moving_mean_test, moving_variance_test = self.forward(inputa, state_inputa, weights, is_training=False, network_config=network_config)
-                    local_outputa = self.forward(inputa, state_inputa_new, weights, update=update, is_training=False, network_config=network_config)
-                local_lossa = euclidean_loss_layer(local_outputa, actiona, None, behavior_clone=True)
+                    local_outputa = self.conv_forward(inputa, state_inputa, weights, update=update, is_training=False, network_config=network_config)
+                    local_outputb = self.conv_forward(inputb, state_inputb, weights, update=update, is_training=False, network_config=network_config)
+                    local_output = self.forward(local_outputa, local_outputb, weights, update=update, is_training=False, network_config=network_config)
+                local_loss = euclidean_loss_layer(local_output, actionb, None, behavior_clone=True)
                 
-                grads = tf.gradients(local_lossa, weights.values())
-                if self._hyperparams.get('stop_grad', False):
-                    grads = [tf.stop_gradient(grad) for grad in grads]
-                if self._hyperparams.get('use_clip', False):
-                    clip_min = self._hyperparams['clip_min']
-                    clip_max = self._hyperparams['clip_max']
-                    grads = [tf.clip_by_value(grad, clip_min, clip_max) for grad in grads]
-                gradients = dict(zip(weights.keys(), grads))
-                if self._hyperparams.get('color_hints', False):
-                    color_grad = tf.gradients(local_lossa, self.color_hints)[0]
-                    fast_color_hints = tf.maximum(tf.minimum(self.color_hints - self.step_size*color_grad, 0.0), 1.0)
-                    color_hints_b = tf.transpose(tf.gather(tf.transpose(tf.zeros_like(state_inputb)), range(3)))
-                    color_hints_b += fast_color_hints
-                    state_inputb_new = tf.concat(1, [state_inputb, color_hints_b])
-                else:
-                    state_inputb_new = state_inputb
-                # Is mask used here?
-                fast_weights = dict(zip(weights.keys(), [weights[key] - self.step_size*gradients[key] for key in weights.keys()]))
-                if 'Training' in prefix:
-                    outputb = self.forward(inputb, state_inputb_new, fast_weights, network_config=network_config)
-                else:
-                    outputb = self.forward(inputb, state_inputb_new, fast_weights, update=update, is_training=False, network_config=network_config)
-                # fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
-                local_outputbs.append(outputb)
-                local_lossesb.append(euclidean_loss_layer(outputb, actionb, None, behavior_clone=True))
-
-                for j in range(num_updates - 1):
-                    if self._hyperparams.get('color_hints', False):
-                        color_hints_a = tf.transpose(tf.gather(tf.transpose(tf.zeros_like(state_inputas[j+1])), range(3)))
-                        color_hints_a += fast_color_hints
-                        state_inputa_new = tf.concat(1, [state_inputas[j+1], color_hints_a])
-                    else:
-                        state_inputa_new = state_inputas[j+1]
-                    loss = euclidean_loss_layer(self.forward(inputas[j+1], state_inputa_new, fast_weights, network_config=network_config), actionas[j+1], None, behavior_clone=True)# + fast_weights_reg / tf.to_float(self.update_batch_size)
-                    grads = tf.gradients(loss, fast_weights.values())
-                    if self._hyperparams.get('color_hints', False):
-                        color_grad = tf.gradients(loss, fast_color_hints)[0]
-                        fast_color_hints = tf.maximum(tf.minimum(fast_color_hints - self.step_size*color_grad, 0.0), 1.0)
-                        color_hints_b = tf.transpose(tf.gather(tf.transpose(tf.zeros_like(state_inputb)), range(3)))
-                        color_hints_b += fast_color_hints
-                        state_inputb_new = tf.concat(1, [state_inputb, color_hints_b])
-                    if self._hyperparams.get('stop_grad', False):
-                        grads = [tf.stop_gradient(grad) for grad in grads]
-                    if self._hyperparams.get('use_clip', False):
-                        clip_min = self._hyperparams['clip_min']
-                        clip_max = self._hyperparams['clip_max']
-                        grads = [tf.clip_by_value(grad, clip_min, clip_max) for grad in grads]
-                    gradients = dict(zip(fast_weights.keys(), grads))
-                    fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
-                    if 'Training' in prefix:
-                        output = self.forward(inputb, state_inputb_new, fast_weights, network_config=network_config)
-                        # output = self.forward(inputb, state_inputb, fast_weights, update=update, is_training=False, network_config=network_config)
-                    else:
-                        output = self.forward(inputb, state_inputb_new, fast_weights, update=update, is_training=False, network_config=network_config)
-                    local_outputbs.append(output)
-                    # fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
-                    local_lossesb.append(euclidean_loss_layer(output, actionb, None, behavior_clone=True))
-                if self._hyperparams.get('use_grad_reg'):
-                    fast_gradient_reg = 0.0
-                    for key in gradients.keys():
-                        fast_gradient_reg += self.grad_reg*tf.reduce_sum(tf.abs(gradients[key]))
-                    local_lossesb[-1] += self._hyperparams['grad_reg'] *fast_gradient_reg / self.update_batch_size
-                # local_fn_output = [local_outputa, local_outputbs, test_outputa, local_lossa, local_lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test]
-                # local_fn_output = [local_outputa, local_outputbs, test_outputa, local_lossa, local_lossesb, flat_img_inputa, fp, conv_layer_2, outputs, test_outputs, mean, variance, moving_mean, moving_variance, moving_mean_new, moving_variance_new]
-                fast_weights_values = [fast_weights[key] for key in self.sorted_weight_keys]
-                # use post update output
-                local_fn_output = [inp[0], local_outputa, local_outputbs, local_outputbs[-1], local_lossa, local_lossesb, flat_img_inputb, fast_weights_values]
+                local_fn_output = [local_output, local_loss, flat_img_inputb]
                 return local_fn_output
 
         if self.norm_type:
@@ -585,7 +463,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 unused = batch_metalearn((inputa[0], inputb[0], actiona[0], actionb[0]))
         
         # out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, tf.float32, tf.float32, tf.float32, tf.float32]
-        out_dtype = [tf.float32, tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, tf.float32, [tf.float32]*len(self.weights.keys())]
+        out_dtype = [tf.float32, tf.float32, tf.float32]
         result = tf.map_fn(batch_metalearn, elems=(inputa, inputb, actiona, actionb), dtype=out_dtype)
         print 'Done with map.'
         return result
@@ -649,13 +527,15 @@ class PolicyCloningMAML(PolicyOptTf):
             if len(O.shape) == 4:
                 O = np.expand_dims(O, axis=0)
             O = np.transpose(O, [0, 1, 4, 3, 2]) # transpose to mujoco setting for images
-            O = O.reshape(O.shape[0], self.T, -1) # keep uint8 to save RAM
+            O = O.reshape(O.shape[0], self.T, -1)[:, -1, :] # keep uint8 to save RAM
+            O = np.expand_dims(O, axis=1)
             X = self.demos[i]['demoX'][policy_demo_idx[i]].copy()
             if len(X.shape) == 2:
                 X = np.expand_dims(X, axis=0)
+            X = np.expand_dims(X[:, -1, :], axis=1)
             self.policy.selected_demoO.append(O)
             self.policy.selected_demoX.append(X)
-            self.policy.selected_demoU.append(self.demos[i]['demoU'][policy_demo_idx[i]].copy())
+            self.policy.selected_demoU.append(self.demos[i]['demoU'][policy_demo_idx[i]].copy()) # deprecated
         print "Selected demo is %d" % self.policy.selected_demoO[0].shape[0]
         # self.policy.demos = self.demos #debug
     
@@ -778,7 +658,7 @@ class PolicyCloningMAML(PolicyOptTf):
         SUMMARY_INTERVAL = 100
         SAVE_INTERVAL = 1000
         TOTAL_ITERS = self._hyperparams['iterations']
-        prelosses, postlosses = [], []
+        losses= []
         log_dir = self._hyperparams['log_dir']# + '_%s' % datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
         # log_dir = self._hyperparams['log_dir'] # for debugging
         save_dir = self._hyperparams['save_dir'] #'_model' #'_model_ln'
@@ -807,21 +687,20 @@ class PolicyCloningMAML(PolicyOptTf):
                     feed_dict[self.reference_tensor] = self.reference_batch
                     input_tensors.append(self.reference_out)
                 if itr % SUMMARY_INTERVAL == 0 or itr % PRINT_INTERVAL == 0:
-                    input_tensors.extend([self.train_summ_op, self.total_loss1, self.total_losses2[self.num_updates-1]])
+                    input_tensors.extend([self.train_summ_op, self.total_loss])
                 result = self.run(input_tensors, feed_dict=feed_dict)
     
                 if itr != 0 and itr % SUMMARY_INTERVAL == 0:
-                    prelosses.append(result[-2])
-                    train_writer.add_summary(result[-3], itr)
-                    postlosses.append(result[-1])
+                    train_writer.add_summary(result[-2], itr)
+                    losses.append(result[-1])
     
                 if itr != 0 and itr % PRINT_INTERVAL == 0:
-                    print 'Iteration %d: average preloss is %.2f, average postloss is %.2f' % (itr, np.mean(prelosses), np.mean(postlosses))
+                    print 'Iteration %d: average loss is %.2f' % (itr, np.mean(losses))
                     prelosses, postlosses = [], []
 
                 if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
                     if len(self.val_idx) > 0:
-                        input_tensors = [self.val_summ_op, self.val_total_loss1, self.val_total_losses2[self.num_updates-1]]
+                        input_tensors = [self.val_summ_op, self.val_total_loss]
                         val_state, val_act = self.generate_data_batch(itr, train=False)
                         statea = val_state[:, :self.update_batch_size*self.T, :]
                         stateb = val_state[:, self.update_batch_size*self.T:, :]
@@ -838,7 +717,7 @@ class PolicyCloningMAML(PolicyOptTf):
                             input_tensors.append(self.reference_out)
                         results = self.run(input_tensors, feed_dict=feed_dict)
                         train_writer.add_summary(results[0], itr)
-                        print 'Test results: average preloss is %.2f, average postloss is %.2f' % (np.mean(results[1]), np.mean(results[2]))
+                        print 'Test results: average loss is %.2f' % (np.mean(results[1]))
                 
                 if itr != 0 and (itr % SAVE_INTERVAL == 0 or itr == training_range[-1]):
                     self.save_model(save_dir + '_%d' % itr)
@@ -878,7 +757,7 @@ class PolicyCloningMAML(PolicyOptTf):
                     gif_fps = None
                 samples.append(agent.sample(
                     self.policy, conditions[i],
-                    save=False, noisy=False,
+                    verbose=False, save=False, noisy=False,
                     record_gif=gif_name, record_gif_fps=gif_fps, task_idx=idx))
         return SampleList(samples)
 
