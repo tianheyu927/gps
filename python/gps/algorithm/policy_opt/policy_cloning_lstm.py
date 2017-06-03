@@ -21,7 +21,7 @@ except ImportError:
 
 from natsort import natsorted
 from random import shuffle
-from gps.algorithm.policy.tf_policy import TfPolicy
+from gps.algorithm.policy.tf_policy_lstm import TfPolicyLSTM
 from gps.algorithm.policy_opt.config import POLICY_OPT_TF
 from gps.algorithm.policy_opt.policy_opt import PolicyOpt
 from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
@@ -117,8 +117,10 @@ class PolicyCloningLSTM(PolicyOptTf):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
 
-        self.init_network(self.graph)
-        self.init_network(self.graph, prefix='Validation_')
+        # self.init_network(self.graph)
+        # self.init_network(self.graph, prefix='Validation_')
+        # Replace input tensors to be placeholders for rolling out learned policy
+        self.init_network(self.graph, prefix='Testing')
         
         with self.graph.as_default():
             self.saver = tf.train.Saver()
@@ -132,24 +134,26 @@ class PolicyCloningLSTM(PolicyOptTf):
         if self.restore_iter > 0:
             self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
             # import pdb; pdb.set_trace()
-            self.update()
+            # self.update()
             # TODO: also implement resuming training from restored model
         else:
             self.update()
             # import pdb; pdb.set_trace()
         # os._exit(1) # debugging
 
-        # Replace input tensors to be placeholders for rolling out learned policy
-        self.init_network(self.graph, prefix='Testing')
+        # # Replace input tensors to be placeholders for rolling out learned policy
+        # self.init_network(self.graph, prefix='Testing')
         # Initialize policy with noise
         self.var = self._hyperparams['init_var'] * np.ones(dU)
         # use test action for policy action
-        self.policy = TfPolicy(dU, self.obs_tensor, self.test_act_op, self.feat_op, self.image_op,
+        self.policy = TfPolicyLSTM(dU, self.obs_tensor, self.state_tensor, self.test_act_op, self.feat_op, self.image_op,
                                0.5*np.ones(dU), self._sess, self.graph, self.device_string, copy_param_scope=self._hyperparams['copy_param_scope'])
         self.policy.scale = self.scale
         self.policy.bias = self.bias
         self.policy.x_idx = self.x_idx
         self.policy.img_idx = self.img_idx
+        self.policy.T = self.T
+        self.policy.update_batch_size = self.update_batch_size
         
         self.eval_success_rate(test_agent)
 
@@ -173,7 +177,7 @@ class PolicyCloningLSTM(PolicyOptTf):
                 result = self.construct_model(input_tensors=image_tensors, prefix=prefix, dim_input=self._dO, dim_output=self._dU,
                                           network_config=self._hyperparams['network_params'])
             # outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test = result
-            test_output, loss, flat_img_input= result
+            test_output, loss, flat_img_input = result
             if 'Testing' in prefix:
                 self.obs_tensor = self.obs
                 self.state_tensor = self.state
@@ -372,7 +376,7 @@ class PolicyCloningLSTM(PolicyOptTf):
             self.obs = obs = tf.placeholder(tf.float32, name='obs') # meta_batch_size x update_batch_size x dim_input
         else:
             self.obs = obs = input_tensors # meta_batch_size x update_batch_size x dim_input
-        if 'Training' in prefix:
+        if 'Training' or 'Testing' in prefix:
             self.state = state = tf.placeholder(tf.float32, name='state')
             self.action = action = tf.placeholder(tf.float32, name='action')
             self.reference_tensor = reference_tensor = tf.placeholder(tf.float32, [self.T, self._dO], name='reference')
@@ -680,8 +684,8 @@ class PolicyCloningLSTM(PolicyOptTf):
                     gif_fps = None
                 samples.append(agent.sample(
                     self.policy, conditions[i],
-                    verbose=False, save=False, noisy=False,
-                    record_gif=gif_name, record_gif_fps=gif_fps, task_idx=idx))
+                    save=False, noisy=False,
+                    record_gif=gif_name, record_gif_fps=gif_fps))
         return SampleList(samples)
 
     def eval_success_rate(self, test_agent):
@@ -698,17 +702,13 @@ class PolicyCloningLSTM(PolicyOptTf):
                 target_eepts = np.expand_dims(target_eepts, axis=0)
             target_eepts = target_eepts[:, :3]
             if i in self.val_idx:
-                # Sample on validation conditions.
-                val_sample_list = self.sample(agent, i, conditions, N=1, testing=True)
                 # Calculate val distances
-                X_val = val_sample_list.get_X()
+                X_val = self.sample(agent, i, conditions, N=1, testing=True).get_X()
                 val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts[j], axis=1)) \
                                     for j in xrange(X_val.shape[0])])
             else:
-                # Sample on training conditions.
-                train_sample_list = self.sample(agent, i, conditions, N=1)
                 # Calculate train distances
-                X_train = train_sample_list.get_X()
+                X_train = self.sample(agent, i, conditions, N=1).get_X()
                 train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)) \
                                     for j in xrange(X_train.shape[0])])
 
