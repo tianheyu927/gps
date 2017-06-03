@@ -203,44 +203,21 @@ class PolicyCloningFinalState(PolicyOptTf):
                 self.test_act_op = test_output # post-update output
                 self.image_op = flat_img_inputb
 
-            total_loss = tf.reduce_sum(losses) / tf.to_float(self.meta_batch_size)
+            total_loss = tf.reduce_sum(loss) / tf.to_float(self.meta_batch_size)
 
             if 'Training' in prefix:
                 self.total_loss = total_loss
             elif 'Validation' in prefix:
                 self.val_total_loss = total_loss
-            # self.val_total_loss1 = tf.contrib.copy_graph.get_copied_op(total_loss1, self.graph)
-            # self.val_total_losses2 = [tf.contrib.copy_graph.get_copied_op(total_losses2[i], self.graph) for i in xrange(len(total_losses2))]
- 
-            # Initialize solver
-            # mom1, mom2 = 0.9, 0.999 # adam defaults
-            # self.global_step = tf.Variable(0, trainable=False)
-            # learning_rate = tf.train.exponential_decay(self.meta_lr, self.global_step, ANNEAL_INTERVAL, 0.5, staircase=True)
-            # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            # with tf.control_dependencies(update_ops):
-            # self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.total_losses2[self.num_updates - 1], global_step=self.global_step)
-            # flat_img_inputb = tf.reshape(flat_img_inputb, [self.meta_batch_size, self.T, 3, 80, 64])
-            # flat_img_inputb = tf.transpose(flat_img_inputb, perm=[0,1,4,3,2])
+
             if 'Training' in prefix:
                 self.train_op = tf.train.AdamOptimizer(self.meta_lr).minimize(self.total_loss)
                 # Add summaries
                 summ = [tf.summary.scalar(prefix + 'loss', self.total_loss)] # tf.scalar_summary('Learning rate', learning_rate)
-                # train_summ.append(tf.scalar_summary('Moving Mean', self.moving_mean))
-                # train_summ.append(tf.scalar_summary('Moving Variance', self.moving_variance))
-                # train_summ.append(tf.scalar_summary('Moving Mean Test', self.moving_mean_test))
-                # train_summ.append(tf.scalar_summary('Moving Variance Test', self.moving_variance_test))
-                # for i in xrange(self.meta_batch_size):
-                #     summ.append(tf.summary.image('Training_image_%d' % i, flat_img_inputb[i]*255.0, max_outputs=50))
                 self.train_summ_op = tf.summary.merge(summ)
             elif 'Validation' in prefix:
                 # Add summaries
                 summ = [tf.summary.scalar(prefix + 'loss', self.val_total_loss)] # tf.scalar_summary('Learning rate', learning_rate)
-                # train_summ.append(tf.scalar_summary('Moving Mean', self.moving_mean))
-                # train_summ.append(tf.scalar_summary('Moving Variance', self.moving_variance))
-                # train_summ.append(tf.scalar_summary('Moving Mean Test', self.moving_mean_test))
-                # train_summ.append(tf.scalar_summary('Moving Variance Test', self.moving_variance_test))
-                # for i in xrange(self.meta_batch_size):
-                    # summ.append(tf.summary.image('Validation_image_%d' % i, flat_img_inputb[i]*255.0, max_outputs=50))
                 self.val_summ_op = tf.summary.merge(summ)
 
     def construct_image_input(self, nn_input, x_idx, img_idx, network_config=None):
@@ -273,12 +250,7 @@ class PolicyCloningFinalState(PolicyOptTf):
             self.conv_out_size = int(im_width*im_height*num_filters[2])
         else:
             self.conv_out_size = int(im_width/(8.0)*im_height/(8.0)*num_filters[2]) # 3 layers each with stride 2
-        # self.conv_out_size = int(im_width/(16.0)*im_height/(16.0)*num_filters[3]) # 3 layers each with stride 2
 
-        # conv weights
-        # weights['wc1'] = get_he_weights([filter_size, filter_size, num_channels, num_filters[0]], name='wc1') # 5x5 conv, 1 input, 32 outputs
-        # weights['wc2'] = get_he_weights([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2') # 5x5 conv, 32 inputs, 64 outputs
-        # weights['wc3'] = get_he_weights([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3') # 5x5 conv, 32 inputs, 64 outputs
         weights['wc1'] = init_conv_weights_xavier([filter_size, filter_size, num_channels, num_filters[0]], name='wc1') # 5x5 conv, 1 input, 32 outputs
         weights['wc2'] = init_conv_weights_xavier([filter_size, filter_size, num_filters[0], num_filters[1]], name='wc2') # 5x5 conv, 32 inputs, 64 outputs
         weights['wc3'] = init_conv_weights_xavier([filter_size, filter_size, num_filters[1], num_filters[2]], name='wc3') # 5x5 conv, 32 inputs, 64 outputs
@@ -344,23 +316,30 @@ class PolicyCloningFinalState(PolicyOptTf):
         conv_out = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
         return conv_out
         
-        def fc_forward(self, inputa, inputb, weights, update=False, is_training=True, network_config=None):
-            # inputa is the final image, N x 1 x dO and inputb is the whole demo trajectory, N x T x dO
-            # fc_output should be N x T x (2*dO)
+    def fc_forward(self, inputa, inputb, weights, update=False, is_training=True, testing=False, network_config=None):
+        # inputa is the final image, (N*1) x dO and inputb is the whole demo trajectory, (N*T) x dO
+        # fc_output should be (N*T) x (2*dO)
+        n_layers = network_config.get('n_layers', 4)
+        use_dropout = self._hyperparams.get('use_dropout', False)
+        prob = self._hyperparams.get('keep_prob', 0.5)
+        if is_training:
+            testing = False
+        if not testing:
             fc_output = []
             for t in xrange(self.T):
-                fc_input = tf.concat(2, [tf.expand_dims(inputa[:, t, :], axis=1), inputb])
+                fc_input = tf.concat(1, [tf.expand_dims(inputb[t, :], axis=0), inputa])
                 fc_output.append(fc_input)
-            fc_output = tf.concat(1, fc_output)
-            for i in xrange(n_layers):
-                fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
-                if i != n_layers - 1:
-                    fc_output = tf.nn.relu(fc_output)
-                    if use_dropout:
-                        fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i)
-                outputs.append(fc_output)
-            # return fc_output, fp, moving_mean, moving_variance
-            return fc_output
+            fc_output = tf.concat(0, fc_output)
+        else:
+            fc_output = tf.concat(1, [inputb, inputa])
+        for i in xrange(n_layers):
+            fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
+            if i != n_layers - 1:
+                fc_output = tf.nn.relu(fc_output)
+                if use_dropout:
+                    fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i)
+        # return fc_output, fp, moving_mean, moving_variance
+        return fc_output
 
     def construct_model(self, input_tensors=None, prefix='Training_', dim_input=27, dim_output=7, batch_size=25, network_config=None):
         """
@@ -391,11 +370,9 @@ class PolicyCloningFinalState(PolicyOptTf):
             self.obsa = obsa = input_tensors['inputa'] # meta_batch_size x update_batch_size x dim_input
             self.obsb = obsb = input_tensors['inputb']
         # Temporary in order to make testing work
-        if 'Training' or 'Testing' in prefix:
+        if 'Training' in prefix:
             self.statea = statea = tf.placeholder(tf.float32, name='statea')
             self.stateb = stateb = tf.placeholder(tf.float32, name='stateb')
-            # self.inputa = inputa = tf.placeholder(tf.float32)
-            # self.inputb = inputb = tf.placeholder(tf.float32)
             self.actiona = actiona = tf.placeholder(tf.float32, name='actiona')
             self.actionb = actionb = tf.placeholder(tf.float32, name='actionb')
             self.reference_tensor = reference_tensor = tf.placeholder(tf.float32, [self.T, self._dO], name='reference')
@@ -404,12 +381,11 @@ class PolicyCloningFinalState(PolicyOptTf):
         else:
             statea = self.statea
             stateb = self.stateb
-            # self.inputa = inputa = tf.placeholder(tf.float32)
-            # self.inputb = inputb = tf.placeholder(tf.float32)
             actiona = self.actiona
             actionb = self.actionb
             reference_tensor = self.reference_tensor
         
+        # This assumes update_batch_size to be 1
         statea = tf.expand_dims(statea[:, -1, :], axis=1)
         obsa = tf.expand_dims(obsa[:, -1, :], axis=1)
         inputa = tf.concat(2, [statea, obsa]) # N x 1 x dO
@@ -417,10 +393,9 @@ class PolicyCloningFinalState(PolicyOptTf):
         
         with tf.variable_scope('model', reuse=None) as training_scope:
             # Construct layers weight & bias
-            # TODO: since we flip to reuse automatically, this code below is unnecessary
             if 'weights' not in dir(self):
                 self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
-                self.sorted_weight_keys = natsorted(self.weights.keys())
+                self.sorted_weight_keys = sorted(self.weights.keys())
             else:
                 training_scope.reuse_variables()
                 weights = self.weights
@@ -439,21 +414,23 @@ class PolicyCloningFinalState(PolicyOptTf):
                 if 'Training' in prefix:
                     # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
                     local_outputa = self.conv_forward(inputa, state_inputa, weights, network_config=network_config)
-                    local_outputb = self.conv_forward(inputa, state_inputa, weights, network_config=network_config)
+                    local_outputb = self.conv_forward(inputb, state_inputb, weights, network_config=network_config)
                     local_output = self.fc_forward(local_outputa, local_outputb, weights, network_config=network_config)
                 else:
                     # local_outputa, _, moving_mean_test, moving_variance_test = self.forward(inputa, state_inputa, weights, is_training=False, network_config=network_config)
                     local_outputa = self.conv_forward(inputa, state_inputa, weights, update=update, is_training=False, network_config=network_config)
                     local_outputb = self.conv_forward(inputb, state_inputb, weights, update=update, is_training=False, network_config=network_config)
-                    local_output = self.forward(local_outputa, local_outputb, weights, update=update, is_training=False, network_config=network_config)
+                    if 'Testing' in prefix:
+                        local_output = self.fc_forward(local_outputa, local_outputb, weights, update=update, is_training=False, testing=True, network_config=network_config)
+                    else:
+                        local_output = self.fc_forward(local_outputa, local_outputb, weights, update=update, is_training=False, network_config=network_config)
                 local_loss = euclidean_loss_layer(local_output, actionb, None, behavior_clone=True)
                 
                 local_fn_output = [local_output, local_loss, flat_img_inputb]
                 return local_fn_output
-
+                
         if self.norm_type:
             # initialize batch norm vars.
-            # TODO: figure out if this line of code is necessary
             if self.norm_type == 'vbn':
                 # Initialize VBN
                 # Uncomment below to update the mean and mean_sq of the reference batch
@@ -521,7 +498,6 @@ class PolicyCloningFinalState(PolicyOptTf):
         self.policy.selected_demoX = []
         self.policy.selected_demoU = []
         for i in xrange(n_folders):
-            # TODO: load observations from images instead
             selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i][0]] # TODO: make this work for update_batch_size > 1
             O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (i, selected_cond)))[:, :, :, :3]
             if len(O.shape) == 4:
@@ -633,10 +609,10 @@ class PolicyCloningFinalState(PolicyOptTf):
         
     def generate_data_batch(self, itr, train=True):
         if train:
-            demos = {key: demos[key].copy() for key in self.train_idx}
+            demos = {key: self.demos[key].copy() for key in self.train_idx}
             idxes = self.training_batch_idx[itr]
         else:
-            demos = {key: demos[key].copy() for key in self.val_idx}
+            demos = {key: self.demos[key].copy() for key in self.val_idx}
             idxes = self.val_batch_idx[itr]
         batch_size = self.meta_batch_size
         update_batch_size = self.update_batch_size
