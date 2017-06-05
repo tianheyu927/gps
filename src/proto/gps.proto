@@ -27,6 +27,8 @@ enum SampleType {
   IMAGE_FEAT = 20;
   CONDITION_DATA = 21; //A constant specific to each condition
   TOTAL_DATA_TYPES = 22;
+  OBJECT_POSITIONS = 23;
+  OBJECT_COLORS = 24;
 }
 
 // Message containing the data for a single sample.

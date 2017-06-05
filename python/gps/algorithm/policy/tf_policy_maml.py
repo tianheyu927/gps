@@ -21,7 +21,7 @@ class TfPolicyMAML(Policy):
         device_string: tf device string for running on either gpu or cpu.
     """
     # def __init__(self, dU, obs_tensor, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
-    def __init__(self, dU, obsa, statea, actiona, obsb, stateb, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, copy_param_scope=None):
+    def __init__(self, dU, obsa, statea, actiona, obsb, stateb, act_op, reference_op, reference_out, feat_op, image_op, norm_type, var, sess, graph, device_string, use_vision=True, copy_param_scope=None):
         Policy.__init__(self)
         self.dU = dU
         # self.obs_tensor = obs_tensor
@@ -44,6 +44,7 @@ class TfPolicyMAML(Policy):
         self.img_idx = None
         self.reference_op = reference_op
         self.reference_out = reference_out
+        self.use_vision = use_vision
 
         if copy_param_scope:
             with self.graph.as_default():
@@ -71,9 +72,10 @@ class TfPolicyMAML(Policy):
             obs = np.expand_dims(obs, axis=0)
         if self.scale is not None and self.bias is not None:
             obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
-        obs[:, self.img_idx] /= 255.0
-        state = obs[:, self.x_idx]
-        obs = obs[:, self.img_idx]
+        if self.use_vision:
+            obs[:, self.img_idx] /= 255.0
+            state = obs[:, self.x_idx]
+            obs = obs[:, self.img_idx]
         # This following code seems to be buggy
         # TODO: figure out why this doesn't work
         # if t == 0:
@@ -90,15 +92,20 @@ class TfPolicyMAML(Policy):
                 action_mean = self.run(self.act_op, feed_dict={self.obsa: obs, self.statea: state, self.reference_op: self.reference_batch})
         # action_mean = self.run(self.act_op, feed_dict={self.inputa: obs}) #need to set act_op to be act_op_b if using set_params
         else:
-            assert hasattr(self, 'selected_demoO')
-            # import pdb; pdb.set_trace()
-            selected_obs = self.selected_demoO[idx].astype(np.float32)
-            selected_obs /= 255.0
-            action_mean = self.run(self.act_op, feed_dict={self.obsa: selected_obs,
-                                                          self.statea: self.selected_demoX[idx],
-                                                          self.actiona: self.selected_demoU[idx],
-                                                          self.obsb: np.expand_dims(obs, axis=0),
-                                                          self.stateb: np.expand_dims(state, axis=0)})
+            if self.use_vision:
+                assert hasattr(self, 'selected_demoO')
+                # import pdb; pdb.set_trace()
+                selected_obs = self.selected_demoO[idx].astype(np.float32)
+                selected_obs /= 255.0
+                action_mean = self.run(self.act_op, feed_dict={self.obsa: selected_obs,
+                                                              self.statea: self.selected_demoX[idx],
+                                                              self.actiona: self.selected_demoU[idx],
+                                                              self.obsb: np.expand_dims(obs, axis=0),
+                                                              self.stateb: np.expand_dims(state, axis=0)})
+            else:
+                action_mean = self.run(self.act_op, feed_dict={self.statea: self.selected_demoX[idx],
+                                                              self.actiona: self.selected_demoU[idx],
+                                                              self.stateb: np.expand_dims(obs, axis=0)})
         if noise is None:
             u = action_mean
         else:

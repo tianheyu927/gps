@@ -588,6 +588,8 @@ def main():
                 help='number of demos collected in one batch')
     parser.add_argument('--maml_idx', metavar='N', type=int,
                 help='mamal color index')
+    parser.add_argument('--test', metavar='N', type=int,
+                help='roll out maml policy')
     
     args = parser.parse_args()
 
@@ -601,6 +603,7 @@ def main():
     start_idx = args.start
     batch = args.batch
     maml_idx = args.maml_idx
+    maml_test = args.test
 
     from gps import __file__ as gps_filepath
     gps_filepath = os.path.abspath(gps_filepath)
@@ -839,6 +842,8 @@ def main():
             hyperparams.config['algorithm']['policy_opt']['demo_file'] = hyperparams.config['common']['NN_demo_file']
             hyperparams.config['algorithm']['policy_opt']['agent'] = hyperparams.config['pol_agent']
             hyperparams.config['batch'] = batch
+        if type(maml_test) is int:
+            hyperparams.config['algorithm']['policy_opt']['test'] = True
         gps = GPSMain(hyperparams.config)
         if hyperparams.config['gui_on']:
             # run_gps = threading.Thread(

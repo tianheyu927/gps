@@ -106,23 +106,25 @@ class PolicyCloningFinalState(PolicyOptTf):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            # test_agent = hyperparams['agent'][:1500]  # Required for sampling
-            # test_agent.extend(hyperparams['agent'][-150:])
+            test_agent = hyperparams['agent'][:750]  # Required for sampling
+            test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:1200]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        # demo_file = hyperparams['demo_file'][:1500]
-        # demo_file.extend(hyperparams['demo_file'][-150:])
+        demo_file = hyperparams['demo_file'][:750]
+        demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
 
-        self.init_network(self.graph, restore_iter=self.restore_iter)
-        self.init_network(self.graph, restore_iter=self.restore_iter, prefix='Validation_')
-        # self.init_network(self.graph, prefix='Testing')
+        if not hyperparams.get('test', False):
+            self.init_network(self.graph, restore_iter=self.restore_iter)
+            self.init_network(self.graph, restore_iter=self.restore_iter, prefix='Validation_')
+        else:
+            self.init_network(self.graph, prefix='Testing')
         
         with self.graph.as_default():
             self.saver = tf.train.Saver()
@@ -141,7 +143,8 @@ class PolicyCloningFinalState(PolicyOptTf):
         else:
             self.update()
             # import pdb; pdb.set_trace()
-        os._exit(1) # debugging
+        if not hyperparams.get('test', False):
+            os._exit(1) # debugging
 
         # Replace input tensors to be placeholders for rolling out learned policy
         # self.init_network(self.graph, prefix='Testing')
@@ -370,7 +373,7 @@ class PolicyCloningFinalState(PolicyOptTf):
             self.obsa = obsa = input_tensors['inputa'] # meta_batch_size x update_batch_size x dim_input
             self.obsb = obsb = input_tensors['inputb']
         # Temporary in order to make testing work
-        if 'Training' in prefix:
+        if 'Training' or 'Testing' in prefix:
             self.statea = statea = tf.placeholder(tf.float32, name='statea')
             self.stateb = stateb = tf.placeholder(tf.float32, name='stateb')
             self.actiona = actiona = tf.placeholder(tf.float32, name='actiona')
@@ -487,7 +490,7 @@ class PolicyCloningFinalState(PolicyOptTf):
                     demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.x_idx))
         self.demos = demos
         self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
-        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
+        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+750)) for i in self.val_idx}
         with Timer('Generating batches for each iteration'):
             self.generate_batches()
     
@@ -499,7 +502,11 @@ class PolicyCloningFinalState(PolicyOptTf):
         self.policy.selected_demoU = []
         for i in xrange(n_folders):
             selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i][0]] # TODO: make this work for update_batch_size > 1
-            O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (i, selected_cond)))[:, :, :, :3]
+            if i in self.val_idx:
+                idx = i + 750
+            else:
+                idx = i
+            O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
             if len(O.shape) == 4:
                 O = np.expand_dims(O, axis=0)
             O = np.transpose(O, [0, 1, 4, 3, 2]) # transpose to mujoco setting for images
@@ -672,7 +679,7 @@ class PolicyCloningFinalState(PolicyOptTf):
     
                 if itr != 0 and itr % PRINT_INTERVAL == 0:
                     print 'Iteration %d: average loss is %.2f' % (itr, np.mean(losses))
-                    prelosses, postlosses = [], []
+                    losses = []
 
                 if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
                     if len(self.val_idx) > 0:

@@ -19,7 +19,8 @@ from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
         END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, \
         END_EFFECTOR_POINT_JACOBIANS, ACTION, RGB_IMAGE, RGB_IMAGE_SIZE, \
         CONTEXT_IMAGE, CONTEXT_IMAGE_SIZE, GYM_REWARD, END_EFFECTOR_POINTS_NO_TARGET, \
-        END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT, CONDITION_DATA
+        END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT, CONDITION_DATA, OBJECT_COLORS, \
+        OBJECT_POSITIONS
 
 from gps.sample.sample import Sample
 from gps.utility.general_utils import sample_params
@@ -168,6 +169,10 @@ class AgentMuJoCo(Agent):
                 self.x0[i] = np.concatenate([self.x0[i], np.zeros((self._hyperparams['sensor_dims'][IMAGE_FEAT],))])
             if CONDITION_DATA in self.x_data_types:
                 self.x0[i] = np.concatenate([self.x0[i], self._hyperparams['condition_data'][i]])
+            if OBJECT_POSITIONS in self.x_data_types:
+                self.x0[i] = np.concatenate([self.x0[i], np.zeros((self._hyperparams['sensor_dims'][OBJECT_POSITIONS],))])
+            if OBJECT_COLORS in self.x_data_types:
+                self.x0[i] = np.concatenate([self.x0[i], np.zeros((self._hyperparams['sensor_dims'][OBJECT_COLORS],))])
 
         if self._hyperparams['render']:
             cam_pos = self._hyperparams['camera_pos']
@@ -227,7 +232,7 @@ class AgentMuJoCo(Agent):
 
 
     def sample(self, policy, condition, verbose=True, save=True, noisy=True, record_image=False, record_gif=None, \
-                record_gif_fps=None, include_no_target=False, task_idx=None, reset=True, generate_demo=False):
+                record_gif_fps=None, include_no_target=False, task_idx=None, reset=True, generate_demo=False, save_state=False):
         """
         Runs a trial and constructs a new sample containing information
         about the trial.
@@ -250,7 +255,8 @@ class AgentMuJoCo(Agent):
             feature_fn = self.feature_encoder.get_image_features
         elif 'get_image_features' in dir(policy):
             feature_fn = policy.get_image_features
-        new_sample = self._init_sample(condition, feature_fn=feature_fn, record_image=record_image, include_no_target=include_no_target)
+        new_sample = self._init_sample(condition, feature_fn=feature_fn, record_image=record_image, \
+                                        include_no_target=include_no_target, save_state=save_state)
         mj_X = self._hyperparams['x0'][condition]
         U = np.zeros([self.T, self.dU])
         if self._hyperparams['record_reward']:
@@ -303,7 +309,8 @@ class AgentMuJoCo(Agent):
                 #TODO: Some hidden state stuff will go here.
                 #TODO: Will it? This TODO has been here for awhile
                 self._data = self._world[condition].get_data()
-                self._set_sample(new_sample, mj_X, t, condition, feature_fn=feature_fn, record_image=record_image, include_no_target=include_no_target)
+                self._set_sample(new_sample, mj_X, t, condition, feature_fn=feature_fn, record_image=record_image, \
+                                    include_no_target=include_no_target, save_state=save_state)
 
         if record_gif and imageio:
             # record a gif of sample.
@@ -342,7 +349,7 @@ class AgentMuJoCo(Agent):
         self._world[condition].set_data(data)
         self._world[condition].kinematics()
 
-    def _init_sample(self, condition, feature_fn=None, record_image=False, include_no_target=False):
+    def _init_sample(self, condition, feature_fn=None, record_image=False, include_no_target=False, save_state=False):
         """
         Construct a new sample and fill in the first time step.
         Args:
@@ -376,6 +383,14 @@ class AgentMuJoCo(Agent):
             jac[idx:(idx+3), :] = self._world[condition].get_jac_site(site)
         sample.set(END_EFFECTOR_POINT_JACOBIANS, jac, t=0)
 
+        # save object colors and positions
+        if save_state or OBJECT_COLORS in self.obs_data_types or OBJECT_COLORS in self.x_data_types:
+            object_idx = self._hyperparams['pos_body_idx']
+            object_body_pos = self._model[condition]['body_pos'][object_idx, :]
+            object_color = self._model[condition]['geom_rgba'][object_idx, :3] #only need rgb
+            sample.set(OBJECT_POSITIONS, object_body_pos.flatten(), t=0)
+            sample.set(OBJECT_COLORS, object_color.flatten(), t=0)
+            
         if CONDITION_DATA in self.obs_data_types:
             sample.set(CONDITION_DATA, self._hyperparams['condition_data'][condition], t=0)
 
@@ -420,7 +435,7 @@ class AgentMuJoCo(Agent):
                         sample.set(IMAGE_FEAT, np.zeros((self._hyperparams['sensor_dims'][IMAGE_FEAT],)), t=0)
         return sample
 
-    def _set_sample(self, sample, mj_X, t, condition, feature_fn=None, record_image=False, include_no_target=False):
+    def _set_sample(self, sample, mj_X, t, condition, feature_fn=None, record_image=False, include_no_target=False, save_state=False):
         """
         Set the data for a sample for one time step.
         Args:
@@ -453,6 +468,14 @@ class AgentMuJoCo(Agent):
             idx = site * 3
             jac[idx:(idx+3), :] = self._world[condition].get_jac_site(site)
         sample.set(END_EFFECTOR_POINT_JACOBIANS, jac, t=t+1)
+        
+        # save object colors and positions
+        if save_state or OBJECT_COLORS in self.obs_data_types or OBJECT_COLORS in self.x_data_types:
+            object_idx = self._hyperparams['pos_body_idx']
+            object_body_pos = self._model[condition]['body_pos'][object_idx, :]
+            object_color = self._model[condition]['geom_rgba'][object_idx, :3] #only need rgb
+            sample.set(OBJECT_POSITIONS, object_body_pos.flatten(), t=t+1)
+            sample.set(OBJECT_COLORS, object_color.flatten(), t=t+1)
 
         if CONDITION_DATA in self.obs_data_types:
             sample.set(CONDITION_DATA, self._hyperparams['condition_data'][condition], t=t+1)
