@@ -774,10 +774,10 @@ class PolicyCloningMAML(PolicyOptTf):
         
     def generate_data_batch(self, itr, train=True):
         if train:
-            demos = {key: demos[key].copy() for key in self.train_idx}
+            demos = {key: self.demos[key].copy() for key in self.train_idx}
             idxes = self.training_batch_idx[itr]
         else:
-            demos = {key: demos[key].copy() for key in self.val_idx}
+            demos = {key: self.demos[key].copy() for key in self.val_idx}
             idxes = self.val_batch_idx[itr]
         batch_size = self.meta_batch_size
         update_batch_size = self.update_batch_size

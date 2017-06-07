@@ -24,7 +24,7 @@ from random import shuffle
 from gps.algorithm.policy.tf_policy_maml import TfPolicyMAML
 from gps.algorithm.policy_opt.config import POLICY_OPT_TF
 from gps.algorithm.policy_opt.policy_opt import PolicyOpt
-from gps.algorithm.policy_opt.policy_opt_maml import PolicyOptMAML
+from gps.algorithm.policy_opt.policy_cloning_maml import PolicyCloningMAML
 from gps.algorithm.policy_opt.tf_model_example import *
 from gps.algorithm.policy_opt.tf_utils import TfSolver
 from gps.sample.sample_list import SampleList
@@ -33,7 +33,7 @@ from gps.utility.general_utils import BatchSampler, compute_distance, mkdir_p, T
 
 ANNEAL_INTERVAL = 20000 # this used to be 5000
 
-class PolicyCloningFinalState(PolicyOptMAML):
+class PolicyCloningFinalState(PolicyCloningMAML):
     """ Set up weighted neural network norm loss with learned parameters. """
     def __init__(self, hyperparams, dO, dU):
         config = copy.deepcopy(POLICY_OPT_TF)
