@@ -24,7 +24,7 @@ from random import shuffle
 from gps.algorithm.policy.tf_policy_lstm import TfPolicyLSTM
 from gps.algorithm.policy_opt.config import POLICY_OPT_TF
 from gps.algorithm.policy_opt.policy_opt import PolicyOpt
-from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
+from gps.algorithm.policy_opt.policy_opt_maml import PolicyOptMAML
 from gps.algorithm.policy_opt.tf_model_example import *
 from gps.algorithm.policy_opt.tf_utils import TfSolver
 from gps.sample.sample_list import SampleList
@@ -33,7 +33,7 @@ from gps.utility.general_utils import BatchSampler, compute_distance, mkdir_p, T
 
 ANNEAL_INTERVAL = 20000 # this used to be 5000
 
-class PolicyCloningLSTM(PolicyOptTf):
+class PolicyCloningLSTM(PolicyOptMAML):
     """ Set up weighted neural network norm loss with learned parameters. """
     def __init__(self, hyperparams, dO, dU):
         config = copy.deepcopy(POLICY_OPT_TF)
@@ -99,7 +99,7 @@ class PolicyCloningLSTM(PolicyOptTf):
                 self.x_idx = self.x_idx + list(range(i, i+dim))
             i += dim
 
-        For loading demos
+        # For loading demos
         if hyperparams.get('agent', False):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
@@ -141,7 +141,8 @@ class PolicyCloningLSTM(PolicyOptTf):
         else:
             self.update()
             # import pdb; pdb.set_trace()
-        os._exit(1) # debugging
+        if not hyperparams.get('test', False):
+            os._exit(1) # debugging
 
         # Initialize policy with noise
         self.var = self._hyperparams['init_var'] * np.ones(dU)
@@ -237,20 +238,6 @@ class PolicyCloningLSTM(PolicyOptTf):
                 # for i in xrange(self.meta_batch_size):
                     # summ.append(tf.summary.image('Validation_image_%d' % i, flat_img_inputb[i]*255.0, max_outputs=50))
                 self.val_summ_op = tf.summary.merge(summ)
-
-    def construct_image_input(self, nn_input, x_idx, img_idx, network_config=None):
-        state_input = nn_input[:, 0:x_idx[-1]+1]
-        flat_image_input = nn_input[:, x_idx[-1]+1:img_idx[-1]+1]
-    
-        # image goes through 3 convnet layers
-        num_filters = network_config['num_filters']
-    
-        im_height = network_config['image_height']
-        im_width = network_config['image_width']
-        num_channels = network_config['image_channels']
-        image_input = tf.reshape(flat_image_input, [-1, num_channels, im_width, im_height])
-        image_input = tf.transpose(image_input, perm=[0,3,2,1])
-        return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
         n_layers = network_config.get('n_layers', 4) # TODO TODO this used to be 3.
@@ -300,15 +287,6 @@ class PolicyCloningLSTM(PolicyOptTf):
             weights['b_%d' % i] = init_bias([dim_hidden[i]], name='b_%d' % i)
             in_shape = dim_hidden[i]
         return weights
-    
-    def vbn(self, tensor, name, update=False):
-        VBN_cls = VBN
-        if not hasattr(self, name):
-            vbn = VBN_cls(tensor, name)
-            setattr(self, name, vbn)
-            return vbn.reference_output
-        vbn = getattr(self, name)
-        return vbn(tensor, update=update)
 
     def conv_forward(self, image_input, state_input, weights, update=False, is_training=True, network_config=None):
         norm_type = self.norm_type
@@ -484,191 +462,6 @@ class PolicyCloningLSTM(PolicyOptTf):
         print 'Done with map.'
         return result
     
-    def extract_supervised_data(self, demo_file):
-        """
-            Load demos into memory.
-            Args:
-                demo_file: list of demo files where each file contains demos of one task.
-            Return:
-                total_train_obs: all training observations
-                total_train_U: all training actions
-        """
-        demos = extract_demo_dict(demo_file)
-        n_folders = len(demos.keys())
-        n_val = self._hyperparams['n_val'] # number of demos for testing
-        N_demos = np.sum(demo['demoX'].shape[0] for i, demo in demos.iteritems())
-        print "Number of demos: %d" % N_demos
-        idx = np.arange(n_folders)
-        # shuffle(idx)
-        # self.val_idx = np.sort(np.random.choice(idx, size=n_val, replace=False))
-        # mask = np.array([(i in self.val_idx) for i in idx])
-        # self.train_idx = np.sort(idx[~mask])
-        if n_val != 0:
-            self.val_idx = idx[-n_val:]
-            self.train_idx = idx[:-n_val]
-        else:
-            self.train_idx = idx
-            self.val_idx = []
-        # Normalizing observations
-        with Timer('Normalizing states'):
-            if self.scale is None or self.bias is None:
-                states = np.vstack((demos[i]['demoX'] for i in self.train_idx)) # hardcoded here to solve the memory issue
-                states = states.reshape(-1, len(self.x_idx))
-                # 1e-3 to avoid infs if some state dimensions don't change in the
-                # first batch of samples
-                self.scale = np.diag(
-                    1.0 / np.maximum(np.std(states, axis=0), 1e-3))
-                self.bias = - np.mean(
-                    states.dot(self.scale), axis=0)
-                for key in demos.keys():
-                    demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.x_idx))
-                    demos[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
-                    demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.x_idx))
-        self.demos = demos
-        self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
-        # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+750)) for i in self.val_idx}
-        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
-        with Timer('Generating batches for each iteration'):
-            self.generate_batches()
-    
-    def generate_testing_demos(self):
-        n_folders = len(self.demos.keys())
-        policy_demo_idx = [np.random.choice(n_demo, replace=False, size=self.update_batch_size) for n_demo in [self.demos[i]['demoX'].shape[0] for i in xrange(n_folders)]]
-        self.policy.selected_demoO = []
-        self.policy.selected_demoX = []
-        self.policy.selected_demoU = []
-        for i in xrange(n_folders):
-            # TODO: load observations from images instead
-            selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i][0]] # TODO: make this work for update_batch_size > 1
-            if i in self.val_idx:
-                idx = i# + 1000
-            else:
-                idx = i
-            O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
-            if len(O.shape) == 4:
-                O = np.expand_dims(O, axis=0)
-            O = np.transpose(O, [0, 1, 4, 3, 2]) # transpose to mujoco setting for images
-            O = O.reshape(O.shape[0], self.T, -1)[:, -1, :] # keep uint8 to save RAM
-            O = np.expand_dims(O, axis=1)
-            X = self.demos[i]['demoX'][policy_demo_idx[i]].copy()
-            if len(X.shape) == 2:
-                X = np.expand_dims(X, axis=0)
-            X = np.expand_dims(X[:, -1, :], axis=1)
-            self.policy.selected_demoO.append(O)
-            self.policy.selected_demoX.append(X)
-            self.policy.selected_demoU.append(self.demos[i]['demoU'][policy_demo_idx[i]].copy()) # deprecated
-        print "Selected demo is %d" % self.policy.selected_demoO[0].shape[0]
-        # self.policy.demos = self.demos #debug
-    
-    def generate_reference_batch(self, obs):
-        """
-            Generate the reference batch for VBN. The reference batch is generated randomly
-            at each time step.
-            Args:
-                obs: total observations.
-        """
-        assert self.norm_type == 'vbn'
-        self.reference_batch = np.zeros((self.T, self._dO))
-        for t in xrange(self.T):
-            idx = np.random.choice(np.arange(obs.shape[0]))
-            self.reference_batch[t, :] = obs[idx, t, :]
-        self.policy.reference_batch = self.reference_batch
-        # TODO: make this compatible in new code.
-        # self.policy.reference_batch_X = self.reference_batch[:, self.x_idx]
-        # self.policy.reference_batch_O = self.reference_batch[:, self.img_idx]
-    
-    def generate_batches(self):
-        # TODO: generate all batches of images, states, and actions before training
-        TEST_PRINT_INTERVAL = 500
-        TOTAL_ITERS = self._hyperparams['iterations']
-        # VAL_ITERS = int(TOTAL_ITERS / 500)
-        self.all_training_filenames = []
-        self.all_val_filenames = []
-        self.training_batch_idx = {i: OrderedDict() for i in xrange(TOTAL_ITERS)}
-        self.val_batch_idx = {i: OrderedDict() for i in TEST_PRINT_INTERVAL*np.arange(1, TOTAL_ITERS/TEST_PRINT_INTERVAL)}
-        for itr in xrange(TOTAL_ITERS):
-            sampled_train_idx = random.sample(self.train_idx, self.meta_batch_size)
-            for idx in sampled_train_idx:
-                sampled_folder = self.train_img_folders[idx]
-                image_paths = natsorted(os.listdir(sampled_folder))
-                assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
-                sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+self.eval_batch_size, replace=True)
-                sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
-                self.all_training_filenames.extend(sampled_images)
-                self.training_batch_idx[itr][idx] = sampled_image_idx
-            if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
-                sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
-                for idx in sampled_val_idx:
-                    sampled_folder = self.val_img_folders[idx]
-                    image_paths = natsorted(os.listdir(sampled_folder))
-                    assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
-                    sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+self.eval_batch_size, replace=True)
-                    sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
-                    self.all_val_filenames.extend(sampled_images)
-                    self.val_batch_idx[itr][idx] = sampled_image_idx
-        # import pdb; pdb.set_trace()
-
-    def make_batch_tensor(self, network_config, restore_iter=0, train=True):
-        # TODO: load images using tensorflow fileReader and gif decoder
-        TEST_INTERVAL = 500
-        batch_image_size = (self.update_batch_size + 1) * self.meta_batch_size
-        if train:
-            all_filenames = self.all_training_filenames
-            if restore_iter > 0:
-                all_filenames = all_filenames[batch_image_size*(restore_iter+1):]
-        else:
-            all_filenames = self.all_val_filenames
-            if restore_iter > 0:
-                all_filenames = all_filenames[batch_image_size*(restore_iter/TEST_INTERVAL+1):]
-        
-        im_height = network_config['image_height']
-        im_width = network_config['image_width']
-        num_channels = network_config['image_channels']
-        # make queue for tensorflow to read from
-        filename_queue = tf.train.string_input_producer(tf.convert_to_tensor(all_filenames), shuffle=False)
-        print 'Generating image processing ops'
-        image_reader = tf.WholeFileReader()
-        _, image_file = image_reader.read(filename_queue)
-        image = tf.image.decode_gif(image_file)
-        # should be T x C x W x H
-        image.set_shape((self.T, im_height, im_width, num_channels))
-        image = tf.transpose(image, perm=[0, 3, 2, 1]) # transpose to mujoco setting for images
-        image = tf.reshape(image, [self.T, -1])
-        image = tf.cast(image, tf.float32)
-        image /= 255.0
-        num_preprocess_threads = 1 # TODO - enable this to be set to >1
-        min_queue_examples = 256
-        print 'Batching images'
-        images = tf.train.batch(
-                [image],
-                batch_size = batch_image_size,
-                num_threads=num_preprocess_threads,
-                capacity=min_queue_examples + 3 * batch_image_size,
-                )
-        all_images = []
-        for i in xrange(self.meta_batch_size):
-            image = images[i*(self.update_batch_size+self.eval_batch_size):(i+1)*(self.update_batch_size+self.eval_batch_size)]
-            image = tf.reshape(image, [(self.update_batch_size+self.eval_batch_size)*self.T, -1])
-            all_images.append(image)
-        return tf.pack(all_images)
-        
-    def generate_data_batch(self, itr, train=True):
-        if train:
-            demos = {key: self.demos[key].copy() for key in self.train_idx}
-            idxes = self.training_batch_idx[itr]
-        else:
-            demos = {key: self.demos[key].copy() for key in self.val_idx}
-            idxes = self.val_batch_idx[itr]
-        batch_size = self.meta_batch_size
-        update_batch_size = self.update_batch_size
-        U = [demos[k]['demoU'][v].reshape((1+update_batch_size)*self.T, -1) for k, v in idxes.items()]
-        X = [demos[k]['demoX'][v].reshape((1+update_batch_size)*self.T, -1) for k, v in idxes.items()]
-        U = np.array(U)
-        X = np.array(X)
-        assert U.shape[2] == self._dU
-        assert X.shape[2] == len(self.x_idx)
-        return X, U
-    
     def update(self):
         """
         Update (train) policy.
@@ -745,62 +538,3 @@ class PolicyCloningLSTM(PolicyOptTf):
 
         # Keep track of tensorflow iterations for loading solver states.
         self.tf_iter += self._hyperparams['iterations']
-
-    def sample(self, agent, idx, conditions, N=1, testing=False):
-        samples = []
-        for i in xrange(len(conditions)):
-            for j in xrange(N):
-                if 'record_gif' in self._hyperparams:
-                    gif_config = self._hyperparams['record_gif']
-                    if j < gif_config.get('gifs_per_condition', float('inf')):
-                        gif_fps = gif_config.get('fps', None)
-                        if testing:
-                            gif_dir = gif_config.get('test_gif_dir', self._hyperparams['plot_dir'])
-                        else:
-                            gif_dir = gif_config.get('gif_dir', self._hyperparams['plot_dir'])
-                        gif_dir = gif_dir + 'color_%d/' % idx
-                        mkdir_p(gif_dir)
-                        gif_name = os.path.join(gif_dir,'cond%d.samp%d.gif' % (conditions[i], j))
-                    else:
-                        gif_name=None
-                        gif_fps = None
-                else:
-                    gif_name=None
-                    gif_fps = None
-                samples.append(agent.sample(
-                    self.policy, conditions[i],
-                    verbose=False, save=False, noisy=False,
-                    record_gif=gif_name, record_gif_fps=gif_fps, task_idx=idx))
-        return SampleList(samples)
-
-    def eval_success_rate(self, test_agent):
-        assert type(test_agent) is list
-        success_thresh = test_agent[0]['filter_demos'].get('success_upper_bound', 0.05)
-        state_idx = np.array(list(test_agent[0]['filter_demos'].get('state_idx', range(4, 7))))
-        train_dists = []
-        val_dists = []
-        for i in xrange(len(test_agent)):
-            agent = test_agent[i]['type'](test_agent[i])
-            conditions = self.demos[i]['demoConditions']
-            target_eepts = np.array(test_agent[i]['target_end_effector'])[conditions]
-            if len(target_eepts.shape) == 1:
-                target_eepts = np.expand_dims(target_eepts, axis=0)
-            target_eepts = target_eepts[:, :3]
-            if i in self.val_idx:
-                # Sample on validation conditions.
-                val_sample_list = self.sample(agent, i, conditions, N=1, testing=True)
-                # Calculate val distances
-                X_val = val_sample_list.get_X()
-                val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts[j], axis=1)) \
-                                    for j in xrange(X_val.shape[0])])
-            else:
-                # Sample on training conditions.
-                train_sample_list = self.sample(agent, i, conditions, N=1)
-                # Calculate train distances
-                X_train = train_sample_list.get_X()
-                train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)) \
-                                    for j in xrange(X_train.shape[0])])
-
-        import pdb; pdb.set_trace()
-        print "Training success rate is %.5f" % (np.array(train_dists) <= success_thresh).mean()
-        print "Validation success rate is %.5f" % (np.array(val_dists) <= success_thresh).mean()
