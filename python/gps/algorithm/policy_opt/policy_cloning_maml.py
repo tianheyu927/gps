@@ -28,7 +28,7 @@ from gps.algorithm.policy_opt.policy_opt_tf import PolicyOptTf
 from gps.algorithm.policy_opt.tf_model_example import *
 from gps.algorithm.policy_opt.tf_utils import TfSolver
 from gps.sample.sample_list import SampleList
-from gps.utility.demo_utils import xu_to_sample_list, extract_demo_dict, extract_demo_dict_multi
+from gps.utility.demo_utils import xu_to_sample_list, extract_demo_dict#, extract_demo_dict_multi
 from gps.utility.general_utils import BatchSampler, compute_distance, mkdir_p, Timer
 
 ANNEAL_INTERVAL = 20000 # this used to be 5000
@@ -104,7 +104,7 @@ class PolicyCloningMAML(PolicyOptTf):
         # For loading demos
         if hyperparams.get('agent', False):
             # test_agent = hyperparams['agent']
-            test_agent = hyperparams['agent'][:300]  # Required for sampling
+            test_agent = hyperparams['agent'][:500]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
             # test_agent = hyperparams['agent'][:1500]  # Required for sampling
             test_agent.extend(hyperparams['agent'][-150:])
@@ -113,7 +113,7 @@ class PolicyCloningMAML(PolicyOptTf):
         # demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:1200]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:300]
+        demo_file = hyperparams['demo_file'][:500]
         demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
@@ -279,14 +279,14 @@ class PolicyCloningMAML(PolicyOptTf):
         return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
-        filter_size = 3 # used to be 2
-        num_filters = network_config['num_filters']
-        im_height = network_config['image_height']
-        im_width = network_config['image_width']
-        num_channels = network_config['image_channels']
-        is_dilated = self._hyperparams.get('is_dilated', False)
         weights = {}
         if self._hyperparams.get('use_vision', True):
+            filter_size = 3 # used to be 2
+            num_filters = network_config['num_filters']
+            im_height = network_config['image_height']
+            im_width = network_config['image_width']
+            num_channels = network_config['image_channels']
+            is_dilated = self._hyperparams.get('is_dilated', False)
             if is_dilated:
                 self.conv_out_size = int(im_width*im_height*num_filters[2])
             else:
@@ -313,7 +313,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self._hyperparams.get('color_hints', False):
                 in_shape += 3
         else:
-            inshape = dim_input
+            in_shape = dim_input
         fc_weights = self.construct_fc_weights(in_shape, dim_output, network_config=network_config)
         weights.update(fc_weights)
         return weights
@@ -324,8 +324,9 @@ class PolicyCloningMAML(PolicyOptTf):
         dim_hidden = (n_layers - 1)*[layer_size]
         dim_hidden.append(dim_output)
         weights = {}
+        in_shape = dim_input
         for i in xrange(n_layers):
-            weights['w_%d' % i] = init_weights([dim_input, dim_hidden[i]], name='w_%d' % i)
+            weights['w_%d' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d' % i)
             # weights['w_%d' % i] = init_fc_weights_xavier([in_shape, dim_hidden[i]], name='w_%d' % i)
             weights['b_%d' % i] = init_bias([dim_hidden[i]], name='b_%d' % i)
             in_shape = dim_hidden[i]
@@ -408,7 +409,7 @@ class PolicyCloningMAML(PolicyOptTf):
         x_idx, img_idx, i = [], [], 0
         for sensor in network_config['obs_include']:
             dim = network_config['sensor_dims'][sensor]
-            if sensor in network_config['obs_image_data']:
+            if network_config.get('obs_image_data', False) and sensor in network_config['obs_image_data']:
                 img_idx = img_idx + list(range(i, i+dim))
             else:
                 x_idx = x_idx + list(range(i, i+dim))
@@ -628,7 +629,7 @@ class PolicyCloningMAML(PolicyOptTf):
             self.val_idx = []
         # Normalizing observations
         with Timer('Normalizing states'):
-            if self.scale is None or self.bias is None:
+            if self._hyperparams.get('use_vision', True) and (self.scale is None or self.bias is None):
                 states = np.vstack((demos[i]['demoX'] for i in self.train_idx)) # hardcoded here to solve the memory issue
                 states = states.reshape(-1, len(self.x_idx))
                 # 1e-3 to avoid infs if some state dimensions don't change in the
@@ -641,9 +642,12 @@ class PolicyCloningMAML(PolicyOptTf):
                     demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, len(self.x_idx))
                     demos[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
                     demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.x_idx))
+            # Don't normalize states if not using vision
+            else:
+                self.scale, self.bias = None, None
         self.demos = demos
         self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
-        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
+        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1000)) for i in self.val_idx}
         with Timer('Generating batches for each iteration'):
             self.generate_batches()
     
@@ -659,7 +663,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self._hyperparams.get('use_vision', True):
                 # For half of the dataset
                 if i in self.val_idx:
-                    idx = i + 1200
+                    idx = i + 1000
                 else:
                     idx = i
                 O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]

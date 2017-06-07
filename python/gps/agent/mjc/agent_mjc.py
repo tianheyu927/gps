@@ -385,12 +385,18 @@ class AgentMuJoCo(Agent):
 
         # save object colors and positions
         if save_state or OBJECT_COLORS in self.obs_data_types or OBJECT_COLORS in self.x_data_types:
-            object_idx = self._hyperparams['pos_body_idx']
+            object_idx = self._hyperparams['pos_body_idx'][condition]
+            target_ee_idx = self._hyperparams['target_ee_idx'][condition]
             object_body_pos = self._model[condition]['body_pos'][object_idx, :]
             object_color = self._model[condition]['geom_rgba'][object_idx, :3] #only need rgb
-            sample.set(OBJECT_POSITIONS, object_body_pos.flatten(), t=0)
-            sample.set(OBJECT_COLORS, object_color.flatten(), t=0)
-            
+            object_body_pos_order = np.zeros_like(object_body_pos)
+            object_color_order = np.zeros_like(object_color)
+            object_body_pos_order[target_ee_idx] = object_body_pos[0]
+            object_body_pos_order[np.arange(object_body_pos_order.shape[0]) != target_ee_idx, :] = object_body_pos[1:]
+            object_color_order[target_ee_idx] = object_color[0]
+            object_color_order[np.arange(object_color_order.shape[0]) != target_ee_idx, :] = object_color[1:]
+            sample.set(OBJECT_POSITIONS, object_body_pos_order.flatten(), t=0)
+            sample.set(OBJECT_COLORS, object_color_order.flatten(), t=0)
         if CONDITION_DATA in self.obs_data_types:
             sample.set(CONDITION_DATA, self._hyperparams['condition_data'][condition], t=0)
 
@@ -471,12 +477,18 @@ class AgentMuJoCo(Agent):
         
         # save object colors and positions
         if save_state or OBJECT_COLORS in self.obs_data_types or OBJECT_COLORS in self.x_data_types:
-            object_idx = self._hyperparams['pos_body_idx']
+            object_idx = self._hyperparams['pos_body_idx'][condition]
+            target_ee_idx = self._hyperparams['target_ee_idx'][condition]
             object_body_pos = self._model[condition]['body_pos'][object_idx, :]
             object_color = self._model[condition]['geom_rgba'][object_idx, :3] #only need rgb
-            sample.set(OBJECT_POSITIONS, object_body_pos.flatten(), t=t+1)
-            sample.set(OBJECT_COLORS, object_color.flatten(), t=t+1)
-
+            object_body_pos_order = np.zeros_like(object_body_pos)
+            object_color_order = np.zeros_like(object_color)
+            object_body_pos_order[target_ee_idx] = object_body_pos[0]
+            object_body_pos_order[np.arange(object_body_pos_order.shape[0]) != target_ee_idx, :] = object_body_pos[1:]
+            object_color_order[target_ee_idx] = object_color[0]
+            object_color_order[np.arange(object_color_order.shape[0]) != target_ee_idx, :] = object_color[1:]
+            sample.set(OBJECT_POSITIONS, object_body_pos_order.flatten(), t=t+1)
+            sample.set(OBJECT_COLORS, object_color_order.flatten(), t=t+1)
         if CONDITION_DATA in self.obs_data_types:
             sample.set(CONDITION_DATA, self._hyperparams['condition_data'][condition], t=t+1)
 

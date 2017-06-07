@@ -112,12 +112,12 @@ for i in xrange(TRAIN_TRIALS):
             pair_dist = cdist(cube_pos, cube_pos)
             pair_dist = pair_dist[pair_dist != 0]
         for k in xrange(N_CUBES):
-            # body_offset = np.zeros((N_CUBES, 3))
-            # body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
-            # body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
-            # body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
-            body_offset[:, 0] = 0.4*cube_pos[:, 0]-0.3
-            body_offset[:, 1] = 0.4*cube_pos[:, 1]-0.1
+            body_offset = np.zeros((N_CUBES, 3))
+            body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
+            body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
+            body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
+            # body_offset[:, 0] = 0.4*cube_pos[:, 0]-0.3
+            # body_offset[:, 1] = 0.4*cube_pos[:, 1]-0.1
             demo_target_ee_idx[i*N_CUBES + k].append(k)
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 # Let validation color be the last 10*6=60 colors
@@ -139,6 +139,9 @@ for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
             body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
             body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
             body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
+            # body_offset[:, 0] = 0.4*cube_pos[:, 0]-0.3
+            # body_offset[:, 1] = 0.4*cube_pos[:, 1]-0.1
+            demo_target_ee_idx[i*N_CUBES + k].append(k)
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 
 pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
@@ -197,6 +200,7 @@ agent = {
         for i in range(TOTAL_CONDITIONS)],
 }
 
+
 pol_agent = [{
     'type': AgentMuJoCo,
     # for testing
@@ -224,13 +228,13 @@ pol_agent = [{
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][[demo_target_ee_idx[j][i]]], np.array([0., 0., 0.])])
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
         'target_ee_idx': range(7, 10),
-        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][[demo_target_ee_idx[j][i]]], np.array([0., 0., 0.])])
+        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
                             for i in xrange(DEMO_CONDITIONS)],
         'success_upper_bound': 0.05,
     },
@@ -265,17 +269,18 @@ demo_agent = [{
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
-    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][demo_target_ee_idx[j][i]], np.array([0., 0., 0.])])
+    'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
+    'target_ee_idx': [demo_target_ee_idx[j][i] for i in range(DEMO_CONDITIONS)],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
         'target_ee_idx': range(7, 10),
-        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][demo_target_ee_idx[j][i]], np.array([0., 0., 0.])])
+        'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
                             for i in xrange(DEMO_CONDITIONS)],
         'success_upper_bound': 0.03,
     },
-    'save_images': False,
+    'save_images': True,
     'save_state': True,
 } for j in xrange(COLOR_TRIALS)]
 
@@ -324,14 +329,14 @@ algorithm['policy_opt'] = {
     'network_params': {
         'num_filters': [40, 40, 40], #20, 20, 20
         'obs_include': agent['obs_include'],
-        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
-        'obs_image_data': [RGB_IMAGE],
-        'image_width': IMAGE_WIDTH,
-        'image_height': IMAGE_HEIGHT,
-        'image_channels': IMAGE_CHANNELS,
+        # 'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
+        # 'obs_image_data': [RGB_IMAGE],
+        # 'image_width': IMAGE_WIDTH,
+        # 'image_height': IMAGE_HEIGHT,
+        # 'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 200,
+        'layer_size': 50,
         'bc': True,
     },
     'use_gpu': 1,
@@ -361,12 +366,12 @@ algorithm['policy_opt'] = {
     'clip_max': 20.0,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
+    'log_dir': '/home/kevin/data/maml_bc_state_1000/4_layer_50_dim_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/tmp/data/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
+    'save_dir': '/home/kevin/data/models/maml_bc_state_1000_model_ln_4_layers_50_dim_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
-    'uses_vision': True,
+    'uses_vision': False,
     'weights_file_prefix': EXP_DIR + 'policy',
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),

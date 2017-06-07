@@ -164,14 +164,14 @@ class GenDemo(object):
                                 if not agent_config[i].get('save_state', False):
                                     demo = agent.sample(
                                         pol, j, # Should be changed back to controller if using linearization
-                                        verbose=(k < self._hyperparams['verbose_trials']), noisy=True, record_image=True, generate_demo=True,
+                                        verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=True, record_image=True, generate_demo=True,
                                         include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps, reset=False #don't reset images
                                         )
                                 else:
                                     demo = agent.sample(
                                         pol, j, # Should be changed back to controller if using linearization
-                                        verbose=(k < self._hyperparams['verbose_trials']), noisy=True, record_image=False, generate_demo=True,
-                                        include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps, reset=False #don't reset images
+                                        verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=True, record_image=True, generate_demo=True,
+                                        include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps, save_state=True, reset=True #reset images since 640x480 images will crash the RAM
                                         )
                                 demos[i].append(demo)
                                 demo_idx_conditions[i].append(j)

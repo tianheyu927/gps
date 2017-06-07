@@ -106,14 +106,14 @@ class PolicyCloningFinalState(PolicyOptTf):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            test_agent = hyperparams['agent'][:750]  # Required for sampling
+            test_agent = hyperparams['agent'][:500]  # Required for sampling
             test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:1200]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:750]
+        demo_file = hyperparams['demo_file'][:500]
         demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
@@ -490,7 +490,7 @@ class PolicyCloningFinalState(PolicyOptTf):
                     demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.x_idx))
         self.demos = demos
         self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
-        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+750)) for i in self.val_idx}
+        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1000)) for i in self.val_idx}
         with Timer('Generating batches for each iteration'):
             self.generate_batches()
     
@@ -503,7 +503,7 @@ class PolicyCloningFinalState(PolicyOptTf):
         for i in xrange(n_folders):
             selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i][0]] # TODO: make this work for update_batch_size > 1
             if i in self.val_idx:
-                idx = i + 750
+                idx = i + 1000
             else:
                 idx = i
             O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
