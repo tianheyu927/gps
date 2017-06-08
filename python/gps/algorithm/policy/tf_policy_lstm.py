@@ -62,6 +62,7 @@ class TfPolicyLSTM(TfPolicyMAML):
             if self.use_vision:
                 assert hasattr(self, 'selected_demoO')
                 assert hasattr(self, 'T')
+                assert hasattr(self, 'update_batch_size')
                 selected_obs = self.selected_demoO[idx].astype(np.float32)
                 selected_obs /= 255.0
                 tiled_obs = np.tile(np.expand_dims(obs, axis=0), (1, self.update_batch_size*self.T, 1))

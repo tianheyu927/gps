@@ -14,7 +14,7 @@ from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.cost.cost_state import CostState
 from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_sum import CostSum
-from gps.algorithm.policy_opt.policy_cloning_maml import PolicyCloningMAML
+from gps.algorithm.policy_opt.policy_cloning_lstm_attention import PolicyCloningLSTMAttention
 from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
@@ -22,12 +22,14 @@ from gps.algorithm.policy_opt.tf_model_example import multi_modal_network, multi
 
 from gps.proto.gps_pb2 import JOINT_ANGLES, JOINT_VELOCITIES, \
         END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES, RGB_IMAGE, RGB_IMAGE_SIZE, ACTION, \
-        END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT
+        END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, IMAGE_FEAT, \
+        OBJECT_COLORS, OBJECT_POSITIONS
 from gps.gui.config import generate_experiment_info
 
 IMAGE_WIDTH = 80
 IMAGE_HEIGHT = 64
 IMAGE_CHANNELS = 3
+N_CUBES = 3
 
 SENSOR_DIMS = {
     JOINT_ANGLES: 2,
@@ -37,8 +39,8 @@ SENSOR_DIMS = {
     END_EFFECTOR_POINTS_NO_TARGET: 3,
     END_EFFECTOR_POINT_VELOCITIES_NO_TARGET: 3,
     ACTION: 2,
-    RGB_IMAGE: IMAGE_WIDTH*IMAGE_HEIGHT*IMAGE_CHANNELS,
-    RGB_IMAGE_SIZE: 3,
+    OBJECT_POSITIONS: N_CUBES*2,
+    OBJECT_COLORS: N_CUBES*3
     # IMAGE_FEAT: 30,  # affected by num_filters set below.
 }
 
@@ -46,7 +48,7 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_states_no_overlap' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
@@ -56,7 +58,6 @@ DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
-N_CUBES = 3
 CUBE_SIZE = 0.03
 
 # Validation colors and training colors
@@ -67,6 +68,7 @@ TRAIN_TRIALS = 500
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
+demo_target_ee_idx = {i: [] for i in xrange(COLOR_TRIALS)}
 distractor_pos = {i: [] for i in xrange(COLOR_TRIALS)}
 distractor_color_idx = {i: [] for i in xrange(COLOR_TRIALS)}
 target_color = {i:None for i in xrange(COLOR_TRIALS)}
@@ -114,6 +116,9 @@ for i in xrange(TRAIN_TRIALS):
             body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
             body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
             body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
+            # body_offset[:, 0] = 0.4*cube_pos[:, 0]-0.3
+            # body_offset[:, 1] = 0.4*cube_pos[:, 1]-0.1
+            demo_target_ee_idx[i*N_CUBES + k].append(k)
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 # Let validation color be the last 10*6=60 colors
 for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
@@ -134,6 +139,9 @@ for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
             body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
             body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
             body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
+            # body_offset[:, 0] = 0.4*cube_pos[:, 0]-0.3
+            # body_offset[:, 1] = 0.4*cube_pos[:, 1]-0.1
+            demo_target_ee_idx[i*N_CUBES + k].append(k)
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 
 pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
@@ -180,19 +188,18 @@ agent = {
     'conditions': common['conditions'],
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
     'target_idx': np.array(list(range(3,6))),
-    'meta_include': [RGB_IMAGE_SIZE],
-    'image_width': IMAGE_WIDTH,
-    'image_height': IMAGE_HEIGHT,
-    'image_channels': IMAGE_CHANNELS,
+    'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ pos_body_offset[i], np.array([0., 0., 0.])])
         for i in range(TOTAL_CONDITIONS)],
 }
+
 
 pol_agent = [{
     'type': AgentMuJoCo,
@@ -209,17 +216,15 @@ pol_agent = [{
     'pos_body_offset': demo_pos_body_offset[j],
     'pos_body_idx': np.arange(4, 4+N_CUBES), #np.array([4]),
     # 'distractor_color': distractor_color[j],
-    'color_idx': np.arange(5, 4+N_CUBES),
+    'color_idx': np.arange(4, 4+N_CUBES),
     'conditions': DEMO_CONDITIONS,
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
-    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+    'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
     'target_idx': np.array(list(range(3,6))),
-    'meta_include': [RGB_IMAGE_SIZE],
-    'image_width': IMAGE_WIDTH,
-    'image_height': IMAGE_HEIGHT,
-    'image_channels': IMAGE_CHANNELS,
+    'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
@@ -249,7 +254,7 @@ demo_agent = [{
     'pos_body_offset': demo_pos_body_offset[j],
     'pos_body_idx': np.arange(4, 4+N_CUBES), #np.array([4]),
     'distractor_color': distractor_color_idx[j],
-    'color_idx': np.arange(5, 4+N_CUBES),
+    'color_idx': np.arange(4, 4+N_CUBES),
     'conditions': DEMO_CONDITIONS,
     'T': 50,
     # 'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
@@ -260,15 +265,13 @@ demo_agent = [{
                     END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
     # 'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
     'target_idx': np.array(list(range(3,6))),
-    'meta_include': [RGB_IMAGE_SIZE],
-    'image_width': IMAGE_WIDTH,
-    'image_height': IMAGE_HEIGHT,
-    'image_channels': IMAGE_CHANNELS,
+    'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
+    'target_ee_idx': [demo_target_ee_idx[j][i] for i in range(DEMO_CONDITIONS)],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
@@ -278,6 +281,7 @@ demo_agent = [{
         'success_upper_bound': 0.03,
     },
     'save_images': True,
+    'save_state': True,
 } for j in xrange(COLOR_TRIALS)]
 
 algorithm = {
@@ -321,18 +325,19 @@ algorithm['cost'] = [{
 
 
 algorithm['policy_opt'] = {
-    'type': PolicyCloningMAML,
+    'type': PolicyCloningLSTMAttention,
     'network_params': {
         'num_filters': [40, 40, 40], #20, 20, 20
         'obs_include': agent['obs_include'],
-        'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
-        'obs_image_data': [RGB_IMAGE],
-        'image_width': IMAGE_WIDTH,
-        'image_height': IMAGE_HEIGHT,
-        'image_channels': IMAGE_CHANNELS,
+        # 'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
+        # 'obs_image_data': [RGB_IMAGE],
+        # 'image_width': IMAGE_WIDTH,
+        # 'image_height': IMAGE_HEIGHT,
+        # 'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
         'layer_size': 100,
+        'lstm_size': 512,
         'bc': True,
     },
     'use_gpu': 1,
@@ -346,28 +351,26 @@ algorithm['policy_opt'] = {
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
-    'stop_grad': False,
     'iterations': 50000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
-    'step_size': 1e-3, #1e-5 # step size of gradient step
-    'num_updates': 3, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
-    'use_grad_reg': False,
-    'grad_reg': 0.005,
-    'use_clip': True,
-    'clip_min': -10.0,
-    'clip_max': 10.0,
+    'use_clip': False,
+    'clip_min': -20.0,
+    'clip_max': 20.0,
     'update_batch_size': 1, # batch size for each task, used to be 1
+    'eval_batch_size': 1,
+    'n_cubes': N_CUBES,
+    'cube_pos_idx': range(10, 10+2*N_CUBES),
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/maml_bc_1000/4_layer_100_dim_40_3x3_filters_1_step_1e_3_mbs_5_ubs_1_update3_10_pos_clip_10_fix_transpose_bug_no_overlap_500_trials',
+    'log_dir': '/home/kevin/data/lstm_attention_bc_state_1000/4_layer_100_dim_lstm_size_512_mbs_5_ubs_1_ebs_1',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_fixed_1e-3_mbs_5_ubs_1_update3_10_pos_clip_10_fix_transpose_bug_no_overlap_500_trials',
+    'save_dir': '/home/kevin/data/models/lstm_attention_bc_state_1000_model_ln_4_layers_100_dim_lstm_size_512_mbs_5_ubs_1_ebs_1',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
-    'use_vision': True,
+    'uses_vision': False,
     'weights_file_prefix': EXP_DIR + 'policy',
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),

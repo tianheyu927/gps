@@ -138,7 +138,8 @@ class PolicyCloningMAML(PolicyOptTf):
         if self.restore_iter > 0:
             self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
             # import pdb; pdb.set_trace()
-            # self.update()
+            if not hyperparams.get('test', False):
+                self.update()
             # TODO: also implement resuming training from restored model
         else:
             self.update()
@@ -425,7 +426,7 @@ class PolicyCloningMAML(PolicyOptTf):
         else:
             self.obsa, self.obsb = None, None
         # Temporary in order to make testing work
-        if 'Training' or 'Testing' in prefix:
+        if not hasattr(self, 'statea'):
             self.statea = statea = tf.placeholder(tf.float32, name='statea')
             self.stateb = stateb = tf.placeholder(tf.float32, name='stateb')
             # self.inputa = inputa = tf.placeholder(tf.float32)
@@ -647,7 +648,8 @@ class PolicyCloningMAML(PolicyOptTf):
                 self.scale, self.bias = None, None
         self.demos = demos
         self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
-        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1000)) for i in self.val_idx}
+        # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
+        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
         with Timer('Generating batches for each iteration'):
             self.generate_batches()
     
@@ -663,7 +665,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self._hyperparams.get('use_vision', True):
                 # For half of the dataset
                 if i in self.val_idx:
-                    idx = i + 1000
+                    idx = i + 1200
                 else:
                     idx = i
                 O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
