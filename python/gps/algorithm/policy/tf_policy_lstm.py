@@ -73,7 +73,8 @@ class TfPolicyLSTM(TfPolicyMAML):
                                                               self.obsb: tiled_obs,
                                                               self.stateb: tiled_state})[:, 0, :]
             else:
-                tiled_state = np.tile(np.expand_dims(state, axis=0), (1, self.update_batch_size*self.T, 1))
+                import pdb; pdb.set_trace()
+                tiled_state = np.tile(np.expand_dims(obs, axis=0), (1, self.update_batch_size*self.T, 1))
                 action_mean = self.run(self.act_op, feed_dict={self.statea: self.selected_demoX[idx],
                                                               self.actiona: self.selected_demoU[idx],
                                                               self.stateb: tiled_state})[:, 0, :]

@@ -105,14 +105,14 @@ class PolicyCloningLSTM(PolicyCloningMAML):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            test_agent = hyperparams['agent'][:200]  # Required for sampling
+            test_agent = hyperparams['agent'][:300]  # Required for sampling
             test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:100]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:200]
+        demo_file = hyperparams['demo_file'][:300]
         demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
@@ -330,7 +330,7 @@ class PolicyCloningLSTM(PolicyCloningMAML):
         conv_output = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
         return conv_output
         
-    def lstm_forward(self, lstm_input, actions, network_config=None):
+    def lstm_forward(self, lstm_input, actions, is_training=False, network_config=None):
         lstm_input = tf.concat(1, [lstm_input, actions])
         lstm_input = tf.reshape(lstm_input, [-1, self.T, self.conv_out_size+len(self.x_idx) + self._dU])
         
@@ -441,7 +441,9 @@ class PolicyCloningLSTM(PolicyCloningMAML):
                 if self._hyperparams.get('use_vision', True):
                     inputa, _, state_inputa = self.construct_image_input(inputa, x_idx, img_idx, network_config=network_config)
                     inputb, flat_img_inputb, state_inputb = self.construct_image_input(inputb, x_idx, img_idx, network_config=network_config)
-                
+                else:
+                    flat_img_inputb = tf.add(inputb, 0)
+                    
                 if 'Training' in prefix:
                     # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
                     if self._hyperparams.get('use_vision', True):
@@ -456,7 +458,7 @@ class PolicyCloningLSTM(PolicyCloningMAML):
                     if self._hyperparams.get('use_vision', True):
                         inputa = self.conv_forward(inputa, state_inputa, weights, update=update, is_training=False, network_config=network_config)
                         inputb = self.conv_forward(inputb, state_inputb, weights, update=update, is_training=False, network_config=network_config)
-                    local_lstm_outputa = self.lstm_forward(inputa, actiona, network_config=network_config)
+                    local_lstm_outputa = self.lstm_forward(inputa, actiona, is_training=False, network_config=network_config)
                     inputb = tf.reshape(inputb, [-1, self.T, self.conv_out_size+len(self.x_idx)])
                     local_outputb = tf.reshape(tf.concat(2, [local_lstm_outputa, inputb]), [-1, self.conv_out_size+len(self.x_idx)+self.lstm.output_size])
                     local_output = self.fc_forward(local_outputb, weights, is_training=False, network_config=network_config)

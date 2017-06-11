@@ -23,6 +23,9 @@ def init_weights(shape, name=None):
     shape = tuple(shape)
     weights = np.random.normal(scale=0.01, size=shape).astype('f')
     return safe_get(name, list(shape), initializer=tf.constant_initializer(weights), dtype=tf.float32)
+    
+def init_bias(shape, name=None):
+    return safe_get(name, initializer=tf.zeros(shape, dtype=tf.float32))
 
 def init_fc_weights_xavier(shape, name=None):
     fc_initializer =  tf.contrib.layers.xavier_initializer(dtype=tf.float32)
@@ -32,9 +35,13 @@ def init_conv_weights_xavier(shape, name=None):
     conv_initializer =  tf.contrib.layers.xavier_initializer_conv2d(dtype=tf.float32)
     return safe_get(name, list(shape), initializer=conv_initializer, dtype=tf.float32)
     
-def init_bias(shape, name=None):
-    return safe_get(name, initializer=tf.zeros(shape, dtype=tf.float32))
+def init_fc_weights_snn(shape, name=None):
+    weights = np.random.normal(scale=np.sqrt(1.0/shape[0]), size=shape).astype('f')
+    return safe_get(name, list(shape), initializer=tf.constant_initializer(weights), dtype=tf.float32)
 
+def init_conv_weights_snn(shape, name=None):
+    weights = np.random.normal(scale=np.sqrt(1.0/(shape[0]*shape[1]*shape[2])), size=shape).astype('f')
+    return safe_get(name, list(shape), initializer=tf.constant_initializer(weights), dtype=tf.float32)
 
 def batched_matrix_vector_multiply(vector, matrix):
     """ computes x^T A in mini-batches. """

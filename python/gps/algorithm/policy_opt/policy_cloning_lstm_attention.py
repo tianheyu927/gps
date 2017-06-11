@@ -175,7 +175,9 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         dim_hidden = (n_layers - 1)*[layer_size]
         dim_hidden.append(dim_output)
         lstm_size = self._hyperparams.get('lstm_size', 512)
-        POS_DIM = 2
+        self.conv_out_size = 0
+        weights = {}
+        POS_DIM = 3
         # LSTM cell
         self.lstm = tf.nn.rnn_cell.BasicRNNCell(lstm_size)
         self.lstm_initial_state = safe_get('lstm_initial_state', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size], dtype=tf.float32))
@@ -185,7 +187,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         in_shape = POS_DIM + dim_input # hard-coded for last conv layer output
         if self._hyperparams.get('color_hints', False):
             in_shape += 3
-        weights['w_attention'] = init_eights([self.lstm.output_size, self.n_cubes], name='w_attention')
+        weights['w_attention'] = init_weights([self.lstm.output_size, self.n_cubes], name='w_attention')
         weights['b_attention'] = init_bias([self.n_cubes], name='b_attention')
         in_shape = dim_input + POS_DIM
         for i in xrange(n_layers):
@@ -195,7 +197,9 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
             in_shape = dim_hidden[i]
         return weights
     
-    def compute_attention(self, attention_input, weights):  
+    def compute_attention(self, attention_input, weights):
+        if len(attention_input.get_shape().dims) == 3:
+            attention_input = tf.squeeze(attention_input)
         output = tf.matmul(attention_input, weights['w_attention']) + weights['b_attention']
         output = tf.nn.softmax(output)
         return output
@@ -256,7 +260,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
             actionb = self.actionb
             reference_tensor = self.reference_tensor
         
-        cube_pos_idx = self._hyperparams.get('cube_pos_idx', range(10, 10+2*self.n_cubes))
+        cube_pos_idx = self._hyperparams.get('cube_pos_idx', 10)
         inputa = statea
         inputb = stateb
         
@@ -264,7 +268,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
             # Construct layers weight & bias
             if 'weights' not in dir(self):
                 self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
-                self.sorted_weight_keys = natsorted(self.weights.keys())
+                self.sorted_weight_keys = sorted(self.weights.keys())
             else:
                 training_scope.reuse_variables()
                 weights = self.weights
@@ -278,14 +282,14 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
                 
                 # Convert to image dims
                 # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
-                demo_embedding = self.compute_attention(self.lstm_forward(inputa, actiona, network_config=network_config))
-                demo_embedding = tf.expand_dims(demo_embedding, axis=3) # N x T x N_CUBES x 1
+                demo_embedding = self.compute_attention(self.lstm_forward(inputa, actiona, network_config=network_config), weights)
+                demo_embedding = tf.expand_dims(tf.expand_dims(demo_embedding, axis=0), axis=3) # N x T x N_CUBES x 1
                 # positions
-                cube_pos_tensor = inputb[:, cube_pos_idx[0]:cube_pos_idx[-1]]
-                cube_pos_tensor = tf.reshape(cube_pos_tensor, [-1, self.T, self.n_cubes, 2])
+                cube_pos_tensor = inputb[:, cube_pos_idx:]
+                cube_pos_tensor = tf.reshape(cube_pos_tensor, [-1, self.T, self.n_cubes, 3])
                 attention = tf.reduce_sum(cube_pos_tensor*demo_embedding, reduction_indices=2)
                 inputb = tf.reshape(inputb, [-1, self.T, dim_input])
-                local_outputb = tf.reshape(tf.concat(2, [inputb, attention]), [-1, dim_input+2])
+                local_outputb = tf.reshape(tf.concat(2, [inputb, attention]), [-1, dim_input+3])
                 if 'Training' in prefix:
                     local_output = self.fc_forward(local_outputb, weights, network_config=network_config)
                 else:

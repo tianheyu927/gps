@@ -363,7 +363,7 @@ algorithm['policy_opt'] = {
     'update_batch_size': 1, # batch size for each task, used to be 1
     'eval_batch_size': 1,
     'n_cubes': N_CUBES,
-    'cube_pos_idx': range(10, 10+2*N_CUBES),
+    'cube_pos_idx': 10,
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
     'log_dir': '/home/kevin/data/lstm_attention_bc_state_1000/4_layer_100_dim_lstm_size_512_mbs_5_ubs_1_ebs_1',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
