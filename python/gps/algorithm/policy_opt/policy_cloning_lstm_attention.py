@@ -280,7 +280,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
                 # Convert to image dims
                 # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
                 demo_embedding = self.compute_attention(self.lstm_forward(inputa, actiona, network_config=network_config), weights)
-                demo_embedding = tf.expand_dims(tf.expand_dims(demo_embedding, axis=0), axis=3) # N x T x N_CUBES x 1
+                demo_embedding = tf.expand_dims(tf.expand_dims(demo_embedding, axis=1), axis=3) # N x 1 x N_CUBES x 1
                 # positions
                 cube_pos_tensor = inputb[:, cube_pos_idx:]
                 cube_pos_tensor = tf.reshape(cube_pos_tensor, [-1, self.T, self.n_cubes, 3])

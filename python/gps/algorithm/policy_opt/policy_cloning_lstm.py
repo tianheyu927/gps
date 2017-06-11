@@ -341,6 +341,7 @@ class PolicyCloningLSTM(PolicyCloningMAML):
                 except ValueError:
                     lstm_scope.reuse_variables()
                     lstm_output, state = self.lstm(lstm_input[:, t, :], state)
+                lstm_output = tf.nn.relu(lstm_output)
                 lstm_output = tf.expand_dims(lstm_output, axis=1)
                 lstm_outputs.append(lstm_output)
         lstm_output = tf.concat(1, lstm_outputs)
