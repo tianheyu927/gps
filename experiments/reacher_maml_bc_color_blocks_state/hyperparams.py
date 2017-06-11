@@ -366,7 +366,7 @@ algorithm['policy_opt'] = {
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 150000, #about 20 epochs
+    'iterations': 120000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
@@ -377,13 +377,13 @@ algorithm['policy_opt'] = {
     'use_grad_reg': False,
     'grad_reg': 0.005,
     'use_clip': True,
-    'clip_min': -15.0,
-    'clip_max': 15.0,
+    'clip_min': -30.0,
+    'clip_max': 30.0,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/gps/data/maml_bc_state_1000/4_layer_200_dim_1e-3_mbs_5_ubs_1_update1_clip_15_change_state_no_color_pos_3d_normalize_context_300_trials',
+    'log_dir': '/home/kevin/gps/data/maml_bc_state_1000/4_layer_200_dim_1e-3_mbs_5_ubs_1_update1_clip_30_change_state_no_color_pos_3d_normalize_context_300_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_state_1000_model_ln_4_layers_200_dim_1e-3_mbs_5_ubs_1_update1_clip_15_change_state_no_color_pos_3d_normalize_context_300_trials',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_state_1000_model_ln_4_layers_200_dim_1e-3_mbs_5_ubs_1_update1_clip_30_change_state_no_color_pos_3d_normalize_context_300_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': False,
