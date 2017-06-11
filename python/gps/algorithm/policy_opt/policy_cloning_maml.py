@@ -200,14 +200,13 @@ class PolicyCloningMAML(PolicyOptTf):
                 result = self.construct_model(input_tensors=input_tensors, prefix=prefix, dim_input=self._dO, dim_output=self._dU,
                                           network_config=self._hyperparams['network_params'])
             # outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test = result
-            inputa, outputas, outputbs, test_output, lossesa, lossesb, flat_img_inputb, fast_weights_values = result
+            outputas, outputbs, test_output, lossesa, lossesb, flat_img_inputb, fast_weights_values, grad_summ = result
             if 'Testing' in prefix:
                 self.obs_tensor = self.obsa
                 self.state_tensor = self.statea
                 self.action_tensor = self.actiona
                 self.act_op = outputas
                 self.outputbs = outputbs
-                self.inputa = inputa
                 self.test_act_op = test_output # post-update output
                 self.image_op = flat_img_inputb
                 self.fast_weights = {key: fast_weights_values[i] for i, key in enumerate(self.sorted_weight_keys)}
@@ -310,11 +309,11 @@ class PolicyCloningMAML(PolicyOptTf):
             
             # fc weights
             # in_shape = 40 # dimension after feature computation
+            in_shape = self.conv_out_size + len(self.x_idx)
         else:
             in_shape = dim_input
-        in_shape = self.conv_out_size + len(self.x_idx) # hard-coded for last conv layer output
         if self._hyperparams.get('use_context', False):
-            in_shape += 3
+            in_shape += self._hyperparams.get('context_dim', 10)
         fc_weights = self.construct_fc_weights(in_shape, dim_output, network_config=network_config)
         weights.update(fc_weights)
         return weights
@@ -461,7 +460,7 @@ class PolicyCloningMAML(PolicyOptTf):
             # TODO: since we flip to reuse automatically, this code below is unnecessary
             if 'weights' not in dir(self):
                 self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
-                self.sorted_weight_keys = sorted(self.weights.keys())
+                self.sorted_weight_keys = natsorted(self.weights.keys())
             else:
                 training_scope.reuse_variables()
                 weights = self.weights
