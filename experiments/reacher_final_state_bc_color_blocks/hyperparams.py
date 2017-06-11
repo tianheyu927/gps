@@ -357,9 +357,9 @@ algorithm['policy_opt'] = {
     'meta_batch_size': 5,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/final_state_bc_1000/4_layer_200_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_300_trials',
+    'log_dir': '/tmp/data/final_state_bc_1000/4_layer_200_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_200_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/final_state_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_300_trials',
+    'save_dir': '/home/kevin/gps/data/models/final_state_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_200_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': True,

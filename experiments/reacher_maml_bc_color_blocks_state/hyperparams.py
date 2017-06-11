@@ -39,8 +39,9 @@ SENSOR_DIMS = {
     END_EFFECTOR_POINTS_NO_TARGET: 3,
     END_EFFECTOR_POINT_VELOCITIES_NO_TARGET: 3,
     ACTION: 2,
-    OBJECT_POSITIONS: N_CUBES*2,
-    OBJECT_COLORS: N_CUBES*3
+    OBJECT_POSITIONS: N_CUBES*3,
+    # OBJECT_COLORS: N_CUBES*3,
+    RGB_IMAGE_SIZE: 3,
     # IMAGE_FEAT: 30,  # affected by num_filters set below.
 }
 
@@ -64,7 +65,7 @@ CUBE_SIZE = 0.03
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 VAL_TRIALS = 50
-TRAIN_TRIALS = 500
+TRAIN_TRIALS = 500 #500
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -188,9 +189,13 @@ agent = {
     'conditions': common['conditions'],
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS], #OBJECT_COLORS],
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS], #OBJECT_COLORS],
+    'meta_include': [RGB_IMAGE_SIZE],
+    'image_width': IMAGE_WIDTH,
+    'image_height': IMAGE_HEIGHT,
+    'image_channels': IMAGE_CHANNELS,
     'target_idx': np.array(list(range(3,6))),
     'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
@@ -220,9 +225,13 @@ pol_agent = [{
     'conditions': DEMO_CONDITIONS,
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS],# OBJECT_COLORS],
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS],# OBJECT_COLORS],
+    'meta_include': [RGB_IMAGE_SIZE],
+    'image_width': IMAGE_WIDTH,
+    'image_height': IMAGE_HEIGHT,
+    'image_channels': IMAGE_CHANNELS,
     'target_idx': np.array(list(range(3,6))),
     'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
@@ -230,6 +239,7 @@ pol_agent = [{
     'record_reward': True,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
+    'target_ee_idx': [demo_target_ee_idx[j][i] for i in range(DEMO_CONDITIONS)],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
@@ -264,6 +274,10 @@ demo_agent = [{
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, \
                     END_EFFECTOR_POINTS, END_EFFECTOR_POINT_VELOCITIES],
     # 'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+    'meta_include': [RGB_IMAGE_SIZE],
+    'image_width': IMAGE_WIDTH,
+    'image_height': IMAGE_HEIGHT,
+    'image_channels': IMAGE_CHANNELS,
     'target_idx': np.array(list(range(3,6))),
     'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
@@ -327,7 +341,7 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
-        'num_filters': [40, 40, 40], #20, 20, 20
+        # 'num_filters': [40, 40, 40], #20, 20, 20
         'obs_include': agent['obs_include'],
         # 'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         # 'obs_image_data': [RGB_IMAGE],
@@ -335,8 +349,8 @@ algorithm['policy_opt'] = {
         # 'image_height': IMAGE_HEIGHT,
         # 'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
-        'n_layers': 4,
-        'layer_size': 50,
+        'n_layers': 5,
+        'layer_size': 400,
         'bc': True,
     },
     'use_gpu': 1,
@@ -346,32 +360,33 @@ algorithm['policy_opt'] = {
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'color_hints': False,
+    'use_context': False,
+    'context_dim': 10,
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 50000, #about 20 epochs
+    'iterations': 150000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
-    'step_size': 5e-4, #1e-5 # step size of gradient step
-    'num_updates': 3, # take one gradient step
+    'step_size': 1e-3, #1e-5 # step size of gradient step
+    'num_updates': 1, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'use_grad_reg': False,
     'grad_reg': 0.005,
     'use_clip': True,
-    'clip_min': -20.0,
-    'clip_max': 20.0,
+    'clip_min': -25.0,
+    'clip_max': 25.0,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/data/maml_bc_state_1000/4_layer_50_dim_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20',
+    'log_dir': '/home/kevin/gps/data/maml_bc_state_1000/5_layer_400_dim_1e-3_mbs_5_ubs_1_update1_clip_25_change_state_no_color_pos_3d_300_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/data/models/maml_bc_state_1000_model_ln_4_layers_50_dim_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_state_1000_model_ln_5_layers_400_dim_1e-3_mbs_5_ubs_1_update1_clip_25_change_state_no_color_pos_3d_300_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
-    'uses_vision': False,
+    'use_vision': False,
     'weights_file_prefix': EXP_DIR + 'policy',
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),

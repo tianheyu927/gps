@@ -342,7 +342,8 @@ algorithm['policy_opt'] = {
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'color_hints': False,
+    'use_context': False,
+    'context_dim': 10,
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,

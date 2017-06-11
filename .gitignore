@@ -116,6 +116,7 @@ experiments/**/*.png
 # Hardcoded stuff
 python/gps/plot_bc_ioc.py
 random_stuff.py
+plot.py
 
 # data
 data/*

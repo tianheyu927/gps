@@ -1,8 +1,8 @@
-for i in {6..32} #{0..12}
+for i in {0..8} #{0..12}
     do
         python python/gps/gps_main.py --start $i --batch 50 reacher_maml_bc_color_blocks_state
     done
-python python/gps/gps_main.py --restore 45000 --test 1 reacher_maml_bc_color_blocks
+# python python/gps/gps_main.py --restore 45000 --test 1 reacher_maml_bc_color_blocks
 # python python/gps/gps_main.py reacher_maml_bc_color_blocks
 # rm ~/gps/data/reacher_color_blocks/*
 # for i in {3..9} #{0..12}
