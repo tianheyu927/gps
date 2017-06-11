@@ -154,10 +154,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
                                copy_param_scope=self._hyperparams['copy_param_scope'])
         self.policy.scale = self.scale
         self.policy.bias = self.bias
-        self.policy.x_idx = self.x_idx
-        self.policy.img_idx = self.img_idx
-        self.policy.T = self.T
-        self.policy.update_batch_size = self.update_batch_size
+        self.policy.init_stored_obs(self.T, self.update_batch_size, self.x_idx, self.img_idx)
         # Generate selected demos for preupdate pass during testing
         self.generate_testing_demos()
         self.eval_success_rate(test_agent)

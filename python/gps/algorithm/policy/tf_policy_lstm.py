@@ -22,6 +22,20 @@ class TfPolicyLSTM(TfPolicyMAML):
     """
     def __init__(self, *args, **kwargs):
         super(TfPolicyLSTM, self).__init__(*args, **kwargs)
+    
+    def init_stored_obs(self, T, update_batch_size, x_idx, img_idx):
+        self.T = T
+        self.update_batch_size = update_batch_size
+        self.x_idx = x_idx
+        self.img_idx = img_idx
+        if self.use_vision:
+            self.stored_obs = np.zeros((1, self.T*self.update_batch_size, len(img_idx)))
+        self.stored_state = np.zeros((1, self.T*self.update_batch_size, len(x_idx)))
+        
+    def clear_stored_obs(self):
+        if self.use_vision:
+            self.stored_obs = np.zeros((1, self.T*self.update_batch_size, len(self.img_idx)))
+        self.stored_state = np.zeros((1, self.T*self.update_batch_size, len(self.x_idx)))
 
     def act(self, x, obs, t, noise, idx):
         """
@@ -43,6 +57,10 @@ class TfPolicyLSTM(TfPolicyMAML):
             obs[:, self.img_idx] /= 255.0
             state = obs[:, self.x_idx]
             obs = obs[:, self.img_idx]
+            self.stored_obs[:, t, :] = obs
+            self.stored_state[:, t, :] = state
+        else:
+            self.stored_state[:, t, :] = obs
         # This following code seems to be buggy
         # TODO: figure out why this doesn't work
         # if t == 0:
@@ -65,21 +83,19 @@ class TfPolicyLSTM(TfPolicyMAML):
                 assert hasattr(self, 'update_batch_size')
                 selected_obs = self.selected_demoO[idx].astype(np.float32)
                 selected_obs /= 255.0
-                tiled_obs = np.tile(np.expand_dims(obs, axis=0), (1, self.update_batch_size*self.T, 1))
-                tiled_state = np.tile(np.expand_dims(state, axis=0), (1, self.update_batch_size*self.T, 1))
                 action_mean = self.run(self.act_op, feed_dict={self.obsa: selected_obs,
                                                               self.statea: self.selected_demoX[idx],
                                                               self.actiona: self.selected_demoU[idx],
-                                                              self.obsb: tiled_obs,
-                                                              self.stateb: tiled_state})[:, 0, :]
+                                                              self.obsb: self.stored_obs,
+                                                              self.stateb: self.stored_state})[:, t, :]
             else:
-                import pdb; pdb.set_trace()
-                tiled_state = np.tile(np.expand_dims(obs, axis=0), (1, self.update_batch_size*self.T, 1))
                 action_mean = self.run(self.act_op, feed_dict={self.statea: self.selected_demoX[idx],
                                                               self.actiona: self.selected_demoU[idx],
-                                                              self.stateb: tiled_state})[:, 0, :]
+                                                              self.stateb: self.stored_state})[:, t, :]
         if noise is None:
             u = action_mean
         else:
             u = action_mean + self.chol_pol_covar.T.dot(noise)
+        if t == self.T - 1:
+            self.clear_stored_obs()
         return np.squeeze(action_mean), np.squeeze(u)  # the DAG computations are batched by default, but we use batch size 1.
