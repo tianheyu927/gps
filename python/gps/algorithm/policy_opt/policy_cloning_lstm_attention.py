@@ -264,7 +264,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         with tf.variable_scope('model', reuse=None) as training_scope:
             # Construct layers weight & bias
             if 'weights' not in dir(self):
-                self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
+                self.weights = weights = self.construct_weights(cube_pos_idx, dim_output, network_config=network_config)
                 self.sorted_weight_keys = sorted(self.weights.keys())
             else:
                 training_scope.reuse_variables()
@@ -285,8 +285,8 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
                 cube_pos_tensor = inputb[:, cube_pos_idx:]
                 cube_pos_tensor = tf.reshape(cube_pos_tensor, [-1, self.T, self.n_cubes, 3])
                 attention = tf.reduce_sum(cube_pos_tensor*demo_embedding, reduction_indices=2)
-                inputb = tf.reshape(inputb, [-1, self.T, dim_input])
-                local_outputb = tf.reshape(tf.concat(2, [inputb, attention]), [-1, dim_input+3])
+                inputb = tf.reshape(inputb, [-1, self.T, dim_input])[:, :, :cube_pos_idx]
+                local_outputb = tf.reshape(tf.concat(2, [inputb, attention]), [-1, cube_pos_idx+3])
                 if 'Training' in prefix:
                     local_output = self.fc_forward(local_outputb, weights, network_config=network_config)
                 else:
