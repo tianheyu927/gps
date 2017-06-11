@@ -384,13 +384,17 @@ class PolicyCloningMAML(PolicyOptTf):
         n_layers = network_config.get('n_layers', 4) # 3
         use_dropout = self._hyperparams.get('use_dropout', False)
         prob = self._hyperparams.get('keep_prob', 0.5)
+        use_selu = self.norm_type == 'selu'
         fc_output = tf.add(fc_input, 0)
         for i in xrange(n_layers):
             fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
             if i != n_layers - 1:
-                fc_output = tf.nn.relu(fc_output)
+                if use_selu:
+                    fc_output = selu(fc_output)
+                else:
+                    fc_output = tf.nn.relu(fc_output)
                 if use_dropout:
-                    fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i)
+                    fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i, selu=use_selu)
         # return fc_output, fp, moving_mean, moving_variance
         return fc_output
 

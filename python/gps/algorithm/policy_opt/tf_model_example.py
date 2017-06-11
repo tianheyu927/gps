@@ -477,30 +477,6 @@ def conv2d(img, w, b, strides=[1, 1, 1, 1], is_dilated=False):
         layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
     return layer
 
-def norm(layer, norm_type='batch_norm', decay=0.9, conv_id=0, is_training=True):
-    if norm_type != 'batch_norm' and norm_type != 'layer_norm':
-        return tf.nn.relu(layer)
-    with tf.variable_scope('norm_layer_%d' % conv_id) as vs:
-        if norm_type == 'batch_norm':
-            if is_training:
-                try:
-                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
-                except ValueError:
-                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
-            else:
-                layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
-                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
-        else: # layer_norm
-            try:
-                layer = tf.contrib.layers.layer_norm(layer, center=True,
-                    scale=False, activation_fn=tf.nn.relu, scope=vs) # updates_collections=None
-            except ValueError:
-                layer = tf.contrib.layers.layer_norm(layer, center=True,
-                    scale=False, activation_fn=tf.nn.relu, scope=vs, reuse=True)
-        return layer
-        
 def selu(x):
     with ops.name_scope('selu') as scope:
         alpha = 1.6732632423543772848170429916717
@@ -543,6 +519,42 @@ def dropout_selu(x, rate, alpha= -1.7580993408473766, fixedPointMean=0.0, fixedP
         return utils.smart_cond(training,
             lambda: dropout_selu_impl(x, rate, alpha, noise_shape, seed, name),
             lambda: array_ops.identity(x))
+            
+def dropout(layer, keep_prob=0.9, is_training=True, name=None, selu=False):
+    if selu:
+        return dropout_selu(layer, 1.0 - keep_prob, name=name, training=is_training)
+    if is_training:
+        return tf.nn.dropout(layer, keep_prob=keep_prob, name=name)
+    else:
+        return tf.add(layer, 0, name=name)
+
+def norm(layer, norm_type='batch_norm', decay=0.9, conv_id=0, is_training=True):
+    if norm_type != 'batch_norm' and norm_type != 'layer_norm':
+        return tf.nn.relu(layer)
+    with tf.variable_scope('norm_layer_%d' % conv_id) as vs:
+        if norm_type == 'batch_norm':
+            if is_training:
+                try:
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
+                except ValueError:
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
+                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+            else:
+                layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
+                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+        elif norm_type == 'layer_norm': # layer_norm
+            try:
+                layer = tf.contrib.layers.layer_norm(layer, center=True,
+                    scale=False, activation_fn=tf.nn.relu, scope=vs) # updates_collections=None
+            except ValueError:
+                layer = tf.contrib.layers.layer_norm(layer, center=True,
+                    scale=False, activation_fn=tf.nn.relu, scope=vs, reuse=True)
+        elif norm_type == 'selu':
+            layer = selu(layer)
+        else:
+            raise NotImplementedError('Other types of norm not implemented.')
+        return layer
         
 class VBN(object):
     """
@@ -611,11 +623,6 @@ class VBN(object):
 def max_pool(img, k):
     return tf.nn.max_pool(img, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
-def dropout(layer, keep_prob=0.9, is_training=True, name=None):
-    if is_training:
-        return tf.nn.dropout(layer, keep_prob=keep_prob, name=name)
-    else:
-        return tf.add(layer, 0, name=name)
 
 # Consider stride size when using xavier for fp network
 def get_xavier_weights(filter_shape, poolsize=(2, 2), name=None):
