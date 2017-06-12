@@ -119,6 +119,7 @@ class PolicyCloningMAML(PolicyOptTf):
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
+            self.generate_batches()
         
         if not hyperparams.get('test', False):
             self.init_network(self.graph, restore_iter=self.restore_iter)
@@ -676,11 +677,6 @@ class PolicyCloningMAML(PolicyOptTf):
                     demos[key]['demoX'] = demos[key]['demoX'].dot(self.scale) + self.bias
                     demos[key]['demoX'] = demos[key]['demoX'].reshape(-1, self.T, len(self.x_idx))
         self.demos = demos
-        self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
-        # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
-        self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
-        with Timer('Generating batches for each iteration'):
-            self.generate_batches()
     
     def generate_testing_demos(self):
         n_folders = len(self.demos.keys())
@@ -729,34 +725,37 @@ class PolicyCloningMAML(PolicyOptTf):
         # self.policy.reference_batch_O = self.reference_batch[:, self.img_idx]
     
     def generate_batches(self):
-        # TODO: generate all batches of images, states, and actions before training
-        TEST_PRINT_INTERVAL = 500
-        TOTAL_ITERS = self._hyperparams['iterations']
-        # VAL_ITERS = int(TOTAL_ITERS / 500)
-        self.all_training_filenames = []
-        self.all_val_filenames = []
-        self.training_batch_idx = {i: OrderedDict() for i in xrange(TOTAL_ITERS)}
-        self.val_batch_idx = {i: OrderedDict() for i in TEST_PRINT_INTERVAL*np.arange(1, TOTAL_ITERS/TEST_PRINT_INTERVAL)}
-        for itr in xrange(TOTAL_ITERS):
-            sampled_train_idx = random.sample(self.train_idx, self.meta_batch_size)
-            for idx in sampled_train_idx:
-                sampled_folder = self.train_img_folders[idx]
-                image_paths = natsorted(os.listdir(sampled_folder))
-                assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
-                sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
-                sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
-                self.all_training_filenames.extend(sampled_images)
-                self.training_batch_idx[itr][idx] = sampled_image_idx
-            if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
-                sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
-                for idx in sampled_val_idx:
-                    sampled_folder = self.val_img_folders[idx]
+        with Timer('Generating batches for each iteration'):
+            self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
+            # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
+            self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
+            TEST_PRINT_INTERVAL = 500
+            TOTAL_ITERS = self._hyperparams['iterations']
+            # VAL_ITERS = int(TOTAL_ITERS / 500)
+            self.all_training_filenames = []
+            self.all_val_filenames = []
+            self.training_batch_idx = {i: OrderedDict() for i in xrange(TOTAL_ITERS)}
+            self.val_batch_idx = {i: OrderedDict() for i in TEST_PRINT_INTERVAL*np.arange(1, TOTAL_ITERS/TEST_PRINT_INTERVAL)}
+            for itr in xrange(TOTAL_ITERS):
+                sampled_train_idx = random.sample(self.train_idx, self.meta_batch_size)
+                for idx in sampled_train_idx:
+                    sampled_folder = self.train_img_folders[idx]
                     image_paths = natsorted(os.listdir(sampled_folder))
                     assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
                     sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
                     sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
-                    self.all_val_filenames.extend(sampled_images)
-                    self.val_batch_idx[itr][idx] = sampled_image_idx
+                    self.all_training_filenames.extend(sampled_images)
+                    self.training_batch_idx[itr][idx] = sampled_image_idx
+                if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
+                    sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
+                    for idx in sampled_val_idx:
+                        sampled_folder = self.val_img_folders[idx]
+                        image_paths = natsorted(os.listdir(sampled_folder))
+                        assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
+                        sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
+                        sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
+                        self.all_val_filenames.extend(sampled_images)
+                        self.val_batch_idx[itr][idx] = sampled_image_idx
         # import pdb; pdb.set_trace()
 
     def make_batch_tensor(self, network_config, restore_iter=0, train=True):
@@ -954,12 +953,14 @@ class PolicyCloningMAML(PolicyOptTf):
             if i in self.val_idx:
                 # Sample on validation conditions and get the states.
                 X_val = self.sample(agent, i, conditions, N=1, testing=True).get_X()
-                val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts[j], axis=1)) \
+                # min distance of the last 10 timesteps
+                val_dists.extend([np.nanmin(np.linalg.norm(X_val[j, :, state_idx].T - target_eepts[j], axis=1)[-10:]) \
                                     for j in xrange(X_val.shape[0])])
             else:
                 # Sample on training conditions.
                 X_train = self.sample(agent, i, conditions, N=1).get_X()
-                train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)) \
+                # min distance of the last 10 timesteps
+                train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)[-10:]) \
                                     for j in xrange(X_train.shape[0])])
 
         import pdb; pdb.set_trace()

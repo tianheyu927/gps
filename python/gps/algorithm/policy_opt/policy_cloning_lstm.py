@@ -118,6 +118,7 @@ class PolicyCloningLSTM(PolicyCloningMAML):
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
+            self.generate_batches()
 
         if not hyperparams.get('test', False):
             self.init_network(self.graph, restore_iter=self.restore_iter)

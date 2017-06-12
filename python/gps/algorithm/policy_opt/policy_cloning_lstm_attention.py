@@ -115,6 +115,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
+            self.generate_batches()
 
         if not hyperparams.get('test', False):
             self.init_network(self.graph, restore_iter=self.restore_iter)
@@ -282,7 +283,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
                 demo_embedding = self.compute_attention(self.lstm_forward(inputa, actiona, network_config=network_config), weights)
                 if len(demo_embedding.get_shape().dims) == 2:
                     demo_embedding = tf.reshape(demo_embedding, [-1, self.T, self.n_cubes])
-                demo_embedding = tf.expand_dims(demo_embedding, axis=3)# N x 1 x N_CUBES x 1
+                demo_embedding = tf.expand_dims(demo_embedding, axis=3)# N x T x N_CUBES x 1
                 # positions
                 cube_pos_tensor = inputb[:, cube_pos_idx:]
                 cube_pos_tensor = tf.reshape(cube_pos_tensor, [-1, self.T, self.n_cubes, 3])
