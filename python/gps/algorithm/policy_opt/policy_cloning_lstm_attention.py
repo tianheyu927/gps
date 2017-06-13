@@ -49,7 +49,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         self.device_string = "/cpu:0"
         assert not self._hyperparams.get('use_vision', True)
         if self._hyperparams['use_gpu'] == 1:
-            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
             tf_config = tf.ConfigProto(gpu_options=gpu_options)
             self._sess = tf.Session(graph=self.graph, config=tf_config)
         else:
@@ -102,15 +102,15 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            # test_agent = hyperparams['agent'][:1500]  # Required for sampling
-            # test_agent.extend(hyperparams['agent'][-150:])
+            test_agent = hyperparams['agent'][:300]  # Required for sampling
+            test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:100]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        # demo_file = hyperparams['demo_file'][:750]
-        # demo_file.extend(hyperparams['demo_file'][-150:])
+        demo_file = hyperparams['demo_file'][:300]
+        demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
@@ -196,6 +196,8 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         return weights
     
     def compute_attention(self, attention_input, weights):
+        if self._hyperparams.get('use_final_state', False):
+            attention_input = attention_input[:, -1, :]
         if len(attention_input.get_shape().dims) == 3:
             attention_input = tf.reshape(attention_input, [-1, self.lstm.state_size])
         output = tf.matmul(attention_input, weights['w_attention']) + weights['b_attention']
@@ -280,8 +282,13 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
                 
                 # Convert to image dims
                 # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
-                demo_embedding = self.compute_attention(self.lstm_forward(inputa, actiona, network_config=network_config), weights)
-                if len(demo_embedding.get_shape().dims) == 2:
+                if 'Training' in prefix:
+                    demo_embedding = self.compute_attention(self.lstm_forward(inputa, actiona, network_config=network_config), weights)
+                else:
+                    demo_embedding = self.compute_attention(self.lstm_forward(inputa, actiona, is_training=False, network_config=network_config), weights)
+                if self._hyperparams.get('use_final_state', False):
+                    demo_embedding = tf.expand_dims(demo_embedding, axis=1)
+                elif len(demo_embedding.get_shape().dims) == 2:
                     demo_embedding = tf.reshape(demo_embedding, [-1, self.T, self.n_cubes])
                 demo_embedding = tf.expand_dims(demo_embedding, axis=3)# N x T x N_CUBES x 1
                 # positions

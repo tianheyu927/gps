@@ -49,7 +49,7 @@ class PolicyCloningLSTM(PolicyCloningMAML):
         self.device_string = "/cpu:0"
         if self._hyperparams['use_gpu'] == 1:
             if not self._hyperparams.get('use_vision', False):
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
             else:
@@ -328,7 +328,9 @@ class PolicyCloningLSTM(PolicyCloningMAML):
         conv_output = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
         return conv_output
         
-    def lstm_forward(self, lstm_input, actions, is_training=False, network_config=None):
+    def lstm_forward(self, lstm_input, actions, is_training=True, network_config=None):
+        use_dropout = self._hyperparams.get('use_dropout', False)
+        prob = self._hyperparams.get('keep_prob', 0.5)
         lstm_input = tf.concat(1, [lstm_input, actions])
         lstm_input = tf.reshape(lstm_input, [-1, self.T, self.conv_out_size+len(self.x_idx) + self._dU])
         
@@ -343,6 +345,8 @@ class PolicyCloningLSTM(PolicyCloningMAML):
                     lstm_scope.reuse_variables()
                     lstm_output, state = self.lstm(lstm_input[:, t, :], state)
                 lstm_output = tf.nn.relu(lstm_output)
+                if use_dropout:
+                    lstm_output = dropout(lstm_output, keep_prob=prob, is_training=is_training)
                 lstm_output = tf.expand_dims(lstm_output, axis=1)
                 lstm_outputs.append(lstm_output)
         lstm_output = tf.concat(1, lstm_outputs)

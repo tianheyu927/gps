@@ -49,12 +49,12 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_states_no_overlap_test' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_states_no_overlap'#_test' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(50) #49
+np.random.seed(49) #50
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
@@ -65,7 +65,7 @@ CUBE_SIZE = 0.03
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 VAL_TRIALS = 50
-TRAIN_TRIALS = 0 #500
+TRAIN_TRIALS = 500 #0
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -350,7 +350,7 @@ algorithm['policy_opt'] = {
         # 'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 200,
+        'layer_size': 400,
         'bc': True,
     },
     'use_gpu': 1,
@@ -360,13 +360,13 @@ algorithm['policy_opt'] = {
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'use_context': True,
+    'use_context': False,
     'context_dim': 10,
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 120000, #about 20 epochs
+    'iterations': 150000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
@@ -379,11 +379,13 @@ algorithm['policy_opt'] = {
     'use_clip': True,
     'clip_min': -30.0,
     'clip_max': 30.0,
+    'add_noise': True,
+    'act_noise_std': 1.0,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/gps/data/maml_bc_state_1000/4_layer_200_dim_1e-3_mbs_5_ubs_1_update1_clip_30_change_state_no_color_pos_3d_normalize_context_300_trials',
+    'log_dir': '/home/kevin/gps/data/maml_bc_state_1000/4_layer_400_dim_1e-3_mbs_5_ubs_1_update1_clip_30_change_state_no_color_pos_3d_normalize_300_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_state_1000_model_ln_4_layers_200_dim_1e-3_mbs_5_ubs_1_update1_clip_30_change_state_no_color_pos_3d_normalize_context_300_trials',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_state_1000_model_ln_4_layers_400_dim_1e-3_mbs_5_ubs_1_update1_clip_30_change_state_no_color_pos_3d_normalize_300_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': False,

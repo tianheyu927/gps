@@ -39,8 +39,8 @@ SENSOR_DIMS = {
     END_EFFECTOR_POINTS_NO_TARGET: 3,
     END_EFFECTOR_POINT_VELOCITIES_NO_TARGET: 3,
     ACTION: 2,
-    OBJECT_POSITIONS: N_CUBES*2,
-    OBJECT_COLORS: N_CUBES*3
+    OBJECT_POSITIONS: N_CUBES*3,
+    # OBJECT_COLORS: N_CUBES*3
     # IMAGE_FEAT: 30,  # affected by num_filters set below.
 }
 
@@ -188,9 +188,9 @@ agent = {
     'conditions': common['conditions'],
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS],#,, OBJECT_COLORS],
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS],#, OBJECT_COLORS],
     'target_idx': np.array(list(range(3,6))),
     'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
@@ -220,9 +220,9 @@ pol_agent = [{
     'conditions': DEMO_CONDITIONS,
     'T': 50,
     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS],# OBJECT_COLORS],
     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
-                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS, OBJECT_COLORS],
+                      END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, OBJECT_POSITIONS],# OBJECT_COLORS],
     'target_idx': np.array(list(range(3,6))),
     'n_cubes': N_CUBES,
     'sensor_dims': SENSOR_DIMS,
@@ -230,6 +230,7 @@ pol_agent = [{
     'record_reward': True,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
+    'target_ee_idx': [demo_target_ee_idx[j][i] for i in range(DEMO_CONDITIONS)],
     'filter_demos': {
         'type': 'last',
         'state_idx': range(4, 7),
@@ -327,7 +328,7 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningLSTMAttention,
     'network_params': {
-        'num_filters': [40, 40, 40], #20, 20, 20
+        # 'num_filters': [40, 40, 40], #20, 20, 20
         'obs_include': agent['obs_include'],
         # 'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         # 'obs_image_data': [RGB_IMAGE],
@@ -351,7 +352,7 @@ algorithm['policy_opt'] = {
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
-    'iterations': 50000, #about 20 epochs
+    'iterations': 150000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
@@ -364,13 +365,14 @@ algorithm['policy_opt'] = {
     'eval_batch_size': 1,
     'n_cubes': N_CUBES,
     'cube_pos_idx': 10,
+    'use_final_state': False,
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/data/lstm_attention_bc_state_1000/4_layer_100_dim_lstm_size_512_mbs_5_ubs_1_ebs_1',
+    'log_dir': '/home/kevin/gps/data/4_layer_100_dim_lstm_size_512_mbs_5_ubs_1_no_color_normalize_300_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/data/models/lstm_attention_bc_state_1000_model_ln_4_layers_100_dim_lstm_size_512_mbs_5_ubs_1_ebs_1',
+    'save_dir': '/home/kevin/gps/data/models/lstm_attention_bc_1000_model_ln_4_layers_100_dim_lstm_size_512_mbs_5_ubs_1_no_color_normalize_300_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
-    'uses_vision': False,
+    'use_vision': False,
     'weights_file_prefix': EXP_DIR + 'policy',
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),

@@ -50,7 +50,7 @@ class PolicyCloningMAML(PolicyOptTf):
         self.device_string = "/cpu:0"
         if self._hyperparams['use_gpu'] == 1:
             if not self._hyperparams.get('use_vision', True):
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
             else:
@@ -469,6 +469,7 @@ class PolicyCloningMAML(PolicyOptTf):
             # self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3)))
             self.step_size = self._hyperparams.get('step_size', 1e-3)
             self.grad_reg = self._hyperparams.get('grad_reg', 0.005)
+            act_noise_std = self._hyperparams.get('act_noise_std', 0.5)
             if self._hyperparams.get('use_context', False):
                 # self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
                 self.context_var = safe_get('context_variable', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
@@ -487,6 +488,9 @@ class PolicyCloningMAML(PolicyOptTf):
                 actiona = tf.reshape(actiona, [-1, dim_output])
                 actionb = tf.reshape(actionb, [-1, dim_output])
                 gradients_summ = []
+                
+                if self._hyperparams.get('add_noise', False):
+                    actiona += tf.random_normal([self.T*self.update_batch_size, dim_output], stddev=act_noise_std)
                 
                 # Convert to image dims
                 if self._hyperparams.get('use_vision', True):
@@ -943,7 +947,13 @@ class PolicyCloningMAML(PolicyOptTf):
         state_idx = np.array(list(test_agent[0]['filter_demos'].get('state_idx', range(4, 7))))
         train_dists = []
         val_dists = []
+        if len(test_agent) > 450:
+            idx = np.random.sample(np.arange(len(test_agent)-150), replace=False, size=300)
+            train_agents = {i: test_agent[i] for i in idx}
+            train_agents.update({i: test_agent[i] for i in range(len(test_agent))[-150:]})
+            test_agent = train_agents
         for i in xrange(len(test_agent)):
+        # for i in test_agent.keys():
             agent = test_agent[i]['type'](test_agent[i])
             conditions = self.demos[i]['demoConditions']
             target_eepts = np.array(test_agent[i]['target_end_effector'])[conditions]

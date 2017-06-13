@@ -14,7 +14,7 @@ from gps.algorithm.cost.cost_action import CostAction
 from gps.algorithm.cost.cost_state import CostState
 from gps.algorithm.cost.cost_fk import CostFK
 from gps.algorithm.cost.cost_sum import CostSum
-from gps.algorithm.policy_opt.policy_cloning_maml import PolicyCloningMAML
+from gps.algorithm.policy_opt.policy_cloning_random import PolicyCloningRandom
 from gps.algorithm.policy_opt.tf_model_example import example_tf_network
 from gps.algorithm.cost.cost_utils import RAMP_LINEAR, RAMP_FINAL_ONLY, RAMP_QUADRATIC, evall1l2term
 from gps.utility.data_logger import DataLogger
@@ -63,7 +63,7 @@ CUBE_SIZE = 0.03
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 VAL_TRIALS = 50
-TRAIN_TRIALS = 500 #0
+TRAIN_TRIALS = 500 #500 #0
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -321,9 +321,8 @@ algorithm['cost'] = [{
 
 
 algorithm['policy_opt'] = {
-    'type': PolicyCloningMAML,
+    'type': PolicyCloningRandom,
     'network_params': {
-        'num_filters': [40, 40, 40], #20, 20, 20
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
@@ -331,45 +330,17 @@ algorithm['policy_opt'] = {
         'image_height': IMAGE_HEIGHT,
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
-        'n_layers': 4,
-        'layer_size': 200,
-        'bc': True,
     },
     'use_gpu': 1,
+    'std': 1.0,
     'T': agent['T'],
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': pol_agent,
-    'copy_param_scope': 'model',
-    'norm_type': 'layer_norm', # True
-    'is_dilated': False,
-    'use_context': False,
-    'context_dim': 10,
-    'use_dropout': False,
-    'keep_prob': 0.9,
-    'decay': 0.9,
-    'stop_grad': False,
-    'iterations': 50000, #about 20 epochs
-    'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': VAL_TRIALS*N_CUBES, #50
-    'step_size': 5e-4, #1e-5 # step size of gradient step
-    'num_updates': 3, # take one gradient step
-    'meta_batch_size': 5, #10, # number of tasks during training
-    'weight_decay': 0.005, #0.005,
-    'use_grad_reg': False,
-    'grad_reg': 0.005,
-    'use_clip': True,
-    'clip_min': -20.0,
-    'clip_max': 20.0,
-    'update_batch_size': 1, # batch size for each task, used to be 1
-    # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
-    # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
-    'plot_dir': common['data_files_dir'],
+    'n_val': 0, #VAL_TRIALS*N_CUBES, #50
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
+    'plot_dir': common['data_files_dir'],
     'use_vision': True,
-    'weights_file_prefix': EXP_DIR + 'policy',
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),
         'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs/'),
