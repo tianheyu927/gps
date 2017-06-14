@@ -694,7 +694,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self._hyperparams.get('use_vision', True):
                 # For half of the dataset
                 if i in self.val_idx:
-                    idx = i + 1200
+                    idx = i + 1400
                 else:
                     idx = i
                 O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
@@ -732,7 +732,7 @@ class PolicyCloningMAML(PolicyOptTf):
         with Timer('Generating batches for each iteration'):
             self.train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
             # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
-            self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
+            self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1400)) for i in self.val_idx}
             TEST_PRINT_INTERVAL = 500
             TOTAL_ITERS = self._hyperparams['iterations']
             # VAL_ITERS = int(TOTAL_ITERS / 500)
