@@ -664,7 +664,7 @@ class PolicyCloningMAML(PolicyOptTf):
         # self.val_idx = np.sort(np.random.choice(idx, size=n_val, replace=False))
         # mask = np.array([(i in self.val_idx) for i in idx])
         # self.train_idx = np.sort(idx[~mask])
-        if not noisy:
+        if noisy:
             if n_val != 0:
                 self.val_idx = idx[-n_val:]
                 self.train_idx = idx[:-n_val]
@@ -692,31 +692,39 @@ class PolicyCloningMAML(PolicyOptTf):
             self.noisy_demos = demos
     
     def generate_testing_demos(self):
-        n_folders = len(self.demos.keys())
-        policy_demo_idx = [np.random.choice(n_demo, replace=False, size=self.update_batch_size) for n_demo in [self.demos[i]['demoX'].shape[0] for i in xrange(n_folders)]]
+        if not self._hyperparams.get('use_noisy_demos', False):
+            n_folders = len(self.demos.keys())
+            demos = self.demos
+        else:
+            n_folders = len(self.noisy_demos.keys())
+            demos = self.noisy_demos
+        policy_demo_idx = [np.random.choice(n_demo, replace=False, size=self.update_batch_size) for n_demo in [demos[i]['demoX'].shape[0] for i in xrange(n_folders)]]
         self.policy.selected_demoO = []
         self.policy.selected_demoX = []
         self.policy.selected_demoU = []
         for i in xrange(n_folders):
             # TODO: load observations from images instead
-            selected_cond = self.demos[i]['demoConditions'][policy_demo_idx[i][0]] # TODO: make this work for update_batch_size > 1
+            selected_cond = demos[i]['demoConditions'][policy_demo_idx[i][0]] # TODO: make this work for update_batch_size > 1
             if self._hyperparams.get('use_vision', True):
                 # For half of the dataset
-                if i in self.val_idx:
+                if i in self.val_idx and not self._hyperparams.get('use_noisy_demos', False):
                     idx = i + 1300
                 else:
                     idx = i
-                O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
+                if self._hyperparams.get('use_noisy_demos', False):
+                    O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d_noisy/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
+                else:
+                    O = np.array(imageio.mimread(self.demo_gif_dir + 'color_%d/cond%d.samp0.gif' % (idx, selected_cond)))[:, :, :, :3]
                 if len(O.shape) == 4:
                     O = np.expand_dims(O, axis=0)
                 O = np.transpose(O, [0, 1, 4, 3, 2]) # transpose to mujoco setting for images
                 O = O.reshape(O.shape[0], self.T, -1) # keep uint8 to save RAM
                 self.policy.selected_demoO.append(O)
-            X = self.demos[i]['demoX'][policy_demo_idx[i]].copy()
+            X = demos[i]['demoX'][policy_demo_idx[i]].copy()
             if len(X.shape) == 2:
                 X = np.expand_dims(X, axis=0)
             self.policy.selected_demoX.append(X)
-            self.policy.selected_demoU.append(self.demos[i]['demoU'][policy_demo_idx[i]].copy())
+            self.policy.selected_demoU.append(demos[i]['demoU'][policy_demo_idx[i]].copy())
         print "Selected demo is %d" % self.policy.selected_demoX[0].shape[0]
         # self.policy.demos = self.demos #debug
     
