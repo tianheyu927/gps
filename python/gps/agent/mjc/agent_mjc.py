@@ -292,7 +292,7 @@ class AgentMuJoCo(Agent):
             mj_U = mj_U.astype(mj_X.dtype)
             noise_U = noise_U.astype(mj_X.dtype)
             if not generate_demo:
-                mj_U = noise_U
+                mj_U = noise_U # save noisy actions
             if self._hyperparams['record_reward']:
                 R[t] = -(np.linalg.norm(X_t[4:7] - X_t[7:10]) + np.square(mj_U).sum())
             U[t, :] = mj_U.copy()

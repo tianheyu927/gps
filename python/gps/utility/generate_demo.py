@@ -142,6 +142,10 @@ class GenDemo(object):
                 else:
                     assert len(self.algorithms) == 1
                     pol = self.algorithms[0].policy_opt.policy
+                    if self._hyperparams.get('generate_noisy_demo', False):
+                        pol.chol_pol_covar = np.eye(pol.chol_pol_covar.shape[0]) * self._hyperparams.get('noise_std', 0.2)
+                        noisy_demos = copy.deepcopy(demos)
+                        noisy_demo_idx_conditions = copy.deepcopy(demo_idx_conditions)
                     for i in xrange(len(agent_config)):
                         agent = agent_config[i]['type'](agent_config[i])
                         M = agent_config[i]['conditions']
@@ -155,26 +159,49 @@ class GenDemo(object):
                                         gif_dir = gif_dir + 'color_%d/' % (i+start_idx*batch)
                                         mkdir_p(gif_dir)
                                         gif_name = os.path.join(gif_dir,'cond%d.samp%d.gif' % (j, k))
+                                        if self._hyperparams.get('generate_noisy_demo', False):
+                                            noisy_gif_name = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/') + 'color_%d_noisy/' % (i+start_idx*batch)
+                                            mkdir_p(noisy_gif_name)
+                                            noisy_gif_name = os.path.join(noisy_gif_name, 'cond%d.samp%d.gif' % (j, k))
+                                        else:
+                                            noisy_gif_name = None
                                     else:
                                         gif_name=None
+                                        noisy_gif_name = None
                                         gif_fps = None
                                 else:
                                     gif_name=None
+                                    noisy_gif_name = None
                                     gif_fps = None
                                 if not agent_config[i].get('save_state', False):
                                     demo = agent.sample(
                                         pol, j, # Should be changed back to controller if using linearization
-                                        verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=True, record_image=True, generate_demo=True,
+                                        verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=False, record_image=True, generate_demo=True,
                                         include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps, reset=False #don't reset images
                                         )
                                 else:
                                     demo = agent.sample(
                                         pol, j, # Should be changed back to controller if using linearization
-                                        verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=True, record_image=True, generate_demo=True,
+                                        verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=False, record_image=True, generate_demo=True,
                                         include_no_target=True, record_gif=gif_name, record_gif_fps=gif_fps, save_state=True, reset=True #reset images since 640x480 images will crash the RAM
                                         )
                                 demos[i].append(demo)
                                 demo_idx_conditions[i].append(j)
+                                if self._hyperparams.get('generate_noisy_demo', False):
+                                    if not agent_config[i].get('save_state', False):
+                                        noisy_demo = agent.sample(
+                                            pol, j, # Should be changed back to controller if using linearization
+                                            verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=True, record_image=True, generate_demo=False,
+                                            include_no_target=True, record_gif=noisy_gif_name, record_gif_fps=gif_fps, reset=False #don't reset images
+                                            )
+                                    else:
+                                        noisy_demo = agent.sample(
+                                            pol, j, # Should be changed back to controller if using linearization
+                                            verbose=(k < self._hyperparams['verbose_trials']), save=False, noisy=True, record_image=True, generate_demo=False,
+                                            include_no_target=True, record_gif=noisy_gif_name, record_gif_fps=gif_fps, save_state=True, reset=True #reset images since 640x480 images will crash the RAM
+                                            )
+                                    noisy_demos[i].append(noisy_demo)
+                                    noisy_demo_idx_conditions[i].append(j)
 
             if type(agent_config) is not list:
                 self.filter(demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M)
@@ -185,11 +212,16 @@ class GenDemo(object):
                             gif_config = self._hyperparams['record_gif']
                             gif_dir = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/')
                             gif_dir = gif_dir + 'color_%d/' % (i+start_idx*batch)
+                            if self._hyperparams.get('generate_noisy_demo', False):
+                                noisy_gif_dir = gif_config.get('demo_gif_dir', 'gps/data/demo_gifs/') + 'color_%d_noisy/' % (i+start_idx*batch)
                         else:
                             gif_dir = None
+                            noisy_gif_dir = None
                         self.filter(demos[i], demo_idx_conditions[i], agent_config[i], ioc_agent, demo_file[i], demo_M, gif_dir=gif_dir)
-
-        def filter(self, demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M, gif_dir=None):
+                        if self._hyperparams.get('generate_noisy_demo', False):
+                            self.filter(noisy_demos[i], noisy_demo_idx_conditions[i], agent_config[i], ioc_agent, demo_file[i], demo_M, gif_dir=noisy_gif_dir, save_noisy_demo=True)
+        
+        def filter(self, demos, demo_idx_conditions, agent_config, ioc_agent, demo_file, demo_M, gif_dir=None, save_noisy_demo=False):
             """
             Filter out failed demos.
             Args:
@@ -219,18 +251,21 @@ class GenDemo(object):
                     if (distance > dist_threshold):
                         failed_idx.append(i)
 
-                LOGGER.debug("Removing %d failed demos: %s", len(failed_idx), str(failed_idx))
-                demos_filtered = [demo for (i, demo) in enumerate(demos) if i not in failed_idx]
-                demo_idx_conditions = [cond for (i, cond) in enumerate(demo_idx_conditions) if i not in failed_idx]
-                demos = demos_filtered
-
-                # Filter max demos per condition
-                condition_to_demo = {
-                    cond: [demo for (i, demo) in enumerate(demos) if demo_idx_conditions[i]==cond][:max_per_condition]
-                    for cond in range(M)
-                }
-                LOGGER.debug('Successes per condition: %s', str([len(demo_list) for demo_list in condition_to_demo.values()]))
-                demos = [demo for cond in condition_to_demo for demo in condition_to_demo[cond]]
+                if not save_noisy_demo:
+                    LOGGER.debug("Removing %d failed demos: %s", len(failed_idx), str(failed_idx))
+                    demos_filtered = [demo for (i, demo) in enumerate(demos) if i not in failed_idx]
+                    demo_idx_conditions = [cond for (i, cond) in enumerate(demo_idx_conditions) if i not in failed_idx]
+                    demos = demos_filtered
+                    # demo_idx_conditions = [cond for (i, cond) in enumerate(demo_idx_conditions)]
+    
+                    # Filter max demos per condition
+                    condition_to_demo = {
+                        cond: [demo for (i, demo) in enumerate(demos) if demo_idx_conditions[i]==cond][:max_per_condition]
+                        for cond in range(M)
+                    }
+                    LOGGER.debug('Successes per condition: %s', str([len(demo_list) for demo_list in condition_to_demo.values()]))
+                    demos = [demo for cond in condition_to_demo for demo in condition_to_demo[cond]]
+                    
                 # shuffle(demos) # don't shuffle to make load on the fly work.
                 # import pdb; pdb.set_trace()
                 for demo in demos: demo.reset_agent(ioc_agent) # save images as observations!
@@ -270,6 +305,11 @@ class GenDemo(object):
                 demo_list = SampleList(demos)
                 demo_store = {'demoX': demo_list.get_X(), 'demoU': demo_list.get_U(), 'demoO': demo_list.get_obs()}
             # Save the demos.
+            if save_noisy_demo:
+                path_list = demo_file.split('/')[:-1]
+                path_list[0] = '/' + path_list[0]
+                path_list.append('noisy_' + demo_file.split('/')[-1])
+                demo_file = os.path.join(*path_list)
             self.data_logger.pickle(
                 demo_file,
                 copy.copy(demo_store)

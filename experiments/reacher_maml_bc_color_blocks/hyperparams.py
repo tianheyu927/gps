@@ -47,6 +47,7 @@ BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
 DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_demo'#_test' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8

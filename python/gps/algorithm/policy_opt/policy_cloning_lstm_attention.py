@@ -102,14 +102,14 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            test_agent = hyperparams['agent'][:300]  # Required for sampling
+            test_agent = hyperparams['agent'][:200]  # Required for sampling
             test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:100]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:300]
+        demo_file = hyperparams['demo_file'][:200]
         demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):

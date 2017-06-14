@@ -352,7 +352,7 @@ algorithm['policy_opt'] = {
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
-    'iterations': 150000, #about 20 epochs
+    'iterations': 100000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': VAL_TRIALS*N_CUBES, #50
@@ -367,9 +367,9 @@ algorithm['policy_opt'] = {
     'cube_pos_idx': 10,
     'use_final_state': False,
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/gps/data/4_layer_100_dim_lstm_size_512_mbs_5_ubs_1_no_color_normalize_300_trials',
+    'log_dir': '/home/kevin/gps/data/4_layer_100_dim_lstm_size_512_mbs_5_ubs_1_no_color_normalize_200_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/lstm_attention_bc_1000_model_ln_4_layers_100_dim_lstm_size_512_mbs_5_ubs_1_no_color_normalize_300_trials',
+    'save_dir': '/home/kevin/gps/data/models/lstm_attention_bc_1000_model_ln_4_layers_100_dim_lstm_size_512_mbs_5_ubs_1_no_color_normalize_200_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': False,
