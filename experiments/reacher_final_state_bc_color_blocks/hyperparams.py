@@ -46,12 +46,13 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(49)
+np.random.seed(50) #49
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
@@ -63,7 +64,7 @@ CUBE_SIZE = 0.03
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 VAL_TRIALS = 50
-TRAIN_TRIALS = 500
+TRAIN_TRIALS = 0 #500
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -332,7 +333,7 @@ algorithm['policy_opt'] = {
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 200,
+        'layer_size': 400,
         'bc': True,
     },
     'use_gpu': 1,
@@ -349,7 +350,7 @@ algorithm['policy_opt'] = {
     'iterations': 80000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': VAL_TRIALS*N_CUBES, #50
+    'n_val': 0, #VAL_TRIALS*N_CUBES, #50
     'weight_decay': 0.005, #0.005,
     'use_clip': False,
     'clip_min': -10.0,
@@ -357,13 +358,14 @@ algorithm['policy_opt'] = {
     'meta_batch_size': 5,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/final_state_bc_1000/4_layer_200_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_100_trials',
+    'log_dir': '/tmp/data/final_state_bc_1000/4_layer_400_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_750_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/final_state_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_100_trials',
+    'save_dir': '/home/kevin/gps/data/models/final_state_bc_1000_model_ln_4_layers_400_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_750_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',
+    'log_filename': EXP_DIR + 'log_bc.txt',
     'record_gif': {
         'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),
         'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs/'),

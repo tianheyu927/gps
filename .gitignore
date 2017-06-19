@@ -103,10 +103,12 @@ MUJOCO_LOG.TXT
 # Data files
 *.pkl
 *.csv
+data/*
 
 # Experiment files
 experiments/**/data_files*/
 experiments/**/log.txt
+experiments/**/log_bc.txt
 experiments/**/*.png
 .previous_experiment
 
@@ -118,6 +120,6 @@ python/gps/plot_bc_ioc.py
 random_stuff.py
 plot.py
 
-# data
-data/*
+# Script
+run_state.sh
 

@@ -102,20 +102,21 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            test_agent = hyperparams['agent'][:200]  # Required for sampling
-            test_agent.extend(hyperparams['agent'][-150:])
+            # test_agent = hyperparams['agent'][:300]  # Required for sampling
+            # test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:100]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:200]
-        demo_file.extend(hyperparams['demo_file'][-150:])
+        # demo_file = hyperparams['demo_file'][:300]
+        # demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
-            self.generate_batches()
+            if not hyperparams.get('test', False):
+                self.generate_batches()
 
         if not hyperparams.get('test', False):
             self.init_network(self.graph, restore_iter=self.restore_iter)
@@ -135,7 +136,8 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         if self.restore_iter > 0:
             self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
             # import pdb; pdb.set_trace()
-            self.update()
+            if not hyperparams.get('test', False):
+                self.update()
             # TODO: also implement resuming training from restored model
         else:
             self.update()
@@ -159,6 +161,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         # Generate selected demos for preupdate pass during testing
         self.generate_testing_demos()
         self.eval_success_rate(test_agent)
+        os._exit(1)
 
         self.test_agent = None  # don't pickle agent
         self.val_demos = None # don't pickle demos

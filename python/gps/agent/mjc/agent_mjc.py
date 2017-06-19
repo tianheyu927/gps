@@ -103,6 +103,7 @@ class AgentMuJoCo(Agent):
         """
         self._world = []
         self._model = []
+        import pdb; pdb.set_trace()
 
         # Initialize Mujoco worlds. If there's only one xml file, create a single world object,
         # otherwise create a different world for each condition.

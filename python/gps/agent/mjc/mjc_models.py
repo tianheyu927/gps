@@ -362,13 +362,13 @@ def pointmass(target_position=np.array([1.3, 0.5, 0])):
     actuator.motor(joint="ball_y", ctrlrange="-50.0 50.0", ctrllimited="true")
     return mjcmodel
 
-def pusher(object_pos=(0,0,0), goal_pos=(0,0,0)):
+def pusher(object_pos=(0,0,0), goal_pos=(0,0,0), distractors_pos=[], N_objects=1, mesh_file=None, distractor_mesh_files=None, friction=[.8, .1, .1]):
     mjcmodel = MJCModel('arm3d')
     mjcmodel.root.compiler(inertiafromgeom="true", angle="radian", coordinate="local")
     mjcmodel.root.option(timestep="0.01",gravity="0 0 0",iterations="20",integrator="Euler")
     default = mjcmodel.root.default()
     default.joint(armature='0.04', damping=1, limited='true')
-    default.geom(friction=".8 .1 .1",density="300",margin="0.002",condim="1",contype="0",conaffinity="0")
+    default.geom(friction=friction,density="300",margin="0.002",condim="1",contype="0",conaffinity="0")
     
     worldbody = mjcmodel.root.worldbody()
     worldbody.light(diffuse=".5 .5 .5", pos="0 0 3", dir="0 0 -1")
@@ -410,9 +410,32 @@ def pusher(object_pos=(0,0,0), goal_pos=(0,0,0)):
     
     object = worldbody.body(name="object", pos=object_pos)#"0.45 -0.05 -0.275")
     object.geom(rgba="1 1 1 0", type="sphere", size="0.05 0.05 0.05", density="0.00001", conaffinity="0")
-    object.geom(rgba="1 1 1 1", type="cylinder", size="0.05 0.05 0.05", density="0.00001", contype="1", conaffinity="0")
+    if mesh_file is None:
+        object.geom(rgba="1 1 1 1", type="cylinder", size="0.05 0.05 0.05", density="0.00001", contype="1", conaffinity="0")
+    else:
+        worldbody.asset.mesh(file=mesh_file, name="object_mesh", scale="0.012 0.012 0.012") # figure out the proper scale
+        mesh = object.body(axisangle="1 0 0 1.57", pos="0 0 0") # axis angle might also need to be adjusted
+        # TODO: do we need material here?
+        mesh.geom(conaffinity="0", contype="1", density="0.00001", mesh="object_mesh", rgba="1 1 1 1", type="mesh")
+        distal = mesh.body(name="distal_10", pos="0 0 0")
+        distal.site(name="obj_pos", pos="0 0 0", size="0.01")
     object.joint(name="obj_slidey", type="slide", pos="0 0 0", axis="0 1 0", range="-10.3213 10.3", damping="0.5")
     object.joint(name="obj_slidex", type="slide", pos="0 0 0", axis="1 0 0", range="-10.3213 10.3", damping="0.5")
+    
+    for i in xrange(N_objects-1):
+        distractor = worldbody.body(name="distractor_%d" % i, pos=distractor_pos[i])#"0.45 -0.05 -0.275")
+        distractor.geom(rgba="1 1 1 0", type="sphere", size="0.05 0.05 0.05", density="0.00001", conaffinity="0")
+        if mesh_file is None:
+            distractor.geom(rgba="1 1 1 1", type="cylinder", size="0.05 0.05 0.05", density="0.00001", contype="1", conaffinity="0")
+        else:
+            worldbody.asset.mesh(file=mesh_file, name="distractor_mesh_%d" % i, scale="0.012 0.012 0.012") # figure out the proper scale
+            mesh = distractor.body(axisangle="1 0 0 1.57", pos="0 0 0") # axis angle might also need to be adjusted
+            # TODO: do we need material here?
+            mesh.geom(conaffinity="0", contype="1", density="0.00001", mesh="distractor_mesh_%d" % i, rgba="1 1 1 1", type="mesh")
+            distal = mesh.body(name="distal_10_%d" % i, pos="0 0 0")
+            distal.site(name="distractor_pos_%d" % i, pos="0 0 0", size="0.01")
+        distractor.joint(name="distractor_slidey_%d" % i, type="slide", pos="0 0 0", axis="0 1 0", range="-10.3213 10.3", damping="0.5")
+        distractor.joint(name="distractor_slidex_%d" % i, type="slide", pos="0 0 0", axis="1 0 0", range="-10.3213 10.3", damping="0.5")
     
     goal = worldbody.body(name="goal", pos=goal_pos)#"0.45 -0.05 -0.3230")
     goal.geom(rgba="1 0 0 1", type="cylinder", size="0.08 0.001 0.1", density='0.00001', contype="0", conaffinity="0")

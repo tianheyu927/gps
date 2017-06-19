@@ -57,7 +57,7 @@ class PolicyCloningFinalState(PolicyCloningMAML):
                 self.gpu_device = self._hyperparams['gpu_id']
                 self.device_string = "/gpu:" + str(self.gpu_device)
                 # self._sess = tf.Session(graph=self.graph)
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.35)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
         else:
@@ -106,20 +106,21 @@ class PolicyCloningFinalState(PolicyCloningMAML):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            test_agent = hyperparams['agent'][:100]  # Required for sampling
-            test_agent.extend(hyperparams['agent'][-150:])
+            # test_agent = hyperparams['agent'][:100]  # Required for sampling
+            # test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:1200]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:100]
-        demo_file.extend(hyperparams['demo_file'][-150:])
+        # demo_file = hyperparams['demo_file'][:100]
+        # demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
             self.extract_supervised_data(demo_file)
-            self.generate_batches()
+            if not hyperparams.get('test', False):
+                self.generate_batches()
 
         if not hyperparams.get('test', False):
             self.init_network(self.graph, restore_iter=self.restore_iter)
@@ -167,6 +168,7 @@ class PolicyCloningFinalState(PolicyCloningMAML):
         # TODO: This has a bug. Fix it at some point.
         # self.eval_fast_weights()
         self.eval_success_rate(test_agent)
+        os._exit(1)
 
         self.test_agent = None  # don't pickle agent
         self.val_demos = None # don't pickle demos

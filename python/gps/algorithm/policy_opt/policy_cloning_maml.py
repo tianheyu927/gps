@@ -57,7 +57,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 self.gpu_device = self._hyperparams['gpu_id']
                 self.device_string = "/gpu:" + str(self.gpu_device)
                 # self._sess = tf.Session(graph=self.graph)
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.35)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
         else:
@@ -103,26 +103,26 @@ class PolicyCloningMAML(PolicyOptTf):
         
         # For loading demos
         if hyperparams.get('agent', False):
-            # test_agent = hyperparams['agent']
-            test_agent = hyperparams['agent'][:300]  # Required for sampling
-            # test_agent.extend(hyperparams['agent'][-100:])
+            test_agent = hyperparams['agent']
+            # test_agent = hyperparams['agent'][:300]  # Required for sampling
+            # test_agent.extend(hyperparams['agent'][-150:])
             # test_agent = hyperparams['agent'][:1500]  # Required for sampling
-            test_agent.extend(hyperparams['agent'][-150:])
+            # test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
-        # demo_file = hyperparams['demo_file']
+        demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:1200]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:300]
-        demo_file.extend(hyperparams['demo_file'][-150:])
+        # demo_file = hyperparams['demo_file'][:300]
+        # demo_file.extend(hyperparams['demo_file'][-150:])
         if self._hyperparams.get('use_noisy_demos', False):
             noisy_demo_file = hyperparams['noisy_demo_file']
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
-            self.extract_supervised_data(demo_file)
             if self._hyperparams.get('use_noisy_demos', False):
-                self.extract_supervised_data(noisy_demo_file)
+                self.extract_supervised_data(noisy_demo_file, noisy=True)
+            self.extract_supervised_data(demo_file)
             if not hyperparams.get('test', False):
                 self.generate_batches(noisy=self._hyperparams.get('use_noisy_demos', False))
         
@@ -173,11 +173,13 @@ class PolicyCloningMAML(PolicyOptTf):
         # TODO: This has a bug. Fix it at some point.
         # self.eval_fast_weights()
         self.eval_success_rate(test_agent)
-
+        os._exit(1) # exit after measuring the success rate
         self.test_agent = None  # don't pickle agent
         self.val_demos = None # don't pickle demos
         self.train_demos = None
         self.demos = None
+        if hasattr(self, 'noisy_demos'):
+            self.noisy_demos = None
         self.policy.demos = None
         self.policy.selected_demoO = None
         self.policy.selected_demoU = None
@@ -650,7 +652,7 @@ class PolicyCloningMAML(PolicyOptTf):
             Return:
                 total_train_obs: all training observations
                 total_train_U: all training actions
-        """
+        """    
         demos = extract_demo_dict(demo_file)
         if not self._hyperparams.get('use_vision', True) and demos[0]['demoX'].shape[2] > self._dO:
             for key in demos.keys():
@@ -664,7 +666,7 @@ class PolicyCloningMAML(PolicyOptTf):
         # self.val_idx = np.sort(np.random.choice(idx, size=n_val, replace=False))
         # mask = np.array([(i in self.val_idx) for i in idx])
         # self.train_idx = np.sort(idx[~mask])
-        if noisy:
+        if not hasattr(self, 'train_idx'):
             if n_val != 0:
                 self.val_idx = idx[-n_val:]
                 self.train_idx = idx[:-n_val]
@@ -708,7 +710,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self._hyperparams.get('use_vision', True):
                 # For half of the dataset
                 if i in self.val_idx and not self._hyperparams.get('use_noisy_demos', False):
-                    idx = i + 1300
+                    idx = i# + 1200
                 else:
                     idx = i
                 if self._hyperparams.get('use_noisy_demos', False):
@@ -749,7 +751,8 @@ class PolicyCloningMAML(PolicyOptTf):
         with Timer('Generating batches for each iteration'):
             train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
             # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
-            val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1300)) for i in self.val_idx}
+            val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
+            # val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
             if noisy:
                 noisy_train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d_noisy' % i) for i in self.train_idx}
                 noisy_val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d_noisy' % i) for i in self.val_idx}
@@ -766,34 +769,13 @@ class PolicyCloningMAML(PolicyOptTf):
             for itr in xrange(TOTAL_ITERS):
                 sampled_train_idx = random.sample(self.train_idx, self.meta_batch_size)
                 for idx in sampled_train_idx:
-                    sampled_folder = train_img_folders[idx]
-                    image_paths = natsorted(os.listdir(sampled_folder))
-                    assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
-                    if noisy:
-                        noisy_sampled_folder = noisy_train_img_folders[idx]
-                        noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
-                        assert len(noisy_image_paths) == self.noisy_demos[idx]['demoX'].shape[0]
-                    if not noisy:
-                        sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
-                        sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
-                    else:
-                        noisy_sampled_image_idx = np.random.choice(range(len(noisy_image_paths)), size=self.update_batch_size, replace=True)
-                        sampled_image_idx = np.random.choice(range(len(image_paths)), size=1, replace=True)
-                        sampled_images = [os.path.join(noisy_sampled_folder, noisy_image_paths[i]) for i in noisy_sampled_image_idx]
-                        sampled_images.extend([os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx])
-                    self.all_training_filenames.extend(sampled_images)
-                    self.training_batch_idx[itr][idx] = sampled_image_idx
-                    if noisy:
-                        self.noisy_training_batch_idx[itr][idx] = noisy_sampled_image_idx
-                if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
-                    sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
-                    for idx in sampled_val_idx:
-                        sampled_folder = val_img_folders[idx]
-                        image_paths = natsorted(os.listdir(sampled_folder))
+                    if self._hyperparams.get('use_vision', True):
+                        sampled_folder = train_img_folders[idx]
+                        image_paths = sorted(os.listdir(sampled_folder))
                         assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
                         if noisy:
-                            noisy_sampled_folder = noisy_val_img_folders[idx]
-                            noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
+                            noisy_sampled_folder = noisy_train_img_folders[idx]
+                            noisy_image_paths = sorted(os.listdir(noisy_sampled_folder))
                             assert len(noisy_image_paths) == self.noisy_demos[idx]['demoX'].shape[0]
                         if not noisy:
                             sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
@@ -803,10 +785,45 @@ class PolicyCloningMAML(PolicyOptTf):
                             sampled_image_idx = np.random.choice(range(len(image_paths)), size=1, replace=True)
                             sampled_images = [os.path.join(noisy_sampled_folder, noisy_image_paths[i]) for i in noisy_sampled_image_idx]
                             sampled_images.extend([os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx])
-                        self.all_val_filenames.extend(sampled_images)
-                        self.val_batch_idx[itr][idx] = sampled_image_idx
+                        self.all_training_filenames.extend(sampled_images)
+                        self.training_batch_idx[itr][idx] = sampled_image_idx
                         if noisy:
-                            self.noisy_val_batch_idx[itr][idx] = noisy_sampled_image_idx
+                            self.noisy_training_batch_idx[itr][idx] = noisy_sampled_image_idx
+                    else:
+                        if noisy:
+                            self.training_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=1, replace=True)
+                            self.noisy_training_batch_idx[itr][idx] = np.random.choice(range(self.noisy_demos[idx]['demoX'].shape[0]), size=self.update_batch_size, replace=True)
+                        else:
+                            self.training_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.update_batch_size+1, replace=True)
+                if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
+                    sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
+                    for idx in sampled_val_idx:
+                        if self._hyperparams.get('use_vision', True):
+                            sampled_folder = val_img_folders[idx]
+                            image_paths = sorted(os.listdir(sampled_folder))
+                            assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
+                            if noisy:
+                                noisy_sampled_folder = noisy_val_img_folders[idx]
+                                noisy_image_paths = sorted(os.listdir(noisy_sampled_folder))
+                                assert len(noisy_image_paths) == self.noisy_demos[idx]['demoX'].shape[0]
+                            if not noisy:
+                                sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
+                                sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
+                            else:
+                                noisy_sampled_image_idx = np.random.choice(range(len(noisy_image_paths)), size=self.update_batch_size, replace=True)
+                                sampled_image_idx = np.random.choice(range(len(image_paths)), size=1, replace=True)
+                                sampled_images = [os.path.join(noisy_sampled_folder, noisy_image_paths[i]) for i in noisy_sampled_image_idx]
+                                sampled_images.extend([os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx])
+                            self.all_val_filenames.extend(sampled_images)
+                            self.val_batch_idx[itr][idx] = sampled_image_idx
+                            if noisy:
+                                self.noisy_val_batch_idx[itr][idx] = noisy_sampled_image_idx
+                        else:
+                            if noisy:
+                                self.val_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=1, replace=True)
+                                self.noisy_val_batch_idx[itr][idx] = np.random.choice(range(self.noisy_demos[idx]['demoX'].shape[0]), size=self.update_batch_size, replace=True)
+                            else:
+                                self.val_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.update_batch_size+1, replace=True)
         # import pdb; pdb.set_trace()
 
     def make_batch_tensor(self, network_config, restore_iter=0, train=True):
@@ -874,12 +891,12 @@ class PolicyCloningMAML(PolicyOptTf):
             U = np.array(U)
             X = np.array(X)
         else:
-            U = [noisy_demos[k]['demoU'][v].reshape(update_batch_size*self.T, -1) for k, v in noisy_idxes.items()]
-            X = [noisy_demos[k]['demoX'][v].reshape(update_batch_size*self.T, -1) for k, v in noisy_idxes.items()]
-            U.extend([demos[k]['demoU'][v].reshape(self.T, -1) for k, v in idxes.items()])
-            X.extend([demos[k]['demoX'][v].reshape(self.T, -1) for k, v in idxes.items()])
-            U = np.array(U)
-            X = np.array(X)
+            noisy_U = [noisy_demos[k]['demoU'][v].reshape(update_batch_size*self.T, -1) for k, v in noisy_idxes.items()]
+            noisy_X = [noisy_demos[k]['demoX'][v].reshape(update_batch_size*self.T, -1) for k, v in noisy_idxes.items()]
+            U = [demos[k]['demoU'][v].reshape(self.T, -1) for k, v in idxes.items()]
+            X = [demos[k]['demoX'][v].reshape(self.T, -1) for k, v in idxes.items()]
+            U = np.concatenate((np.array(noisy_U), np.array(U)), axis=1)
+            X = np.concatenate((np.array(noisy_X), np.array(X)), axis=1)
         assert U.shape[2] == self._dU
         assert X.shape[2] == len(self.x_idx)
         return X, U
@@ -1034,6 +1051,12 @@ class PolicyCloningMAML(PolicyOptTf):
                 train_dists.extend([np.nanmin(np.linalg.norm(X_train[j, :, state_idx].T - target_eepts[j], axis=1)[-10:]) \
                                     for j in xrange(X_train.shape[0])])
 
-        import pdb; pdb.set_trace()
-        print "Training success rate is %.5f" % (np.array(train_dists) <= success_thresh).mean()
-        print "Validation success rate is %.5f" % (np.array(val_dists) <= success_thresh).mean()
+        # import pdb; pdb.set_trace()
+        train_success_rate_msg =  "Training success rate is %.5f" % (np.array(train_dists) <= success_thresh).mean()
+        val_success_rate_msg = "Validation success rate is %.5f" % (np.array(val_dists) <= success_thresh).mean()
+        print train_success_rate_msg
+        print val_success_rate_msg
+        with open(self._hyperparams['log_filename'], 'a') as f:
+            f.write(self._hyperparams['save_dir'] + ':\n')
+            f.write(train_success_rate_msg + '\n')
+            f.write(val_success_rate_msg + '\n')
