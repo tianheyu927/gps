@@ -428,7 +428,7 @@ def pusher(object_pos=(0,0,0), goal_pos=(0,0,0), distractors_pos=[], N_objects=1
         if mesh_file is None:
             distractor.geom(rgba="1 1 1 1", type="cylinder", size="0.05 0.05 0.05", density="0.00001", contype="1", conaffinity="0")
         else:
-            worldbody.asset.mesh(file=mesh_file, name="distractor_mesh_%d" % i, scale="0.012 0.012 0.012") # figure out the proper scale
+            worldbody.asset.mesh(file=distractor_mesh_files[i], name="distractor_mesh_%d" % i, scale="0.012 0.012 0.012") # figure out the proper scale
             mesh = distractor.body(axisangle="1 0 0 1.57", pos="0 0 0") # axis angle might also need to be adjusted
             # TODO: do we need material here?
             mesh.geom(conaffinity="0", contype="1", density="0.00001", mesh="distractor_mesh_%d" % i, rgba="1 1 1 1", type="mesh")
