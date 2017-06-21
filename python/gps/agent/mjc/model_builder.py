@@ -6,6 +6,7 @@ A small library for programatically building MuJoCo XML files
 """
 from contextlib import contextmanager
 import tempfile
+import os
 import numpy as np
 
 
@@ -65,6 +66,10 @@ class MJCModel(object):
         self.root.write(self.file)
         self.file.seek(0)
         return self.file
+    
+    def save(self, path):
+        with open(path) as f:
+            self.root.write(f)
 
     def close(self):
         self.file.close()

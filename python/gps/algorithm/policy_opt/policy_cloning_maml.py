@@ -113,8 +113,8 @@ class PolicyCloningMAML(PolicyOptTf):
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:1200]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        # demo_file = hyperparams['demo_file'][:300]
-        # demo_file.extend(hyperparams['demo_file'][-150:])
+        demo_file = hyperparams['demo_file'][:300]
+        demo_file.extend(hyperparams['demo_file'][-150:])
         if self._hyperparams.get('use_noisy_demos', False):
             noisy_demo_file = hyperparams['noisy_demo_file']
         
@@ -289,16 +289,23 @@ class PolicyCloningMAML(PolicyOptTf):
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
         weights = {}
         if self._hyperparams.get('use_vision', True):
-            filter_size = 3 # used to be 2
+            filter_size = network_config.get('filter_size', 3) # used to be 2
             num_filters = network_config['num_filters']
             im_height = network_config['image_height']
             im_width = network_config['image_width']
             num_channels = network_config['image_channels']
+            strides = network_config.get('strides', [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]])
+            downsample_factor = 1
+            for stride in strides:
+                downsample_factor *= stride[1]
             is_dilated = self._hyperparams.get('is_dilated', False)
-            if is_dilated:
+            use_fp = self._hyperparams.get('use_fp', False)
+            if use_fp:
+                self.conv_out_size = int(num_filters[2]*2)
+            elif is_dilated:
                 self.conv_out_size = int(im_width*im_height*num_filters[2])
             else:
-                self.conv_out_size = int(im_width/(8.0)*im_height/(8.0)*num_filters[2]) # 3 layers each with stride 2
+                self.conv_out_size = int(im_width/(downsample_factor)*im_height/(downsample_factor)*num_filters[2]) # 3 layers each with stride 2
             # self.conv_out_size = int(im_width/(16.0)*im_height/(16.0)*num_filters[3]) # 3 layers each with stride 2
     
             # conv weights
@@ -356,29 +363,60 @@ class PolicyCloningMAML(PolicyOptTf):
             use_dropout = self._hyperparams.get('use_dropout', False)
             prob = self._hyperparams.get('keep_prob', 0.5)
             is_dilated = self._hyperparams.get('is_dilated', False)
+            strides = network_config.get('strides', [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]])
             # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
             # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
             # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)            
             if norm_type == 'vbn':
                 if not use_dropout:
-                    conv_layer_0 = self.vbn(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_1', update=update)
-                    conv_layer_1 = self.vbn(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_2', update=update)
-                    conv_layer_2 = self.vbn(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_3', update=update)       
+                    conv_layer_0 = self.vbn(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=strides[0], is_dilated=is_dilated), name='vbn_1', update=update)
+                    conv_layer_1 = self.vbn(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=strides[1], is_dilated=is_dilated), name='vbn_2', update=update)
+                    conv_layer_2 = self.vbn(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=strides[2], is_dilated=is_dilated), name='vbn_3', update=update)       
                 else:
-                    conv_layer_0 = dropout(self.vbn(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_1', update=update), keep_prob=prob, is_training=is_training, name='dropout_1')
-                    conv_layer_1 = dropout(self.vbn(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_2', update=update), keep_prob=prob, is_training=is_training, name='dropout_2')
-                    conv_layer_2 = dropout(self.vbn(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), name='vbn_3', update=update), keep_prob=prob, is_training=is_training, name='dropout_3')       
+                    conv_layer_0 = dropout(self.vbn(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=strides[0], is_dilated=is_dilated), name='vbn_1', update=update), keep_prob=prob, is_training=is_training, name='dropout_1')
+                    conv_layer_1 = dropout(self.vbn(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=strides[1], is_dilated=is_dilated), name='vbn_2', update=update), keep_prob=prob, is_training=is_training, name='dropout_2')
+                    conv_layer_2 = dropout(self.vbn(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=strides[2], is_dilated=is_dilated), name='vbn_3', update=update), keep_prob=prob, is_training=is_training, name='dropout_3')       
             else:
                 if not use_dropout:
-                    conv_layer_0 = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
-                    conv_layer_1 = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
-                    conv_layer_2 = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)       
+                    conv_layer_0 = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=strides[0], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
+                    conv_layer_1 = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=strides[1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
+                    conv_layer_2 = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=strides[2], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)       
                     # conv_layer_3 = norm(conv2d(img=conv_layer_2, w=weights['wc4'], b=weights['bc4'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=3, is_training=is_training)       
                 else:
-                    conv_layer_0 = dropout(norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_1')
-                    conv_layer_1 = dropout(norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_2')
-                    conv_layer_2 = dropout(norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=[1,2,2,1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_3')       
-            conv_out_flat = tf.reshape(conv_layer_2, [-1, self.conv_out_size])
+                    conv_layer_0 = dropout(norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=strides[0], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_1')
+                    conv_layer_1 = dropout(norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2'], strides=strides[1], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_2')
+                    conv_layer_2 = dropout(norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3'], strides=strides[2], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_3')       
+            if self._hyperparams.get('use_fp', False):
+                _, num_rows, num_cols, num_fp = conv_layer_2.get_shape()
+                num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
+                x_map = np.empty([num_rows, num_cols], np.float32)
+                y_map = np.empty([num_rows, num_cols], np.float32)
+        
+                for i in range(num_rows):
+                    for j in range(num_cols):
+                        x_map[i, j] = (i - num_rows / 2.0) / num_rows
+                        y_map[i, j] = (j - num_cols / 2.0) / num_cols
+        
+                x_map = tf.convert_to_tensor(x_map)
+                y_map = tf.convert_to_tensor(y_map)
+        
+                x_map = tf.reshape(x_map, [num_rows * num_cols])
+                y_map = tf.reshape(y_map, [num_rows * num_cols])
+        
+                # rearrange features to be [batch_size, num_fp, num_rows, num_cols]
+                features = tf.reshape(tf.transpose(conv_layer_2, [0,3,1,2]),
+                                      [-1, num_rows*num_cols])
+                if self._hyperparams.get('fp_relu', False):
+                    prob = tf.nn.relu(features)/tf.reduce_sum(tf.nn.relu(features), axis=1, keep_dims=True)#+1e-16)
+                else:
+                    prob = tf.nn.softmax(features)
+        
+                fp_x = tf.reduce_sum(tf.mul(x_map, prob), [1], keep_dims=True)
+                fp_y = tf.reduce_sum(tf.mul(y_map, prob), [1], keep_dims=True)
+        
+                conv_out_flat = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
+            else:
+                conv_out_flat = tf.reshape(conv_layer_2, [-1, self.conv_out_size])
             # conv_out_flat = tf.reshape(conv_layer_3, [-1, self.conv_out_size])
             # if use_dropout:
                 # conv_out_flat = dropout(conv_out_flat, keep_prob=0.8, is_training=is_training, name='dropout_input')
@@ -558,6 +596,8 @@ class PolicyCloningMAML(PolicyOptTf):
                     state_inputb_new = None
                 # Is mask used here?
                 fast_weights = dict(zip(weights.keys(), [weights[key] - self.step_size*gradients[key] for key in weights.keys()]))
+                if self._hyperparams.get('no_update_conv', False):
+                    fast_weights.update({key: weights[key] for key in weights.keys() if 'c' in key})
                 if 'Training' in prefix:
                     outputb = self.forward(inputb, state_inputb_new, fast_weights, network_config=network_config)
                 else:
@@ -606,7 +646,10 @@ class PolicyCloningMAML(PolicyOptTf):
                         grads = [tf.clip_by_value(grad, clip_min, clip_max) for grad in grads]
                     gradients = dict(zip(fast_weights.keys(), grads))
                     gradients_summ.append([gradients[key] for key in self.sorted_weight_keys])
-                    fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
+                    fast_weights_new = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
+                    if self._hyperparams.get('no_update_conv', False):
+                        fast_weights_new.update({key: fast_weights[key] for key in fast_weights.keys() if 'c' in key})
+                    fast_weights = fast_weights_new
                     if 'Training' in prefix:
                         output = self.forward(inputb, state_inputb_new, fast_weights, network_config=network_config)
                         # output = self.forward(inputb, state_inputb, fast_weights, update=update, is_training=False, network_config=network_config)
@@ -751,8 +794,8 @@ class PolicyCloningMAML(PolicyOptTf):
         with Timer('Generating batches for each iteration'):
             train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.train_idx}
             # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
-            val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
-            # val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
+            # val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
+            val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % (i+1200)) for i in self.val_idx}
             if noisy:
                 noisy_train_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d_noisy' % i) for i in self.train_idx}
                 noisy_val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d_noisy' % i) for i in self.val_idx}

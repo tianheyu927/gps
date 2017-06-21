@@ -362,7 +362,7 @@ def pointmass(target_position=np.array([1.3, 0.5, 0])):
     actuator.motor(joint="ball_y", ctrlrange="-50.0 50.0", ctrllimited="true")
     return mjcmodel
 
-def pusher(object_pos=(0,0,0), goal_pos=(0,0,0), distractors_pos=[], N_objects=1, mesh_file=None, distractor_mesh_files=None, friction=[.8, .1, .1]):
+def pusher(object_pos=(0.45, -0.05, -0.275), goal_pos=(0.45, -0.05, -0.3230), distractors_pos=[], N_objects=1, mesh_file=None, distractor_mesh_files=None, friction=[.8, .1, .1]):
     mjcmodel = MJCModel('arm3d')
     mjcmodel.root.compiler(inertiafromgeom="true", angle="radian", coordinate="local")
     mjcmodel.root.option(timestep="0.01",gravity="0 0 0",iterations="20",integrator="Euler")

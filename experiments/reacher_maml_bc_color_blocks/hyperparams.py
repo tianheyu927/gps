@@ -46,14 +46,14 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_demo'#_test' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(50) #49
+np.random.seed(49) #50
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
@@ -65,7 +65,7 @@ CUBE_SIZE = 0.03
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 VAL_TRIALS = 50
-TRAIN_TRIALS = 0 #500 #0
+TRAIN_TRIALS = 500 #500 #0
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -326,6 +326,8 @@ algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
         'num_filters': [40, 40, 40], #20, 20, 20
+        'strides': [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]], 
+        'filter_size': 3,
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
@@ -334,7 +336,7 @@ algorithm['policy_opt'] = {
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 100,
+        'layer_size': 200,
         'bc': True,
     },
     'use_gpu': 1,
@@ -344,7 +346,7 @@ algorithm['policy_opt'] = {
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'use_context': False,
+    'use_context': True,
     'context_dim': 10,
     'use_dropout': False,
     'keep_prob': 0.9,
@@ -353,9 +355,9 @@ algorithm['policy_opt'] = {
     'iterations': 50000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': 0, #VAL_TRIALS*N_CUBES, #50
-    'step_size': 5e-4,#1e-3, #1e-5 # step size of gradient step
-    'num_updates': 3,#1, # take one gradient step
+    'n_val': VAL_TRIALS*N_CUBES, #50
+    'step_size': 1e-3, #1e-5 # step size of gradient step
+    'num_updates': 1,#1, # take one gradient step
     'meta_batch_size': 5, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'use_grad_reg': False,
@@ -363,11 +365,14 @@ algorithm['policy_opt'] = {
     'use_clip': True,
     'clip_min': -20, #-15.0,
     'clip_max': 20, #15.0,
+    'use_fp': True,
+    'fp_relu': False,
+    'no_update_conv': True,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_100_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_clip_20_fix_transpose_bug_no_overlap_100_trials_new',
+    'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_fixed_1e-3_mbs_5_ubs_1_update1_clip_20_fix_transpose_bug_no_overlap_context_fp_no_update_conv_300_trials_new',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_clip_20_fix_transpose_bug_no_overlap_100_trials_new',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_1e-3_mbs_5_ubs_1_update1_clip_20_fix_transpose_bug_no_overlap_context_fp_no_update_conv_300_trials_new',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': True,
