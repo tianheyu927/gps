@@ -325,8 +325,8 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
-        'num_filters': [40, 40, 40], #20, 20, 20
-        'strides': [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]], 
+        'num_filters': [40, 40, 40, 40], #20, 20, 20
+        'strides': [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]], 
         'filter_size': 3,
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
@@ -337,6 +337,8 @@ algorithm['policy_opt'] = {
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
         'layer_size': 200,
+        'n_state_fc_layers': 3,
+        'state_fc_layer_size': 20,
         'bc': True,
     },
     'use_gpu': 1,
@@ -363,16 +365,17 @@ algorithm['policy_opt'] = {
     'use_grad_reg': False,
     'grad_reg': 0.005,
     'use_clip': True,
-    'clip_min': -20, #-15.0,
-    'clip_max': 20, #15.0,
-    'use_fp': True,
+    'clip_min': -15, #-15.0,
+    'clip_max': 15, #15.0,
+    'use_fp': False,
     'fp_relu': False,
-    'no_update_conv': True,
+    'no_update_conv': False,
+    'use_state_concat_input': True, 
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_fixed_1e-3_mbs_5_ubs_1_update1_clip_20_fix_transpose_bug_no_overlap_context_fp_no_update_conv_300_trials_new',
+    'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_fixed_1e-3_mbs_5_ubs_1_update1_clip_15_context_concat_state_3_layers_20_dim_300_trials_new',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_1e-3_mbs_5_ubs_1_update1_clip_20_fix_transpose_bug_no_overlap_context_fp_no_update_conv_300_trials_new',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_1e-3_mbs_5_ubs_1_update1_clip_15_context_concat_state_3_layers_20_dim_300_trials_new',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': True,
