@@ -367,8 +367,8 @@ algorithm['policy_opt'] = {
     'weights_file_prefix': EXP_DIR + 'policy',
     'log_filename': EXP_DIR + 'log_bc.txt',
     'record_gif': {
-        'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),
-        'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs/'),
+        'gif_dir': os.path.join(common['data_files_dir'], 'gifs_final/'),
+        'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs_final/'),
         'gifs_per_condition': 1,
     },
 }

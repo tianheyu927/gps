@@ -51,16 +51,18 @@ def batched_matrix_vector_multiply(vector, matrix):
     return squeezed_result
 
 
-def euclidean_loss_layer(a, b, precision, behavior_clone=False):
+def euclidean_loss_layer(a, b, precision, multiplier=100.0, behavior_clone=False, use_l1=False, eps=0.01):
     """ Math:  out = (action - mlp_out)'*precision*(action-mlp_out)
                     = (u-uhat)'*A*(u-uhat)"""
     # scale_factor = tf.constant(2*batch_size, dtype='float')
-    multiplier = tf.constant(100.0, dtype='float') #for bc #10000
+    multiplier = tf.constant(multiplier, dtype='float') #for bc #10000
     if not behavior_clone:
         uP = batched_matrix_vector_multiply(a-b, precision)
         return tf.reduce_mean(uP*(a-b))
     else:
         uP =a*multiplier-b*multiplier
+        if use_l1:
+            return tf.reduce_mean(eps*tf.square(uP) + tf.abs(uP))
         # return tf.reduce_mean(uP*uP)  # this last dot product is then summed, so we just the sum all at once.
         return tf.reduce_mean(tf.square(uP))
 

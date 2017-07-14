@@ -113,8 +113,8 @@ class PolicyCloningMAML(PolicyOptTf):
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:1200]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        demo_file = hyperparams['demo_file'][:300]
-        demo_file.extend(hyperparams['demo_file'][-150:])
+        # demo_file = hyperparams['demo_file'][:300]
+        # demo_file.extend(hyperparams['demo_file'][-150:])
         if self._hyperparams.get('use_noisy_demos', False):
             noisy_demo_file = hyperparams['noisy_demo_file']
         
@@ -444,6 +444,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 final_eept_pred = None
                 fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
         else:
+            final_eept_pred = None
             fc_input = image_input
         return self.fc_forward(fc_input, weights, is_training=is_training, network_config=network_config), final_eept_pred
 
@@ -541,7 +542,7 @@ class PolicyCloningMAML(PolicyOptTf):
             self.step_size = self._hyperparams.get('step_size', 1e-3)
             self.grad_reg = self._hyperparams.get('grad_reg', 0.005)
             act_noise_std = self._hyperparams.get('act_noise_std', 0.5)
-            loss_multiplier = self._hyperparams.get('loss_multipler', 100.0)
+            loss_multiplier = self._hyperparams.get('loss_multiplier', 100.0)
             final_eept_loss_eps = self._hyperparams.get('final_eept_loss_eps', 0.01)
             if self._hyperparams.get('use_context', False):
                 # self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
@@ -805,6 +806,7 @@ class PolicyCloningMAML(PolicyOptTf):
             self.noisy_demos = demos
     
     def generate_testing_demos(self):
+        self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
         if not self._hyperparams.get('use_noisy_demos', False):
             n_folders = len(self.demos.keys())
             demos = self.demos
@@ -821,7 +823,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self._hyperparams.get('use_vision', True):
                 # For half of the dataset
                 if i in self.val_idx and not self._hyperparams.get('use_noisy_demos', False):
-                    idx = i + 1000
+                    idx = i
                 else:
                     idx = i
                 if self._hyperparams.get('use_noisy_demos', False):
