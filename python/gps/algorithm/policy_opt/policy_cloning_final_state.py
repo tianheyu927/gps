@@ -19,7 +19,7 @@ except ImportError:
     print 'imageio not found'
     imageio = None
 
-# from natsort import natsorted
+from natsort import natsorted
 from random import shuffle
 from gps.algorithm.policy.tf_policy_maml import TfPolicyMAML
 from gps.algorithm.policy_opt.config import POLICY_OPT_TF
