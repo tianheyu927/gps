@@ -50,14 +50,14 @@ class PolicyCloningMAML(PolicyOptTf):
         self.device_string = "/cpu:0"
         if self._hyperparams['use_gpu'] == 1:
             if not self._hyperparams.get('use_vision', True):
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
             else:
                 self.gpu_device = self._hyperparams['gpu_id']
                 self.device_string = "/gpu:" + str(self.gpu_device)
                 # self._sess = tf.Session(graph=self.graph)
-                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
+                gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=1.0)#1.0
                 tf_config = tf.ConfigProto(gpu_options=gpu_options)
                 self._sess = tf.Session(graph=self.graph, config=tf_config)
         else:
@@ -82,12 +82,14 @@ class PolicyCloningMAML(PolicyOptTf):
         self._hyperparams['network_params'].update({'decay': self._hyperparams.get('decay', 0.99)})
         # MAML hyperparams
         self.update_batch_size = self._hyperparams.get('update_batch_size', 1)
+        self.test_batch_size = self._hyperparams.get('test_batch_size', 1)
         self.meta_batch_size = self._hyperparams.get('meta_batch_size', 10)
         self.num_updates = self._hyperparams.get('num_updates', 1)
         self.meta_lr = self._hyperparams.get('lr', 1e-3) #1e-3
         self.weight_decay = self._hyperparams.get('weight_decay', 0.005)
         self.demo_gif_dir = self._hyperparams.get('demo_gif_dir', None)
-        
+        self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
+
         self.T = self._hyperparams.get('T', 50)
         # List of indices for state (vector) data and image (tensor) data in observation.
         self.x_idx, self.img_idx, i = [], [], 0
@@ -104,28 +106,35 @@ class PolicyCloningMAML(PolicyOptTf):
         # For loading demos
         if hyperparams.get('agent', False):
             test_agent = hyperparams['agent']
-            # test_agent = hyperparams['agent'][:300]  # Required for sampling
+            # test_agent = hyperparams['agent'][:750]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-150:])
             # test_agent = hyperparams['agent'][:1500]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
+
         demo_file = hyperparams['demo_file']
-        # demo_file = hyperparams['demo_file'][:1200]
-        # demo_file.extend(hyperparams['demo_file'][-100:])
-        # demo_file = hyperparams['demo_file'][:300]
-        # demo_file.extend(hyperparams['demo_file'][-150:])
+        # demo_file = hyperparams['demo_file'][:500]
+        # demo_file.extend(hyperparams['demo_file'][-76:])
+        # demo_file = hyperparams['demo_file']#[:186]
+        # demo_file.extend(hyperparams['demo_file'][-61:])
         if self._hyperparams.get('use_noisy_demos', False):
             noisy_demo_file = hyperparams['noisy_demo_file']
         
-        if hyperparams.get('agent', False):
-            self.restore_iter = hyperparams.get('restore_iter', 0)
-            if self._hyperparams.get('use_noisy_demos', False):
-                self.extract_supervised_data(noisy_demo_file, noisy=True)
-            self.extract_supervised_data(demo_file)
-            if not hyperparams.get('test', False):
-                self.generate_batches(noisy=self._hyperparams.get('use_noisy_demos', False))
-        
+        # if hyperparams.get('agent', False):
+        self.restore_iter = hyperparams.get('restore_iter', 0)
+        if self._hyperparams.get('use_noisy_demos', False):
+            self.extract_supervised_data(noisy_demo_file, noisy=True)
+        self.extract_supervised_data(demo_file)
+        if hyperparams.get('test', False):
+            import pdb; pdb.set_trace()
+            import pickle
+            # with open('/home/kevin/gps/scale_and_bias_push_consistent_12.pkl', 'wb') as f:
+            with open('/home/kevin/gps/scale_and_bias_reach_vr_3_obj.pkl', 'wb') as f:
+                pickle.dump({'scale': self.scale, 'bias': self.bias}, f)
+        if not hyperparams.get('test', False):
+            self.generate_batches(noisy=self._hyperparams.get('use_noisy_demos', False))
+
         if not hyperparams.get('test', False):
             self.init_network(self.graph, restore_iter=self.restore_iter)
             self.init_network(self.graph, restore_iter=self.restore_iter, prefix='Validation_')
@@ -143,9 +152,8 @@ class PolicyCloningMAML(PolicyOptTf):
         
         if self.restore_iter > 0:
             self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
-            # import pdb; pdb.set_trace()
-            if not hyperparams.get('test', False):
-                self.update()
+            import pdb; pdb.set_trace()
+            self.update()
             # TODO: also implement resuming training from restored model
         else:
             self.update()
@@ -173,13 +181,11 @@ class PolicyCloningMAML(PolicyOptTf):
         # TODO: This has a bug. Fix it at some point.
         # self.eval_fast_weights()
         self.eval_success_rate(test_agent)
-        os._exit(1) # exit after measuring the success rate
+
         self.test_agent = None  # don't pickle agent
         self.val_demos = None # don't pickle demos
         self.train_demos = None
         self.demos = None
-        if hasattr(self, 'noisy_demos'):
-            self.noisy_demos = None
         self.policy.demos = None
         self.policy.selected_demoO = None
         self.policy.selected_demoU = None
@@ -219,6 +225,8 @@ class PolicyCloningMAML(PolicyOptTf):
                 toy_output_variable = tf.add(test_output, 0, name='output_action')
                 self.image_op = flat_img_inputb
                 self.fast_weights = {key: fast_weights_values[i] for i, key in enumerate(self.sorted_weight_keys)}
+            if 'Training' in prefix:
+                self.train_act_op = test_output # post-update output
 
             trainable_vars = tf.trainable_variables()
             total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(self.meta_batch_size)
@@ -249,7 +257,14 @@ class PolicyCloningMAML(PolicyOptTf):
             #     flat_img_inputb = tf.reshape(flat_img_inputb, [self.meta_batch_size, self.T, 3, 80, 64])
             #     flat_img_inputb = tf.transpose(flat_img_inputb, perm=[0,1,4,3,2])
             if 'Training' in prefix:
-                self.train_op = tf.train.AdamOptimizer(self.meta_lr).minimize(self.total_losses2[self.num_updates - 1])
+                optimizer = self._hyperparams.get('optimizer', 'adam')
+                if optimizer == 'adam':
+                    self.train_op = tf.train.AdamOptimizer(self.meta_lr).minimize(self.total_losses2[self.num_updates - 1])
+                elif optimizer == 'momentum':
+                    momentum = self._hyperparams.get('momentum', 0.9)
+                    self.train_op = tf.train.MomentumOptimizer(self.meta_lr, momentum).minimize(self.total_losses2[self.num_updates - 1])
+                else:
+                    raise NotImplementedError
                 # Add summaries
                 summ = [tf.summary.scalar(prefix + 'Pre-update_loss', self.total_loss1)] # tf.scalar_summary('Learning rate', learning_rate)
                 # train_summ.append(tf.scalar_summary('Moving Mean', self.moving_mean))
@@ -311,8 +326,13 @@ class PolicyCloningMAML(PolicyOptTf):
             is_dilated = self._hyperparams.get('is_dilated', False)
             use_fp = self._hyperparams.get('use_fp', False)
             pretrain = self._hyperparams.get('pretrain', False)
+            train_conv1 = self._hyperparams.get('train_conv1', False)
+            initialization = self._hyperparams.get('initialization', 'xavier')
             if pretrain:
                 num_filters[0] = 64
+                # strides[0] = [1, 1, 1, 1]
+                # num_filters[1] = 64
+                # strides[1] = [1, 1, 1, 1]
             pretrain_weight_path = self._hyperparams.get('pretrain_weight_path', '/home/kevin/gps/data/vgg19.pkl')
             n_conv_layers = len(num_filters)
             downsample_factor = 1
@@ -327,39 +347,63 @@ class PolicyCloningMAML(PolicyOptTf):
     
             # conv weights
             fan_in = num_channels
-            if self._hyperparams.get('use_img_context', False):
+            if self._hyperparams.get('use_img_context', False) or self._hyperparams.get('use_conv_context', False):
                 fan_in += num_channels
+            if self._hyperparams.get('use_conv_context', False):
+                weights['img_context'] = safe_get('img_context', initializer=tf.zeros([im_height, im_width, num_channels], dtype=tf.float32))
             for i in xrange(n_conv_layers):
+                # if not pretrain or (i != 0 and i != 1):
                 if not pretrain or i != 0:
                     if self.norm_type == 'selu':
                         weights['wc%d' % (i+1)] = init_conv_weights_snn([filter_size, filter_size, fan_in, num_filters[i]], name='wc%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
-                    else:                
+                    elif initialization == 'xavier':                
                         weights['wc%d' % (i+1)] = init_conv_weights_xavier([filter_size, filter_size, fan_in, num_filters[i]], name='wc%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                    elif initialization == 'random':
+                        weights['wc%d' % (i+1)] = init_weights([filter_size, filter_size, fan_in, num_filters[i]], name='wc%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                    else:
+                        raise NotImplementedError
                     weights['bc%d' % (i+1)] = init_bias([num_filters[i]], name='bc%d' % (i+1))
                     fan_in = num_filters[i]
                 else:
                     import h5py
                     
-                    assert num_filters[0] == 64
-                    weights['wc%d' % (i+1)] = safe_get('wc%d' % (i+1), [filter_size, filter_size, fan_in, num_filters[i]], dtype=tf.float32, trainable=False)
-                    weights['bc%d' % (i+1)] = safe_get('bc%d' % (i+1), [num_filters[i]], dtype=tf.float32, trainable=False)
+                    assert num_filters[i] == 64
+                    weights['wc%d' % (i+1)] = safe_get('wc%d' % (i+1), [filter_size, filter_size, fan_in, num_filters[i]], dtype=tf.float32, trainable=train_conv1)
+                    weights['bc%d' % (i+1)] = safe_get('bc%d' % (i+1), [num_filters[i]], dtype=tf.float32, trainable=train_conv1)
                     pretrain_weight = h5py.File(pretrain_weight_path, 'r')
-                    conv1_weight = pretrain_weight['block1_conv1']['block1_conv1_W_1:0'][...]
-                    conv1_bias = pretrain_weight['block1_conv1']['block1_conv1_b_1:0'][...]
-                    weights['wc%d' % (i+1)].assign(conv1_weight)
-                    weights['bc%d' % (i+1)].assign(conv1_bias)
-                    fan_in = conv1_weight.shape[-1]
+                    conv_weight = pretrain_weight['block1_conv%d' % (i+1)]['block1_conv%d_W_1:0' % (i+1)][...]
+                    conv_bias = pretrain_weight['block1_conv%d' % (i+1)]['block1_conv%d_b_1:0' % (i+1)][...]
+                    weights['wc%d' % (i+1)].assign(conv_weight)
+                    weights['bc%d' % (i+1)].assign(conv_bias)
+                    fan_in = conv_weight.shape[-1]
 
             # fc weights
             # in_shape = 40 # dimension after feature computation
             in_shape = self.conv_out_size
             if not self._hyperparams.get('no_state'):
                 in_shape += len(self.x_idx) # hard-coded for last conv layer output
+            if self._hyperparams.get('learn_final_eept', False):
+                final_eept_range = self._hyperparams['final_eept_range']
+                final_eept_in_shape = self.conv_out_size
+                if self._hyperparams.get('use_state_context', False):
+                    final_eept_in_shape += self._hyperparams.get('context_dim', 10)
+                weights['w_ee'] = init_weights([final_eept_in_shape, len(final_eept_range)], name='w_ee')
+                weights['b_ee'] = init_bias([len(final_eept_range)], name='b_ee')
+                in_shape += (len(final_eept_range))
         else:
             in_shape = dim_input
-        if self._hyperparams.get('use_context', False):
+        if (self._hyperparams.get('use_context', False) and (not self._hyperparams.get('no_state', False))) or \
+            self._hyperparams.get('use_state_context', False):
             in_shape += self._hyperparams.get('context_dim', 10)
-        fc_weights = self.construct_fc_weights(in_shape, dim_output, network_config=network_config)
+        if self._hyperparams.get('use_state_context', False):
+            weights['context'] = safe_get('context', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
+        if self._hyperparams.get('use_rnn', False):
+            fc_weights = self.construct_rnn_weights(in_shape, dim_output, network_config=network_config)
+        elif self._hyperparams.get('use_lstm', False):
+            fc_weights = self.construct_lstm_weights(in_shape, dim_output, network_config=network_config)
+        else:
+            fc_weights = self.construct_fc_weights(in_shape, dim_output, network_config=network_config)
+        self.conv_out_size_final = in_shape
         weights.update(fc_weights)
         return weights
     
@@ -377,8 +421,34 @@ class PolicyCloningMAML(PolicyOptTf):
                 weights['w_%d' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d' % i)
                 # weights['w_%d' % i] = init_fc_weights_xavier([in_shape, dim_hidden[i]], name='w_%d' % i)
             weights['b_%d' % i] = init_bias([dim_hidden[i]], name='b_%d' % i)
+            if i == n_layers - 1 and self._hyperparams.get('two_heads', False):
+                weights['w_%d_two_heads' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d_two_heads' % i)
+                weights['b_%d_two_heads' % i] = init_bias([dim_hidden[i]], name='b_%d_two_heads' % i)
             in_shape = dim_hidden[i]
-        return weights        
+        return weights
+    
+    def construct_rnn_weights(self, dim_input=27, dim_output=7, network_config=None):
+        num_units = self._hyperparams.get('num_units', 200)
+        weights = {}
+        weights['rnn_state'] = safe_get('rnn_state', initializer=tf.zeros([None, num_units], dtype=tf.float32))
+        weights['rnn_weight'] = safe_get('rnn_weight', [dim_input+num_units, num_units], dtype=tf.float32)
+        weights['rnn_bias'] = init_bias([num_units], name='rnn_bias')
+        fc_weights = self.construct_fc_weights(num_units, dim_output, network_config=network_config)
+        weights.update(fc_weights)
+        return weights
+        
+    def construct_lstm_weights(self, dim_input=27, dim_output=7, network_config=None):
+        # TODO: implement this
+        num_units = self._hyperparams.get('num_units', 200)
+        self.lstm_state_size = 2 * num_units
+        assert self.update_batch_size == self.test_batch_size
+        weights = {}
+        weights['lstm_state'] = tf.get_variable('lstm_state', shape=[self.update_batch_size, self.lstm_state_size], initializer=tf.constant_initializer(0.), dtype=tf.float32)
+        weights['lstm_weight'] = safe_get('lstm_weight', [dim_input+num_units, 4*num_units], dtype=tf.float32)
+        weights['lstm_bias'] = init_bias([4*num_units], name='lstm_bias')
+        fc_weights = self.construct_fc_weights(num_units, dim_output, network_config=network_config)
+        weights.update(fc_weights)
+        return weights
         
     def vbn(self, tensor, name, update=False):
         VBN_cls = VBN
@@ -389,7 +459,17 @@ class PolicyCloningMAML(PolicyOptTf):
         vbn = getattr(self, name)
         return vbn(tensor, update=update)
 
-    def forward(self, image_input, state_input, weights, update=False, is_training=True, network_config=None):
+    def forward(self, image_input, state_input, weights, meta_testing=False, update=False, is_training=True, testing=False, network_config=None):
+        # tile up context variable
+        if self._hyperparams.get('use_state_context', False):
+            if not testing:
+                if not meta_testing:
+                    batch_size = self.update_batch_size*self.T
+                else:
+                    batch_size = self.test_batch_size*self.T
+            else:
+                batch_size = 1
+            context = tf.reshape(tf.tile(weights['context'], [batch_size]), [batch_size, -1])
         if self._hyperparams.get('use_vision', True):
             norm_type = self.norm_type
             decay = network_config.get('decay', 0.9)
@@ -398,10 +478,23 @@ class PolicyCloningMAML(PolicyOptTf):
             use_dropout = self._hyperparams.get('use_dropout', False)
             prob = self._hyperparams.get('keep_prob', 0.5)
             is_dilated = self._hyperparams.get('is_dilated', False)
-            # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
-            # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
-            # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)            
+            # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, id=0, is_training=is_training)
+            # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, id=1, is_training=is_training)
+            # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, id=2, is_training=is_training)            
             conv_layer = image_input
+            if self._hyperparams.get('use_conv_context', False):
+                im_height = network_config['image_height']
+                im_width = network_config['image_width']
+                num_channels = network_config['image_channels']
+                if not testing:
+                    if not meta_testing:
+                        batch_size = self.update_batch_size*self.T
+                    else:
+                        batch_size = self.test_batch_size*self.T
+                else:
+                    batch_size = 1
+                context = tf.reshape(tf.tile(tf.reshape(weights['img_context'], [-1]), [batch_size]), [-1, im_height, im_width, num_channels])
+                conv_layer = tf.concat(3, [conv_layer, context])
             for i in xrange(n_conv_layers):
                 if norm_type == 'vbn':
                     if not use_dropout:
@@ -410,9 +503,9 @@ class PolicyCloningMAML(PolicyOptTf):
                         conv_layer = dropout(self.vbn(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), name='vbn_%d' % (i+1), update=update), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
                 else:
                     if not use_dropout:
-                        conv_layer = norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=i, is_training=is_training)
+                        conv_layer = norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, id=i, is_training=is_training)
                     else:
-                        conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=i, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
+                        conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, id=i, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
             if self._hyperparams.get('use_fp', False):
                 _, num_rows, num_cols, num_fp = conv_layer.get_shape()
                 num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
@@ -444,34 +537,107 @@ class PolicyCloningMAML(PolicyOptTf):
             # conv_out_flat = tf.reshape(conv_layer_3, [-1, self.conv_out_size])
             # if use_dropout:
                 # conv_out_flat = dropout(conv_out_flat, keep_prob=0.8, is_training=is_training, name='dropout_input')
+            if self._hyperparams.get('no_state'):
+                fc_input = tf.add(conv_out_flat, 0)
+            else:
+                fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
             if self._hyperparams.get('learn_final_eept', False):
-                final_eept_pred = tf.matmul(conv_out_flat, weights['w_ee']) + weights['b_ee']
-                fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input, final_eept_pred])
+                final_eept_range = self._hyperparams['final_eept_range']
+                if testing:
+                    T = 1
+                else:
+                    T = self.T
+                conv_out_flat = tf.reshape(conv_out_flat, [-1, T, self.conv_out_size])
+                if self._hyperparams.get('use_state_context', False):
+                    context_dim = self._hyperparams.get('context_dim', 10)
+                    conv_out_flat = tf.concat(concat_dim=2, values=[conv_out_flat, tf.reshape(context, [-1, T, context_dim])])
+                # only predict the final eept using the initial image
+                final_eept_pred = tf.matmul(conv_out_flat[:, 0, :], weights['w_ee']) + weights['b_ee']
+                final_eept_pred = tf.reshape(tf.tile(tf.reshape(final_eept_pred, [-1]), [T]), [-1, len(final_eept_range)])
+                fc_input = tf.concat(concat_dim=1, values=[fc_input, final_eept_pred])
             else:
                 final_eept_pred = None
-                fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
         else:
-            final_eept_pred = None
             fc_input = image_input
-        return self.fc_forward(fc_input, weights, is_training=is_training, network_config=network_config), final_eept_pred
+        if self._hyperparams.get('use_state_context', False):
+            fc_input = tf.concat(concat_dim=1, values=[fc_input, context])
+        if self._hyperparams.get('use_rnn', False):
+            return self.rnn_forward(fc_input, weights, meta_testing=meta_testing, is_training=is_training, testing=testing, network_config=network_config), final_eept_pred
+        if self._hyperparams.get('use_lstm', False):
+            return self.lstm_forward(fc_input, weights, meta_testing=meta_testing, is_training=is_training, testing=testing, network_config=network_config), final_eept_pred
+        return self.fc_forward(fc_input, weights, meta_testing=meta_testing, is_training=is_training, testing=testing, network_config=network_config), final_eept_pred
 
-    def fc_forward(self, fc_input, weights, is_training=True, network_config=None):
+    def fc_forward(self, fc_input, weights, meta_testing=False, is_training=True, testing=False, network_config=None):
         n_layers = network_config.get('n_layers', 4) # 3
         use_dropout = self._hyperparams.get('use_dropout', False)
         prob = self._hyperparams.get('keep_prob', 0.5)
         fc_output = tf.add(fc_input, 0)
         use_selu = self.norm_type == 'selu'
+        use_ln = self._hyperparams.get('ln_for_fc', False)
+        norm_type = self.norm_type
         for i in xrange(n_layers):
-            fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
+            if i == n_layers - 1 and self._hyperparams.get('two_heads', False) and not meta_testing:
+                fc_output = tf.matmul(fc_output, weights['w_%d_two_heads' % i]) + weights['b_%d_two_heads' % i]
+            else:
+                fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
             if i != n_layers - 1:
                 if use_selu:
                     fc_output = selu(fc_output)
+                elif use_ln:
+                    fc_output = norm(fc_output, norm_type='layer_norm', id=i, is_training=is_training, prefix='fc_')
                 else:
                     fc_output = tf.nn.relu(fc_output)
                 if use_dropout:
                     fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i, selu=use_selu)
         # return fc_output, fp, moving_mean, moving_variance
         return fc_output
+        
+    def rnn_forward(self, rnn_input, weights, meta_testing=False, is_training=True, testing=False, network_config=None):
+        # LSTM forward
+        state = weights['rnn_state']
+        rnn_input = tf.reshape(rnn_input, [-1, self.T, self.conv_out_size_final])
+        rnn_outputs = []
+        for t in xrange(self.T):
+            inp = tf.concat(1, [rnn_input[:, t, :], state])
+            rnn_output = tf.matmul(inp, weights['rnn_weight']) + weights['rnn_bias']
+            if self._hyperparams.get('ln_for_rnn', False):
+                rnn_output = norm(rnn_output, norm_type='layer_norm', id=t, is_training=is_training, prefix='rnn_')
+            else:
+                rnn_output = tf.nn.relu(rnn_output)
+            rnn_outputs.append(rnn_output)
+            state = tf.identity(rnn_output)
+        rnn_output = tf.concat(0, rnn_outputs)
+        return self.fc_forward(rnn_output, weights, is_training=is_training, testing=testing, network_config=network_config)
+        
+    def lstm_forward(self, lstm_input, weights, meta_testing=False, is_training=True, testing=False, network_config=None):
+        # LSTM forward
+        state = weights['lstm_state']
+        num_units = self._hyperparams.get('num_units', 200)
+        use_norm = self._hyperparams.get('ln_for_rnn', False)
+        forget_bias = 1.0
+        activation = tf.nn.tanh
+        lstm_outputs = []
+        lstm_input = tf.reshape(lstm_input, [-1, self.T, self.conv_out_size_final])
+        for t in xrange(self.T):
+            inp = lstm_input[:, t, :]
+            c_prev = state[:, :num_units]
+            m_prev = state[:, num_units:]
+            cell_inputs = tf.concat(1, [inp, m_prev])
+            lstm_matrix = tf.matmul(cell_inputs, weights['lstm_weight']) + weights['lstm_bias']
+            i, j, f, o = tf.split(1, 4, lstm_matrix)
+            if use_norm:
+                i = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_i_')
+                j = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_j_')
+                f = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_f_')
+                o = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_o_')
+            c = (tf.sigmoid(f + forget_bias) * c_prev + tf.sigmoid(i) * activation(j))
+            if use_norm:
+                c = norm(c, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_c_')
+            m = tf.sigmoid(o) * activation(c)
+            state = tf.concat(1, [c, m])
+            lstm_outputs.append(m)
+        lstm_output = tf.concat(0, lstm_outputs)
+        return self.fc_forward(lstm_output, weights, is_training=is_training, testing=testing, network_config=network_config)
 
     def construct_model(self, input_tensors=None, prefix='Training_', dim_input=27, dim_output=7, batch_size=25, network_config=None):
         """
@@ -525,6 +691,7 @@ class PolicyCloningMAML(PolicyOptTf):
             reference_tensor = self.reference_tensor
         
         if self._hyperparams.get('remove_first_img', False):
+            assert self.test_batch_size == 1
             obsa = obsa[:, 1:, :]
             statea = statea[:, 1:, :]
             actiona = actiona[:, 1:, :]
@@ -532,6 +699,15 @@ class PolicyCloningMAML(PolicyOptTf):
                 obsb = obsb[:, 1:, :]
                 stateb = stateb[:, 1:, :]
                 actionb = actionb[:, 1:, :]
+        
+        if self._hyperparams.get('initial_image', False):
+            assert self.test_batch_size == 1
+            obsa = tf.expand_dims(obsa[:, 0, :], axis=1)
+            statea = tf.expand_dims(statea[:, 0, :], axis=1)
+            actiona = tf.expand_dims(actiona[:, 0, :], axis=1)
+            obsb = tf.expand_dims(obsb[:, 0, :], axis=1)
+            stateb = tf.expand_dims(stateb[:, 0, :], axis=1)
+            actionb = tf.expand_dims(actionb[:, 0, :], axis=1)
 
         if self._hyperparams.get('use_vision', True):
             inputa = tf.concat(2, [statea, obsa])
@@ -544,17 +720,26 @@ class PolicyCloningMAML(PolicyOptTf):
             # Construct layers weight & bias
             # TODO: since we flip to reuse automatically, this code below is unnecessary
             if 'weights' not in dir(self):
-                self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
+                if self._hyperparams.get('learn_final_eept', False):
+                    final_eept_range = self._hyperparams['final_eept_range']
+                    self.weights = weights = self.construct_weights(dim_input, dim_output-len(final_eept_range), network_config=network_config)
+                else:
+                    self.weights = weights = self.construct_weights(dim_input, dim_output, network_config=network_config)
+                    # self.weights = weights = self.construct_weights(dim_input, 2, network_config=network_config)
                 self.sorted_weight_keys = natsorted(self.weights.keys())
             else:
                 training_scope.reuse_variables()
                 weights = self.weights
             # self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3), trainable=False))
-            # self.step_size = tf.abs(tf.Variable(self._hyperparams.get('step_size', 1e-3)))
-            self.step_size = self._hyperparams.get('step_size', 1e-3)
+            if self._hyperparams.get('learn_step_size', False):
+                self.step_size = tf.abs(safe_get('step_size', initializer=self._hyperparams.get('step_size', 1e-3), dtype=tf.float32))
+            else:
+                self.step_size = self._hyperparams.get('step_size', 1e-3)
             self.grad_reg = self._hyperparams.get('grad_reg', 0.005)
             act_noise_std = self._hyperparams.get('act_noise_std', 0.5)
             loss_multiplier = self._hyperparams.get('loss_multiplier', 100.0)
+            final_eept_loss_eps = self._hyperparams.get('final_eept_loss_eps', 0.01)
+            act_loss_eps = self._hyperparams.get('act_loss_eps', 1.0)
             if self._hyperparams.get('use_context', False):
                 # self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
                 self.context_var = safe_get('context_variable', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
@@ -563,6 +748,9 @@ class PolicyCloningMAML(PolicyOptTf):
                 W = network_config['image_width']
                 C = network_config['image_channels']
                 self.img_context_var = safe_get('img_context_variable', initializer=tf.zeros([H, W, C], dtype=tf.float32))
+                # restrict img context var
+                if self._hyperparams.get('normalize_img_context', False):
+                    self.img_context_var = tf.clip_by_value(self.img_context_var, 0., 1.)
                 
             num_updates = self.num_updates
             lossesa, outputsa = [], []
@@ -578,6 +766,21 @@ class PolicyCloningMAML(PolicyOptTf):
                 actiona = tf.reshape(actiona, [-1, dim_output])
                 actionb = tf.reshape(actionb, [-1, dim_output])
                 gradients_summ = []
+                testing = 'Testing' in prefix
+                
+                if self._hyperparams.get('learn_final_eept', False):
+                    final_eept_range = self._hyperparams['final_eept_range']
+                    # assumes update_batch_size == 1
+                    # final_eepta = tf.reshape(tf.tile(actiona[-1, final_eept_range[0]:], [self.update_batch_size*self.T]), [-1, len(final_eept_range)])
+                    # final_eeptb = tf.reshape(tf.tile(actionb[-1, final_eept_range[0]:], [self.update_batch_size*self.T]), [-1, len(final_eept_range)])
+                    final_eepta = actiona[:, final_eept_range[0]:final_eept_range[-1]]
+                    final_eeptb = actionb[:, final_eept_range[0]:final_eept_range[-1]]
+                    actiona = actiona[:, :final_eept_range[0]]
+                    actionb = actionb[:, :final_eept_range[0]]   
+                else:
+                    final_eepta, final_eeptb = None, None
+                    # actiona = actiona[:, 6:]
+                    # actionb = actionb[:, 6:]
                 
                 if self._hyperparams.get('add_noise', False):
                     actiona += tf.random_normal([self.T*self.update_batch_size, dim_output], stddev=act_noise_std)
@@ -612,39 +815,63 @@ class PolicyCloningMAML(PolicyOptTf):
                 if self._hyperparams.get('no_state'):
                     state_inputa_new = None
 
-                local_outputbs, local_lossesb = [], []
+                local_outputbs, local_lossesb, final_eept_lossesb = [], [], []
                 # Assume fixed data for each update
                 inputas = [inputa]*num_updates
                 actionas = [actiona]*num_updates
+                if self._hyperparams.get('learn_final_eept', False):
+                    final_eeptas = [final_eepta]*num_updates
                 if 'Training' in prefix:
                     # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
-                    local_outputa = self.forward(inputa, state_inputa_new, weights, network_config=network_config)
+                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa_new, weights, network_config=network_config)
                 else:
                     # local_outputa, _, moving_mean_test, moving_variance_test = self.forward(inputa, state_inputa, weights, is_training=False, network_config=network_config)
-                    local_outputa = self.forward(inputa, state_inputa_new, weights, update=update, is_training=False, network_config=network_config)
-                local_lossa = euclidean_loss_layer(local_outputa, actiona, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
-
+                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa_new, weights, update=update, is_training=False, network_config=network_config)
+                if self._hyperparams.get('learn_final_eept', False):
+                    final_eept_lossa = euclidean_loss_layer(final_eept_preda, final_eepta, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                else:
+                    final_eept_lossa = tf.constant(0.0)
+                local_lossa = act_loss_eps * euclidean_loss_layer(local_outputa, actiona, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                if self._hyperparams.get('learn_final_eept', False):
+                    local_lossa += final_eept_loss_eps * final_eept_lossa
+                
                 grads = tf.gradients(local_lossa, weights.values())
+                gradients = dict(zip(weights.keys(), grads))
+                # make fast gradient zero for weights with gradient None
+                for key in gradients.keys():
+                    if gradients[key] is None:
+                        gradients[key] = tf.zeros_like(weights[key])
                 if self._hyperparams.get('stop_grad', False):
-                    grads = [tf.stop_gradient(grad) for grad in grads]
+                    gradients = {key:tf.stop_gradient(gradients[key]) for key in gradients.keys()}
                 if self._hyperparams.get('use_clip', False):
                     clip_min = self._hyperparams['clip_min']
                     clip_max = self._hyperparams['clip_max']
-                    grads = [tf.clip_by_value(grad, clip_min, clip_max) for grad in grads]
-                gradients = dict(zip(weights.keys(), grads))
-                if self._hyperparams.get('pretrain', False):
+                    for key in gradients.keys():
+                        # if 'context' not in key:
+                        gradients[key] = tf.clip_by_value(gradients[key], clip_min, clip_max)
+                if self._hyperparams.get('pretrain', False) and not self._hyperparams.get('train_conv1', False):
                     gradients['wc1'] = tf.zeros_like(gradients['wc1'])
                     gradients['bc1'] = tf.zeros_like(gradients['bc1'])
+                    # gradients['wc2'] = tf.zeros_like(gradients['wc2'])
+                    # gradients['bc2'] = tf.zeros_like(gradients['bc2'])
                 gradients_summ.append([gradients[key] for key in self.sorted_weight_keys])
                 if self._hyperparams.get('use_context', False):
                     context_grad = tf.gradients(local_lossa, self.context_var)[0]
                     if self._hyperparams.get('stop_grad', False):
                         context_grad = tf.stop_gradient(context_grad)
+                    if self._hyperparams.get('clip_context', False):
+                        clip_min = self._hyperparams['clip_min']
+                        clip_max = self._hyperparams['clip_max']
+                        context_grad = tf.clip_by_value(context_grad, clip_min, clip_max)
                     fast_context = self.context_var - self.step_size*context_grad
                 if self._hyperparams.get('use_img_context', False):
                     img_context_grad = tf.gradients(local_lossa, self.img_context_var)[0]
                     if self._hyperparams.get('stop_grad', False):
                         img_context_grad = tf.stop_gradient(context_grad)
+                    if self._hyperparams.get('clip_context', False):
+                        clip_min = self._hyperparams['clip_min']
+                        clip_max = self._hyperparams['clip_max']
+                        img_context_grad = tf.clip_by_value(img_context_grad, clip_min, clip_max)
                     fast_img_context = self.img_context_var - self.step_size*img_context_grad
                 if self._hyperparams.get('use_vision', True):
                     if self._hyperparams.get('use_img_context', False):
@@ -668,12 +895,19 @@ class PolicyCloningMAML(PolicyOptTf):
                 # Is mask used here?
                 fast_weights = dict(zip(weights.keys(), [weights[key] - self.step_size*gradients[key] for key in weights.keys()]))
                 if 'Training' in prefix:
-                    outputb = self.forward(inputb, state_inputb_new, fast_weights, network_config=network_config)
+                    outputb, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, meta_testing=True, network_config=network_config)
                 else:
-                    outputb = self.forward(inputb, state_inputb_new, fast_weights, update=update, is_training=False, network_config=network_config)
+                    outputb, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, meta_testing=True, update=update, is_training=False, testing=testing, network_config=network_config)
                 # fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
                 local_outputbs.append(outputb)
-                local_lossb = euclidean_loss_layer(outputb, actionb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                if self._hyperparams.get('learn_final_eept', False):
+                    final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                else:
+                    final_eept_lossb = tf.constant(0.0)
+                final_eept_lossesb.append(final_eept_lossb)
+                local_lossb = act_loss_eps * euclidean_loss_layer(outputb, actionb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                if self._hyperparams.get('learn_final_eept', False):
+                    local_lossb += final_eept_loss_eps * final_eept_lossb
                 local_lossesb.append(local_lossb)
                 
                 # TODO: add img context var to cases where num_updates > 1
@@ -691,20 +925,28 @@ class PolicyCloningMAML(PolicyOptTf):
                             context += self.context_var
                             inputas[j+1] = tf.concat(1, [inputas[j+1], context])
                         state_inputa_new = None
+                        
+                    if self._hyperparams.get('no_state'):
+                        state_inputa_new = None
+                        
                     outputa, final_eept_preda = self.forward(inputas[j+1], state_inputa_new, fast_weights, network_config=network_config)
                     if self._hyperparams.get('learn_final_eept', False):
                         final_eept_lossa = euclidean_loss_layer(final_eept_preda, final_eeptas[j+1], None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
                     else:
                         final_eept_lossa = tf.constant(0.0)
-                    loss = euclidean_loss_layer(outputa, actionas[j+1], None, multiplier=loss_multiplier, behavior_clone=True,
+                    loss = act_loss_eps * euclidean_loss_layer(outputa, actionas[j+1], None, multiplier=loss_multiplier, behavior_clone=True,
                                                 use_l1=self._hyperparams.get('use_l1', False))# + fast_weights_reg / tf.to_float(self.update_batch_size)
                     if self._hyperparams.get('learn_final_eept', False):
-                        local += final_eept_loss_eps * final_eept_lossa
+                        loss += final_eept_loss_eps * final_eept_lossa
                     grads = tf.gradients(loss, fast_weights.values())
                     if self._hyperparams.get('use_context', False):
                         context_grad = tf.gradients(loss, self.context_var)[0]
                         if self._hyperparams.get('stop_grad', False):
                             context_grad = tf.stop_gradient(context_grad)
+                        if self._hyperparams.get('clip_context', False):
+                            clip_min = self._hyperparams['clip_min']
+                            clip_max = self._hyperparams['clip_max']
+                            context_grad = tf.clip_by_value(context_grad, clip_min, clip_max)
                         fast_context = self.context_var - self.step_size*context_grad
                     if self._hyperparams.get('use_vision', True):
                         if self._hyperparams.get('use_context', False):
@@ -719,31 +961,41 @@ class PolicyCloningMAML(PolicyOptTf):
                             contextb += fast_context
                             inputb = tf.concat(1, [inputb, contextb])
                         state_inputb_new = None
+                    if self._hyperparams.get('no_state'):
+                        state_inputb_new = None
+                    gradients = dict(zip(fast_weights.keys(), grads))
+                    # make fast gradient zero for weights with gradient None
+                    for key in gradients.keys():
+                        if gradients[key] is None:
+                            gradients[key] = tf.zeros_like(fast_weights[key])
                     if self._hyperparams.get('stop_grad', False):
-                        grads = [tf.stop_gradient(grad) for grad in grads]
+                        gradients = {key:tf.stop_gradient(gradients[key]) for key in gradients.keys()}
                     if self._hyperparams.get('use_clip', False):
                         clip_min = self._hyperparams['clip_min']
                         clip_max = self._hyperparams['clip_max']
-                        grads = [tf.clip_by_value(grad, clip_min, clip_max) for grad in grads]
-                    gradients = dict(zip(fast_weights.keys(), grads))
-                    if self._hyperparams.get('pretrain', False):
+                        for key in gradients.keys():
+                            # if 'context' not in key:
+                            gradients[key] = tf.clip_by_value(gradients[key], clip_min, clip_max)
+                    if self._hyperparams.get('pretrain', False) and not self._hyperparams.get('train_conv1', False):
                         gradients['wc1'] = tf.zeros_like(gradients['wc1'])
                         gradients['bc1'] = tf.zeros_like(gradients['bc1'])
+                        # gradients['wc2'] = tf.zeros_like(gradients['wc2'])
+                        # gradients['bc2'] = tf.zeros_like(gradients['bc2'])
                     gradients_summ.append([gradients[key] for key in self.sorted_weight_keys])
                     fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
                     if 'Training' in prefix:
-                        output, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, network_config=network_config)
+                        output, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, meta_testing=True, network_config=network_config)
                         # output = self.forward(inputb, state_inputb, fast_weights, update=update, is_training=False, network_config=network_config)
                     else:
-                        output, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, update=update, is_training=False, network_config=network_config)
+                        output, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, meta_testing=True, update=update, is_training=False, testing=testing, network_config=network_config)
                     local_outputbs.append(output)
                     if self._hyperparams.get('learn_final_eept', False):
-                        final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptbs[j+1], None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                        final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
                     else:
                         final_eept_lossb = tf.constant(0.0)
                     final_eept_lossesb.append(final_eept_lossb)
                     # fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
-                    lossb = euclidean_loss_layer(output, actionb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                    lossb = act_loss_eps * euclidean_loss_layer(output, actionb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
                     if self._hyperparams.get('learn_final_eept', False):
                         lossb += final_eept_loss_eps * final_eept_lossb
                     local_lossesb.append(lossb)
@@ -756,7 +1008,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 # local_fn_output = [local_outputa, local_outputbs, test_outputa, local_lossa, local_lossesb, flat_img_inputa, fp, conv_layer_2, outputs, test_outputs, mean, variance, moving_mean, moving_variance, moving_mean_new, moving_variance_new]
                 fast_weights_values = [fast_weights[key] for key in self.sorted_weight_keys]
                 # use post update output
-                local_fn_output = [local_outputa, local_outputbs, local_outputbs[-1], local_lossa, local_lossesb, flat_img_inputb, fast_weights_values, gradients_summ]
+                local_fn_output = [local_outputa, local_outputbs, local_outputbs[-1], local_lossa, local_lossesb, final_eept_lossesb, flat_img_inputb, fast_weights_values, gradients_summ]
                 return local_fn_output
 
         if self.norm_type:
@@ -771,7 +1023,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 unused = batch_metalearn((inputa[0], inputb[0], actiona[0], actionb[0]))
         
         # out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, tf.float32, tf.float32, tf.float32, tf.float32]
-        out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, tf.float32, [tf.float32]*len(self.weights.keys()), [[tf.float32]*len(self.weights.keys())]*num_updates]
+        out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, [tf.float32]*num_updates, tf.float32, [tf.float32]*len(self.weights.keys()), [[tf.float32]*len(self.weights.keys())]*num_updates]
         result = tf.map_fn(batch_metalearn, elems=(inputa, inputb, actiona, actionb), dtype=out_dtype)
         print 'Done with map.'
         return result
@@ -789,22 +1041,51 @@ class PolicyCloningMAML(PolicyOptTf):
         if not self._hyperparams.get('use_vision', True) and demos[0]['demoX'].shape[2] > self._dO:
             for key in demos.keys():
                 demos[key]['demoX'] = demos[key]['demoX'][:, :, :-9].copy()
+        if demos[0]['demoX'].shape[2] > len(self.x_idx):
+            for key in demos.keys():
+                demos[key]['demoX'] = demos[key]['demoX'][:, :, -9:].copy()
+        # for key in demos.keys():
+        #     demos[key]['demoX'] = demos[key]['demoX'][8:-8, :, :].copy()
+        #     demos[key]['demoU'] = demos[key]['demoU'][8:-8, :, :].copy()
         n_folders = len(demos.keys())
         n_val = self._hyperparams['n_val'] # number of demos for testing
         N_demos = np.sum(demo['demoX'].shape[0] for i, demo in demos.iteritems())
         print "Number of demos: %d" % N_demos
         idx = np.arange(n_folders)
         # shuffle(idx)
-        # self.val_idx = np.sort(np.random.choice(idx, size=n_val, replace=False))
-        # mask = np.array([(i in self.val_idx) for i in idx])
-        # self.train_idx = np.sort(idx[~mask])
         if not hasattr(self, 'train_idx'):
             if n_val != 0:
-                self.val_idx = idx[-n_val:]
-                self.train_idx = idx[:-n_val]
+                if not self._hyperparams.get('shuffle_val', False):
+                    self.val_idx = idx[-n_val:]
+                    self.train_idx = idx[:-n_val]
+                else:
+                    self.val_idx = np.sort(np.random.choice(idx, size=n_val, replace=False))
+                    mask = np.array([(i in self.val_idx) for i in idx])
+                    self.train_idx = np.sort(idx[~mask])
             else:
                 self.train_idx = idx
                 self.val_idx = []
+        # self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
+        # train_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d' % i) for i in self.train_idx}
+        # # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
+        # val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d' % i) for i in self.val_idx}
+        # self.train_obs = {}
+        # self.val_obs = {}
+        # for i in idx:
+        #     demoO = []
+        #     for j in xrange(8):
+        #         print 'Loading gifs for object %d cond %d' % (i, j)
+        #         if i in self.train_idx:
+        #             demoO.append(np.array(imageio.mimread(os.path.join(train_img_folders[i], 'cond%d.samp0.gif' % j)))[:, :, :, :3])
+        #         else:
+        #             demoO.append(np.array(imageio.mimread(os.path.join(val_img_folders[i], 'cond%d.samp0.gif' % j)))[:, :, :, :3])
+        #     demoO = np.array(demoO).transpose(0, 1, 4, 3, 2)
+        #     N, T, _, _, _ = demoO.shape
+        #     demoO = demoO.reshape(N, T, -1)
+        #     if i in self.train_idx:
+        #         self.train_obs[i] = demoO.copy()
+        #     else:
+        #         self.val_obs[i] = demoO.copy()
         # Normalizing observations
         with Timer('Normalizing states'):
             if self.scale is None or self.bias is None:
@@ -824,9 +1105,31 @@ class PolicyCloningMAML(PolicyOptTf):
             self.demos = demos
         else:
             self.noisy_demos = demos
+        if self.norm_type == 'vbn':
+            self.generate_reference_batch()
+            
+    def generate_reference_batch(self):
+        """
+            Generate the reference batch for VBN. The reference batch is generated randomly
+            at each time step.
+        """
+        self.reference_batch = np.zeros((self.T, self._dO))
+        n_demo = self.demos[0]['demoX'].shape[0]
+        for t in xrange(self.T):
+            idx = np.random.choice(self.train_idx)
+            selected_cond = np.random.choice(np.arange(n_demo))
+            self.reference_batch[t, self.x_idx] = self.demos[idx]['demoX'][selected_cond, t, :]
+            if self._hyperparams.get('use_vision', True):
+                O = np.array(imageio.mimread(self.demo_gif_dir + self.gif_prefix + '_%d/cond%d.samp0.gif' % (idx, selected_cond)))[t, :, :, :3]
+                O = np.transpose(O, [2, 1, 0]).flatten()
+                O = O / 255.0
+                self.reference_batch[t, self.img_idx] = O
+        print 'Done generating reference batch.'
+        # TODO: make this compatible in new code.
+        # self.policy.reference_batch_X = self.reference_batch[:, self.x_idx]
+        # self.policy.reference_batch_O = self.reference_batch[:, self.img_idx]
     
     def generate_testing_demos(self):
-        self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
         if not self._hyperparams.get('use_noisy_demos', False):
             n_folders = len(self.demos.keys())
             demos = self.demos
@@ -843,7 +1146,7 @@ class PolicyCloningMAML(PolicyOptTf):
             if self._hyperparams.get('use_vision', True):
                 # For half of the dataset
                 if i in self.val_idx and not self._hyperparams.get('use_noisy_demos', False):
-                    idx = i
+                    idx = i + 1000
                 else:
                     idx = i
                 if self._hyperparams.get('use_noisy_demos', False):
@@ -863,30 +1166,12 @@ class PolicyCloningMAML(PolicyOptTf):
         print "Selected demo is %d" % self.policy.selected_demoX[0].shape[0]
         # self.policy.demos = self.demos #debug
     
-    def generate_reference_batch(self, obs):
-        """
-            Generate the reference batch for VBN. The reference batch is generated randomly
-            at each time step.
-            Args:
-                obs: total observations.
-        """
-        assert self.norm_type == 'vbn'
-        self.reference_batch = np.zeros((self.T, self._dO))
-        for t in xrange(self.T):
-            idx = np.random.choice(np.arange(obs.shape[0]))
-            self.reference_batch[t, :] = obs[idx, t, :]
-        self.policy.reference_batch = self.reference_batch
-        # TODO: make this compatible in new code.
-        # self.policy.reference_batch_X = self.reference_batch[:, self.x_idx]
-        # self.policy.reference_batch_O = self.reference_batch[:, self.img_idx]
-    
     def generate_batches(self, noisy=False):
         with Timer('Generating batches for each iteration'):
-            self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
             train_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d' % i) for i in self.train_idx}
             # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
             val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d' % i) for i in self.val_idx}
-            # val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d' % (i+1200)) for i in self.val_idx}
+            # val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d' % (i+183)) for i in self.val_idx}
             if noisy:
                 noisy_train_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d_noisy' % i) for i in self.train_idx}
                 noisy_val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d_noisy' % i) for i in self.val_idx}
@@ -905,18 +1190,21 @@ class PolicyCloningMAML(PolicyOptTf):
                 for idx in sampled_train_idx:
                     if self._hyperparams.get('use_vision', True):
                         sampled_folder = train_img_folders[idx]
-                        image_paths = sorted(os.listdir(sampled_folder))
-                        assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
+                        image_paths = natsorted(os.listdir(sampled_folder))#[8:-8]
+                        try:
+                            assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
+                        except AssertionError:
+                            import pdb; pdb.set_trace()
                         if noisy:
                             noisy_sampled_folder = noisy_train_img_folders[idx]
-                            noisy_image_paths = sorted(os.listdir(noisy_sampled_folder))
+                            noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                             assert len(noisy_image_paths) == self.noisy_demos[idx]['demoX'].shape[0]
                         if not noisy:
-                            sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
+                            sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+self.test_batch_size, replace=False) # True
                             sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
                         else:
-                            noisy_sampled_image_idx = np.random.choice(range(len(noisy_image_paths)), size=self.update_batch_size, replace=True)
-                            sampled_image_idx = np.random.choice(range(len(image_paths)), size=1, replace=True)
+                            noisy_sampled_image_idx = np.random.choice(range(len(noisy_image_paths)), size=self.update_batch_size, replace=False) #True
+                            sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.test_batch_size, replace=False) #True
                             sampled_images = [os.path.join(noisy_sampled_folder, noisy_image_paths[i]) for i in noisy_sampled_image_idx]
                             sampled_images.extend([os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx])
                         self.all_training_filenames.extend(sampled_images)
@@ -925,27 +1213,27 @@ class PolicyCloningMAML(PolicyOptTf):
                             self.noisy_training_batch_idx[itr][idx] = noisy_sampled_image_idx
                     else:
                         if noisy:
-                            self.training_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=1, replace=True)
-                            self.noisy_training_batch_idx[itr][idx] = np.random.choice(range(self.noisy_demos[idx]['demoX'].shape[0]), size=self.update_batch_size, replace=True)
+                            self.training_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.test_batch_size, replace=False) # True
+                            self.noisy_training_batch_idx[itr][idx] = np.random.choice(range(self.noisy_demos[idx]['demoX'].shape[0]), size=self.update_batch_size, replace=False) # True
                         else:
-                            self.training_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.update_batch_size+1, replace=True)
+                            self.training_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.update_batch_size+self.test_batch_size, replace=False) # True
                 if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
                     sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
                     for idx in sampled_val_idx:
                         if self._hyperparams.get('use_vision', True):
                             sampled_folder = val_img_folders[idx]
-                            image_paths = sorted(os.listdir(sampled_folder))
+                            image_paths = natsorted(os.listdir(sampled_folder))#[8:-8]
                             assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
                             if noisy:
                                 noisy_sampled_folder = noisy_val_img_folders[idx]
-                                noisy_image_paths = sorted(os.listdir(noisy_sampled_folder))
+                                noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                                 assert len(noisy_image_paths) == self.noisy_demos[idx]['demoX'].shape[0]
                             if not noisy:
-                                sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+1, replace=True)
+                                sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+self.test_batch_size, replace=False) # True
                                 sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
                             else:
-                                noisy_sampled_image_idx = np.random.choice(range(len(noisy_image_paths)), size=self.update_batch_size, replace=True)
-                                sampled_image_idx = np.random.choice(range(len(image_paths)), size=1, replace=True)
+                                noisy_sampled_image_idx = np.random.choice(range(len(noisy_image_paths)), size=self.update_batch_size, replace=False) # True
+                                sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.test_batch_size, replace=False) # True
                                 sampled_images = [os.path.join(noisy_sampled_folder, noisy_image_paths[i]) for i in noisy_sampled_image_idx]
                                 sampled_images.extend([os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx])
                             self.all_val_filenames.extend(sampled_images)
@@ -954,16 +1242,15 @@ class PolicyCloningMAML(PolicyOptTf):
                                 self.noisy_val_batch_idx[itr][idx] = noisy_sampled_image_idx
                         else:
                             if noisy:
-                                self.val_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=1, replace=True)
-                                self.noisy_val_batch_idx[itr][idx] = np.random.choice(range(self.noisy_demos[idx]['demoX'].shape[0]), size=self.update_batch_size, replace=True)
+                                self.val_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.test_batch_size, replace=False) # True
+                                self.noisy_val_batch_idx[itr][idx] = np.random.choice(range(self.noisy_demos[idx]['demoX'].shape[0]), size=self.update_batch_size, replace=False) # True
                             else:
-                                self.val_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.update_batch_size+1, replace=True)
-        # import pdb; pdb.set_trace()
+                                self.val_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.update_batch_size+self.test_batch_size, replace=False) # True
 
     def make_batch_tensor(self, network_config, restore_iter=0, train=True):
         # TODO: load images using tensorflow fileReader and gif decoder
         TEST_INTERVAL = 500
-        batch_image_size = (self.update_batch_size + 1) * self.meta_batch_size
+        batch_image_size = (self.update_batch_size + self.test_batch_size) * self.meta_batch_size
         if train:
             all_filenames = self.all_training_filenames
             if restore_iter > 0:
@@ -1002,7 +1289,7 @@ class PolicyCloningMAML(PolicyOptTf):
         image = tf.transpose(image, perm=[0, 3, 2, 1]) # transpose to mujoco setting for images
         image = tf.reshape(image, [self.T, -1])
         num_preprocess_threads = 1 # TODO - enable this to be set to >1
-        min_queue_examples = 128 #256
+        min_queue_examples = 64 #128 #256
         print 'Batching images'
         images = tf.train.batch(
                 [image],
@@ -1012,8 +1299,8 @@ class PolicyCloningMAML(PolicyOptTf):
                 )
         all_images = []
         for i in xrange(self.meta_batch_size):
-            image = images[i*(self.update_batch_size+1):(i+1)*(self.update_batch_size+1)]
-            image = tf.reshape(image, [(self.update_batch_size+1)*self.T, -1])
+            image = images[i*(self.update_batch_size+self.test_batch_size):(i+1)*(self.update_batch_size+self.test_batch_size)]
+            image = tf.reshape(image, [(self.update_batch_size+self.test_batch_size)*self.T, -1])
             all_images.append(image)
         return tf.pack(all_images)
         
@@ -1032,21 +1319,56 @@ class PolicyCloningMAML(PolicyOptTf):
                 noisy_idxes = self.noisy_val_batch_idx[itr]
         batch_size = self.meta_batch_size
         update_batch_size = self.update_batch_size
+        test_batch_size = self.test_batch_size
         if not self._hyperparams.get('use_noisy_demos', False):
-            U = [demos[k]['demoU'][v].reshape((1+update_batch_size)*self.T, -1) for k, v in idxes.items()]
-            X = [demos[k]['demoX'][v].reshape((1+update_batch_size)*self.T, -1) for k, v in idxes.items()]
+            U = [demos[k]['demoU'][v].reshape((test_batch_size+update_batch_size)*self.T, -1) for k, v in idxes.items()]
+            X = [demos[k]['demoX'][v].reshape((test_batch_size+update_batch_size)*self.T, -1) for k, v in idxes.items()]
             U = np.array(U)
             X = np.array(X)
         else:
             noisy_U = [noisy_demos[k]['demoU'][v].reshape(update_batch_size*self.T, -1) for k, v in noisy_idxes.items()]
             noisy_X = [noisy_demos[k]['demoX'][v].reshape(update_batch_size*self.T, -1) for k, v in noisy_idxes.items()]
-            U = [demos[k]['demoU'][v].reshape(update_batch_size*self.T, -1) for k, v in idxes.items()]
-            X = [demos[k]['demoX'][v].reshape(update_batch_size*self.T, -1) for k, v in idxes.items()]
+            U = [demos[k]['demoU'][v].reshape(test_batch_size*self.T, -1) for k, v in idxes.items()]
+            X = [demos[k]['demoX'][v].reshape(test_batch_size*self.T, -1) for k, v in idxes.items()]
             U = np.concatenate((np.array(noisy_U), np.array(U)), axis=1)
             X = np.concatenate((np.array(noisy_X), np.array(X)), axis=1)
         assert U.shape[2] == self._dU
         assert X.shape[2] == len(self.x_idx)
         return X, U
+    
+    # def generate_data_batch(self, itr, train=True):
+    #     if train:
+    #         demos = {key: self.demos[key].copy() for key in self.train_idx}
+    #         obs = self.train_obs
+    #         folder_idx = self.train_idx.copy()
+    #         if self._hyperparams.get('use_noisy_demos', False):
+    #             noisy_demos = {key: self.noisy_demos[key].copy() for key in self.train_idx}
+    #             noisy_idxes = self.noisy_training_batch_idx[itr]
+    #     else:
+    #         demos = {key: self.demos[key].copy() for key in self.val_idx}
+    #         obs = self.val_obs
+    #         folder_idx = self.val_idx.copy()
+    #         if self._hyperparams.get('use_noisy_demos', False):
+    #             noisy_demos = {key: self.noisy_demos[key].copy() for key in self.val_idx}
+    #             noisy_idxes = self.noisy_val_batch_idx[itr]
+    #     batch_size = self.meta_batch_size
+    #     update_batch_size = self.update_batch_size
+    #     # shuffle(folder_idx)
+    #     # batch_idx = folder_idx[:batch_size]
+    #     batch_idx = np.random.choice(folder_idx, size=batch_size, replace=False)
+    #     batch_demos = {key: demos[key] for key in batch_idx}
+    #     batch_obs = {key: obs[key] for key in batch_idx}
+    #     U, X, O = [], [], []
+    #     for i in xrange(batch_size):
+    #         n_demo = batch_demos[batch_idx[i]]['demoX'].shape[0]
+    #         idx_i = np.random.choice(np.arange(n_demo), replace=True, size=update_batch_size+1) # Used to set replace=False
+    #         U.append(batch_demos[batch_idx[i]]['demoU'][idx_i].reshape((update_batch_size+1)*self.T, -1))
+    #         X.append(batch_demos[batch_idx[i]]['demoX'][idx_i].reshape((update_batch_size+1)*self.T, -1))
+    #         O.append(batch_obs[batch_idx[i]][idx_i].reshape((update_batch_size+1)*self.T, -1))
+    #     U = np.array(U)
+    #     X = np.array(X)
+    #     O = np.float32(np.array(O)) / 255.0
+    #     return O, X, U
     
     def update(self):
         """
@@ -1087,6 +1409,7 @@ class PolicyCloningMAML(PolicyOptTf):
                     feed_dict[self.reference_tensor] = self.reference_batch
                     input_tensors.append(self.reference_out)
                 if itr % SUMMARY_INTERVAL == 0 or itr % PRINT_INTERVAL == 0:
+                    input_tensors.append(self.train_act_op)
                     input_tensors.extend([self.train_summ_op, self.total_loss1, self.total_losses2[self.num_updates-1]])
                 result = self.run(input_tensors, feed_dict=feed_dict)
     
@@ -1097,6 +1420,8 @@ class PolicyCloningMAML(PolicyOptTf):
     
                 if itr != 0 and itr % PRINT_INTERVAL == 0:
                     print 'Iteration %d: average preloss is %.2f, average postloss is %.2f' % (itr, np.mean(prelosses), np.mean(postlosses))
+                    # print 'predict eept is ', result[-4][0, 0, :]
+                    # print 'true eept is ', actionb[0, 0, 6:8]
                     prelosses, postlosses = [], []
 
                 if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
@@ -1172,11 +1497,11 @@ class PolicyCloningMAML(PolicyOptTf):
         state_idx = np.array(list(test_agent[0]['filter_demos'].get('state_idx', range(4, 7))))
         train_dists = []
         val_dists = []
-        if len(test_agent) > 450:
-            idx = np.random.sample(np.arange(len(test_agent)-150), replace=False, size=300)
-            train_agents = {i: test_agent[i] for i in idx}
-            train_agents.update({i: test_agent[i] for i in range(len(test_agent))[-150:]})
-            test_agent = train_agents
+        # if len(test_agent) > 450:
+        #     idx = np.random.choice(np.arange(len(test_agent)-150), replace=False, size=300)
+        #     train_agents = {i: test_agent[i] for i in idx}
+        #     train_agents.update({i: test_agent[i] for i in range(len(test_agent))[-150:]})
+        #     test_agent = train_agents
         for i in xrange(len(test_agent)):
         # for i in test_agent.keys():
             agent = test_agent[i]['type'](test_agent[i])

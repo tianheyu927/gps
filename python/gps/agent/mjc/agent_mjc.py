@@ -411,8 +411,19 @@ class AgentMuJoCo(Agent):
         self._world[condition].plot(self._hyperparams['x0'][condition])
 
         if self._hyperparams['render']:
+            if 'target_pos_body_offset' in self._hyperparams:
+                object_idx = self._hyperparams['pos_body_idx'][condition]
+                target_pos_body_offset = self._hyperparams.get('target_pos_body_offset')
+                model = self._world[condition].get_model()
+                model['body_pos'][object_idx[0], :] -= target_pos_body_offset[condition]
+                self._world[condition].set_model(model)
             img = self._world[condition].get_image_scaled(self._hyperparams['image_width'],
                                                           self._hyperparams['image_height'])
+            if 'target_pos_body_offset' in self._hyperparams:
+                target_pos_body_offset = self._hyperparams.get('target_pos_body_offset')
+                model = self._world[condition].get_model()
+                model['body_pos'][object_idx[0], :] += target_pos_body_offset[condition]
+                self._world[condition].set_model(model)
             # mjcpy image shape is [height, width, channels],
             # dim-shuffle it for later conv-net processing,
             # and flatten for storage
@@ -493,8 +504,19 @@ class AgentMuJoCo(Agent):
             sample.set(CONDITION_DATA, self._hyperparams['condition_data'][condition], t=t+1)
 
         if RGB_IMAGE in self.obs_data_types or IMAGE_FEAT in self.x_data_types or IMAGE_FEAT in self.obs_data_types or record_image:
+            if 'target_pos_body_offset' in self._hyperparams:
+                object_idx = self._hyperparams['pos_body_idx'][condition]
+                target_pos_body_offset = self._hyperparams.get('target_pos_body_offset')
+                model = self._world[condition].get_model()
+                model['body_pos'][object_idx[0], :] -= target_pos_body_offset[condition]
+                self._world[condition].set_model(model)
             img = self._world[condition].get_image_scaled(self._hyperparams['image_width'],
                                                           self._hyperparams['image_height'])
+            if 'target_pos_body_offset' in self._hyperparams:
+                target_pos_body_offset = self._hyperparams.get('target_pos_body_offset')
+                model = self._world[condition].get_model()
+                model['body_pos'][object_idx[0], :] += target_pos_body_offset[condition]
+                self._world[condition].set_model(model)
             sample.set(RGB_IMAGE, np.transpose(img["img"], (2, 1, 0)).flatten(), t=t+1)
             if IMAGE_FEAT in self.obs_data_types:
                 if feature_fn is not None:

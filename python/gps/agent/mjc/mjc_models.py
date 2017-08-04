@@ -16,12 +16,12 @@ COLOR_MAP = {
 
 # COLOR_RANGE = [i / 5 for i in xrange(5)]
 # COLOR_RANGE = [i / 8 for i in xrange(8)]
-# COLOR_RANGE = [i / 10 for i in xrange(10)]
-COLOR_RANGE = [(2*i+1) / 20 for i in xrange(10)]
+COLOR_RANGE = [i / 10 for i in xrange(10)]
+# COLOR_RANGE = [(2*i+1) / 20 for i in xrange(10)]
 # DOUBLE_COLOR_RANGE = [i / 20 for i in xrange(20)]
 # COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE for k in COLOR_RANGE]
 COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
-# COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
+COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
 # COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
 

@@ -47,25 +47,26 @@ BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_demo'#_test' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_6_obj_image' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(50) #49
+np.random.seed(49) #50
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
-N_CUBES = 3
+N_CUBES = 6 #3
 CUBE_SIZE = 0.03
 
 # Validation colors and training colors
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
-VAL_TRIALS = 50
-TRAIN_TRIALS = 0 #500 #500 #0
+VAL_TRIALS = 25 #50
+TRAIN_TRIALS = 250 #0 #500 #500 #0
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}

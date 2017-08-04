@@ -537,10 +537,10 @@ def dropout(layer, keep_prob=0.9, is_training=True, name=None, selu=False):
     else:
         return tf.add(layer, 0, name=name)
 
-def norm(layer, norm_type='batch_norm', decay=0.9, conv_id=0, is_training=True):
+def norm(layer, norm_type='batch_norm', decay=0.9, id=0, is_training=True, prefix='conv_'):
     if norm_type != 'batch_norm' and norm_type != 'layer_norm':
         return tf.nn.relu(layer)
-    with tf.variable_scope('norm_layer_%d' % conv_id) as vs:
+    with tf.variable_scope('norm_layer_%s%d' % (prefix, id)) as vs:
         if norm_type == 'batch_norm':
             if is_training:
                 try:
