@@ -47,26 +47,26 @@ BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
-# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_demo'#_test' #reacher_color_blocks
-DATA_DIR = BASE_DIR + '/../data/reacher_6_obj_image' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_6_obj_image' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(49) #50
+np.random.seed(50) #49
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
-N_CUBES = 6 #3
+N_CUBES = 3 #6
 CUBE_SIZE = 0.03
 
 # Validation colors and training colors
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
-VAL_TRIALS = 25 #50
-TRAIN_TRIALS = 250 #0 #500 #500 #0
+VAL_TRIALS = 50 #25
+TRAIN_TRIALS = 0 #0 #250 #500 #0
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -326,7 +326,7 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
-        'num_filters': [40, 40, 40], #20, 20, 20
+        'num_filters': [20, 20, 20], #20, 20, 20
         'strides': [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]], 
         'filter_size': 3,
         'obs_include': agent['obs_include'],
@@ -336,7 +336,7 @@ algorithm['policy_opt'] = {
         'image_height': IMAGE_HEIGHT,
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
-        'n_layers': 4,
+        'n_layers': 3,
         'layer_size': 200,
         # 'n_state_fc_layers': 3,
         # 'state_fc_layer_size': 20,
@@ -349,23 +349,24 @@ algorithm['policy_opt'] = {
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'use_context': False, #True,
+    'use_context': True, #True,
     'context_dim': 10,
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 50000, #about 20 epochs
+    'iterations': 20000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': 0, #VAL_TRIALS*N_CUBES, #50
-    'step_size': 5e-4, #1e-5 # step size of gradient step
-    'num_updates': 3,#1, # take one gradient step
-    'meta_batch_size': 5, #10, # number of tasks during training
+    'step_size': 1e-3, #5e-4, #1e-5 # step size of gradient step
+    'num_updates': 1, #3,#1, # take one gradient step
+    'meta_batch_size': 25, #5, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'use_grad_reg': False,
     'grad_reg': 0.005,
     'use_clip': True,
+    'clip_context': True,
     'clip_min': -20, #-15.0,
     'clip_max': 20, #15.0,
     'use_fp': False,
@@ -373,10 +374,13 @@ algorithm['policy_opt'] = {
     'no_update_conv': False,
     'use_state_concat_input': False, 
     'update_batch_size': 1, # batch size for each task, used to be 1
-    # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
-    # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
+    'test_batch_size': 1,
+    'two_heads': True,
+    'no_action': True,
+    # 'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
+    'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_20_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
+    # 'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_3_layers_200_dim_20_3x3_filters_fixed_1e-3_mbs_25_ubs_1_update1_clip_20_no_overlap_context_clip_300_trials_no_action_two_heads',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'gif_prefix': 'color',

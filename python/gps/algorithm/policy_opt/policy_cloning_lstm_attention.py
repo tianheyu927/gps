@@ -75,7 +75,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         self._hyperparams['network_params'].update({'decay': self._hyperparams.get('decay', 0.99)})
         # MAML hyperparams
         self.update_batch_size = self._hyperparams.get('update_batch_size', 1)
-        self.eval_batch_size = self._hyperparams.get('eval_batch_size', 5)
+        self.test_batch_size = self._hyperparams.get('test_batch_size', 1)
         self.meta_batch_size = self._hyperparams.get('meta_batch_size', 10)
         self.num_updates = self._hyperparams.get('num_updates', 1)
         self.meta_lr = self._hyperparams.get('lr', 1e-3) #1e-3
@@ -83,6 +83,8 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         self.demo_gif_dir = self._hyperparams.get('demo_gif_dir', None)
         self.n_cubes = self._hyperparams.get('n_cubes', 3)
         self.cube_pos_start_idx = self._hyperparams.get('cube_pos_start_idx', [10, 13, 16])
+        self.demo_gif_dir = self._hyperparams.get('demo_gif_dir', None)
+        self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
         
         self.T = self._hyperparams.get('T', 50)
         # List of indices for state (vector) data and image (tensor) data in observation.
@@ -102,15 +104,15 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            # test_agent = hyperparams['agent'][:300]  # Required for sampling
-            # test_agent.extend(hyperparams['agent'][-150:])
+            test_agent = hyperparams['agent'][:300]  # Required for sampling
+            test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:100]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        # demo_file = hyperparams['demo_file'][:300]
-        # demo_file.extend(hyperparams['demo_file'][-150:])
+        demo_file = hyperparams['demo_file'][:300]
+        demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
@@ -176,13 +178,21 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         dim_hidden = (n_layers - 1)*[layer_size]
         dim_hidden.append(dim_output)
         lstm_size = self._hyperparams.get('lstm_size', 512)
+        use_dropout = self._hyperparams.get('use_dropout', False)
+        keep_prob = self._hyperparams.get('keep_prob', 0.9)
+        if not use_dropout:
+            keep_prob = 1.0
+        ln_for_lstm = self._hyperparams.get('ln_for_lstm', False)
+        lstm_activation_fn = self._hyperparams.get('lstm_activation_fn', tf.nn.tanh)
         self.conv_out_size = 0
         weights = {}
         POS_DIM = 3
         # LSTM cell
-        self.lstm = tf.nn.rnn_cell.BasicRNNCell(lstm_size)
-        self.lstm_initial_state = safe_get('lstm_initial_state', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size], dtype=tf.float32))
-        
+        self.lstm = tf.contrib.rnn.LayerNormBasicLSTMCell(lstm_size, activation=lstm_activation_fn, layer_norm=ln_for_lstm, dropout_keep_prob=keep_prob)
+        # import pdb; pdb.set_trace()
+        lstm_c = safe_get('lstm_c', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size[0]], dtype=tf.float32))
+        lstm_h = safe_get('lstm_h', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size[1]], dtype=tf.float32))
+        self.lstm_initial_state = (lstm_c, lstm_h)        
         # fc weights
         # in_shape = 40 # dimension after feature computation
         in_shape = POS_DIM + dim_input # hard-coded for last conv layer output
@@ -202,7 +212,7 @@ class PolicyCloningLSTMAttention(PolicyCloningLSTM):
         if self._hyperparams.get('use_final_state', False):
             attention_input = attention_input[:, -1, :]
         if len(attention_input.get_shape().dims) == 3:
-            attention_input = tf.reshape(attention_input, [-1, self.lstm.state_size])
+            attention_input = tf.reshape(attention_input, [-1, self.lstm.output_size])
         output = tf.matmul(attention_input, weights['w_attention']) + weights['b_attention']
         output = tf.nn.softmax(output)
         return output

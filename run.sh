@@ -1,6 +1,6 @@
-for i in {0..32} #{0..12}
+for i in {0..2} #{0..12}
     do
-        python python/gps/gps_main.py --start $i --batch 50 reacher_maml_bc_color_blocks
+        python python/gps/gps_main.py --start $i --batch 50 reacher_maml_bc_color_blocks_bad
     done
 
 # python python/gps/gps_main.py --restore 45000 --test 1 reacher_maml_bc_color_blocks

@@ -80,12 +80,13 @@ class PolicyCloningLSTM(PolicyCloningMAML):
         self._hyperparams['network_params'].update({'decay': self._hyperparams.get('decay', 0.99)})
         # MAML hyperparams
         self.update_batch_size = self._hyperparams.get('update_batch_size', 1)
-        self.eval_batch_size = self._hyperparams.get('eval_batch_size', 5)
+        self.test_batch_size = self._hyperparams.get('test_batch_size', 1)
         self.meta_batch_size = self._hyperparams.get('meta_batch_size', 10)
         self.num_updates = self._hyperparams.get('num_updates', 1)
         self.meta_lr = self._hyperparams.get('lr', 1e-3) #1e-3
         self.weight_decay = self._hyperparams.get('weight_decay', 0.005)
         self.demo_gif_dir = self._hyperparams.get('demo_gif_dir', None)
+        self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
         
         self.T = self._hyperparams.get('T', 50)
         # List of indices for state (vector) data and image (tensor) data in observation.
@@ -105,15 +106,15 @@ class PolicyCloningLSTM(PolicyCloningMAML):
             test_agent = hyperparams['agent']
             # test_agent = hyperparams['agent'][:1200]  # Required for sampling
             # test_agent.extend(hyperparams['agent'][-100:])
-            # test_agent = hyperparams['agent'][:300]  # Required for sampling
-            # test_agent.extend(hyperparams['agent'][-150:])
+            test_agent = hyperparams['agent'][:300]  # Required for sampling
+            test_agent.extend(hyperparams['agent'][-150:])
             if type(test_agent) is not list:
                 test_agent = [test_agent]
         demo_file = hyperparams['demo_file']
         # demo_file = hyperparams['demo_file'][:100]
         # demo_file.extend(hyperparams['demo_file'][-100:])
-        # demo_file = hyperparams['demo_file'][:300]
-        # demo_file.extend(hyperparams['demo_file'][-150:])
+        demo_file = hyperparams['demo_file'][:300]
+        demo_file.extend(hyperparams['demo_file'][-150:])
         
         if hyperparams.get('agent', False):
             self.restore_iter = hyperparams.get('restore_iter', 0)
@@ -138,7 +139,7 @@ class PolicyCloningLSTM(PolicyCloningMAML):
         
         if self.restore_iter > 0:
             self.restore_model(hyperparams['save_dir'] + '_%d' % self.restore_iter)
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             if not hyperparams.get('test', False):
                 self.update()
             # TODO: also implement resuming training from restored model
@@ -246,6 +247,12 @@ class PolicyCloningLSTM(PolicyCloningMAML):
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
         lstm_size = self._hyperparams.get('lstm_size', 512)
+        dropout_for_lstm = self._hyperparams.get('dropout_for_lstm', False)
+        keep_prob = self._hyperparams.get('keep_prob', 0.9)
+        if not dropout_for_lstm:
+            keep_prob = 1.0
+        ln_for_lstm = self._hyperparams.get('ln_for_lstm', False)
+        lstm_activation_fn = self._hyperparams.get('lstm_activation_fn', tf.nn.tanh)
         weights = {}
         self.conv_out_size = 0
         if self._hyperparams.get('use_vision', True):
@@ -302,8 +309,12 @@ class PolicyCloningLSTM(PolicyCloningMAML):
             in_shape = dim_input
         
         # LSTM cell
-        self.lstm = tf.nn.rnn_cell.BasicRNNCell(lstm_size)
-        self.lstm_initial_state = safe_get('lstm_initial_state', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size], dtype=tf.float32))
+        assert self.update_batch_size == self.test_batch_size
+        self.lstm = tf.contrib.rnn.LayerNormBasicLSTMCell(lstm_size, activation=lstm_activation_fn, layer_norm=ln_for_lstm, dropout_keep_prob=keep_prob)
+        # import pdb; pdb.set_trace()
+        lstm_c = safe_get('lstm_c', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size[0]], dtype=tf.float32))
+        lstm_h = safe_get('lstm_h', initializer=tf.zeros([self.update_batch_size, self.lstm.state_size[1]], dtype=tf.float32))
+        self.lstm_initial_state = (lstm_c, lstm_h)
         
         # fc weights
         # in_shape = 40 # dimension after feature computation
@@ -321,9 +332,9 @@ class PolicyCloningLSTM(PolicyCloningMAML):
             use_dropout = self._hyperparams.get('use_dropout', False)
             prob = self._hyperparams.get('keep_prob', 0.5)
             is_dilated = self._hyperparams.get('is_dilated', False)
-            # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
-            # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
-            # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)            
+            # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, id=0, is_training=is_training)
+            # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, id=1, is_training=is_training)
+            # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, id=2, is_training=is_training)            
             conv_layer = image_input
             for i in xrange(n_conv_layers):
                 if norm_type == 'vbn':
@@ -333,9 +344,9 @@ class PolicyCloningLSTM(PolicyCloningMAML):
                         conv_layer = dropout(self.vbn(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), name='vbn_%d' % (i+1), update=update), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
                 else:
                     if not use_dropout:
-                        conv_layer = norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=i, is_training=is_training)
+                        conv_layer = norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, id=i, is_training=is_training)
                     else:
-                        conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=i, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
+                        conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, id=i, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
             if self._hyperparams.get('use_fp', False):
                 _, num_rows, num_cols, num_fp = conv_layer.get_shape()
                 num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
@@ -392,8 +403,6 @@ class PolicyCloningLSTM(PolicyCloningMAML):
                     lstm_scope.reuse_variables()
                     lstm_output, state = self.lstm(lstm_input[:, t, :], state)
                 lstm_output = tf.nn.relu(lstm_output)
-                if use_dropout:
-                    lstm_output = dropout(lstm_output, keep_prob=prob, is_training=is_training)
                 lstm_output = tf.expand_dims(lstm_output, axis=1)
                 lstm_outputs.append(lstm_output)
         lstm_output = tf.concat(1, lstm_outputs)
