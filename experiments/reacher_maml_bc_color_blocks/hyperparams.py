@@ -326,7 +326,7 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
-        'num_filters': [20, 20, 20], #20, 20, 20
+        'num_filters': [40, 40, 40], #20, 20, 20
         'strides': [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]], 
         'filter_size': 3,
         'obs_include': agent['obs_include'],
@@ -336,8 +336,8 @@ algorithm['policy_opt'] = {
         'image_height': IMAGE_HEIGHT,
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
-        'n_layers': 3,
-        'layer_size': 200,
+        'n_layers': 4,
+        'layer_size': 100,
         # 'n_state_fc_layers': 3,
         # 'state_fc_layer_size': 20,
         'bc': True,
@@ -369,18 +369,18 @@ algorithm['policy_opt'] = {
     'clip_context': True,
     'clip_min': -20, #-15.0,
     'clip_max': 20, #15.0,
-    'use_fp': False,
+    'use_fp': True,
     'fp_relu': False,
     'no_update_conv': False,
     'use_state_concat_input': False, 
     'update_batch_size': 1, # batch size for each task, used to be 1
     'test_batch_size': 1,
-    'two_heads': True,
-    'no_action': True,
+    'two_heads': False,
+    'no_action': False,
     # 'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
     'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_20_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
     # 'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_3_layers_200_dim_20_3x3_filters_fixed_1e-3_mbs_25_ubs_1_update1_clip_20_no_overlap_context_clip_300_trials_no_action_two_heads',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_fixed_1e-3_clip_20_mbs_25_ubs_1_update1_no_overlap_fp_context_clip_300_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'gif_prefix': 'color',
