@@ -333,7 +333,7 @@ algorithm['policy_opt'] = {
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 4,
-        'layer_size': 400,
+        'layer_size': 100,
         'bc': True,
     },
     'use_gpu': 1,
@@ -344,10 +344,10 @@ algorithm['policy_opt'] = {
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
     'color_hints': False,
-    'use_dropout': False,
+    'use_dropout': True,
     'keep_prob': 0.9,
     'decay': 0.9,
-    'iterations': 80000, #about 20 epochs
+    'iterations': 30000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': 0, #VAL_TRIALS*N_CUBES, #50
@@ -355,12 +355,12 @@ algorithm['policy_opt'] = {
     'use_clip': False,
     'clip_min': -10.0,
     'clip_max': 10.0,
-    'meta_batch_size': 5,
+    'meta_batch_size': 25,
     'update_batch_size': 1, # batch size for each task, used to be 1
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
     'log_dir': '/tmp/data/final_state_bc_1000/4_layer_400_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_750_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/final_state_bc_1000_model_ln_4_layers_400_dim_40_3x3_filters_mbs_5_ubs_1_10_pos_images_750_trials',
+    'save_dir': '/home/kevin/gps/data/models/final_state_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_mbs_25_ubs_1_10_pos_images_dropout_0.9_fp_300_trials',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': True,

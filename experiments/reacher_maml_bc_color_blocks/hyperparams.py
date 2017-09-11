@@ -336,8 +336,8 @@ algorithm['policy_opt'] = {
         'image_height': IMAGE_HEIGHT,
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
-        'n_layers': 4,
-        'layer_size': 100,
+        'n_layers': 3,
+        'layer_size': 200,
         # 'n_state_fc_layers': 3,
         # 'state_fc_layer_size': 20,
         'bc': True,
@@ -355,13 +355,13 @@ algorithm['policy_opt'] = {
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 20000, #about 20 epochs
+    'iterations': 50000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': 0, #VAL_TRIALS*N_CUBES, #50
     'step_size': 1e-3, #5e-4, #1e-5 # step size of gradient step
     'num_updates': 1, #3,#1, # take one gradient step
-    'meta_batch_size': 25, #5, # number of tasks during training
+    'meta_batch_size': 5, #5, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'use_grad_reg': False,
     'grad_reg': 0.005,
@@ -369,18 +369,19 @@ algorithm['policy_opt'] = {
     'clip_context': True,
     'clip_min': -20, #-15.0,
     'clip_max': 20, #15.0,
-    'use_fp': True,
+    'use_fp': False,
     'fp_relu': False,
     'no_update_conv': False,
     'use_state_concat_input': False, 
     'update_batch_size': 1, # batch size for each task, used to be 1
     'test_batch_size': 1,
-    'two_heads': False,
+    'two_heads': True,
     'no_action': False,
+    'zero_state': False,
     # 'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
     'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_20_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
     # 'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_fixed_1e-3_clip_20_mbs_25_ubs_1_update1_no_overlap_fp_context_clip_300_trials',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_3_layers_200_dim_40_3x3_filters_fixed_1e-3_clip_20_mbs_5_ubs_1_update1_no_overlap_context_clip_300_trials_two_heads',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'gif_prefix': 'color',

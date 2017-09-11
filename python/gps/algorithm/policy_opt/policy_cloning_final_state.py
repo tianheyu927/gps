@@ -82,11 +82,13 @@ class PolicyCloningFinalState(PolicyCloningMAML):
         self._hyperparams['network_params'].update({'decay': self._hyperparams.get('decay', 0.99)})
         # MAML hyperparams
         self.update_batch_size = self._hyperparams.get('update_batch_size', 1)
+        self.test_batch_size = self._hyperparams.get('test_batch_size', 1)
         self.meta_batch_size = self._hyperparams.get('meta_batch_size', 10)
         self.num_updates = self._hyperparams.get('num_updates', 1)
         self.meta_lr = self._hyperparams.get('lr', 1e-3) #1e-3
         self.weight_decay = self._hyperparams.get('weight_decay', 0.005)
         self.demo_gif_dir = self._hyperparams.get('demo_gif_dir', None)
+        self.gif_prefix = self._hyperparams.get('gif_prefix', 'color')
         
         self.T = self._hyperparams.get('T', 50)
         # List of indices for state (vector) data and image (tensor) data in observation.
@@ -274,9 +276,9 @@ class PolicyCloningFinalState(PolicyCloningMAML):
             use_dropout = self._hyperparams.get('use_dropout', False)
             prob = self._hyperparams.get('keep_prob', 0.5)
             is_dilated = self._hyperparams.get('is_dilated', False)
-            # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, conv_id=0, is_training=is_training)
-            # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, conv_id=1, is_training=is_training)
-            # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, conv_id=2, is_training=is_training)            
+            # conv_layer_0, _, _ = norm(conv2d(img=image_input, w=weights['wc1'], b=weights['bc1'], strides=[1,2,2,1]), norm_type=norm_type, decay=decay, id=0, is_training=is_training)
+            # conv_layer_1, _, _ = norm(conv2d(img=conv_layer_0, w=weights['wc2'], b=weights['bc2']), norm_type=norm_type, decay=decay, id=1, is_training=is_training)
+            # conv_layer_2, moving_mean, moving_variance = norm(conv2d(img=conv_layer_1, w=weights['wc3'], b=weights['bc3']), norm_type=norm_type, decay=decay, id=2, is_training=is_training)            
             conv_layer = image_input
             for i in xrange(n_conv_layers):
                 if norm_type == 'vbn':
@@ -286,9 +288,9 @@ class PolicyCloningFinalState(PolicyCloningMAML):
                         conv_layer = dropout(self.vbn(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), name='vbn_%d' % (i+1), update=update), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
                 else:
                     if not use_dropout:
-                        conv_layer = norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=i, is_training=is_training)
+                        conv_layer = norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, id=i, is_training=is_training)
                     else:
-                        conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, conv_id=i, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
+                        conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), norm_type=norm_type, decay=decay, id=i, is_training=is_training), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
             if self._hyperparams.get('use_fp', False):
                 _, num_rows, num_cols, num_fp = conv_layer.get_shape()
                 num_rows, num_cols, num_fp = [int(x) for x in [num_rows, num_cols, num_fp]]
