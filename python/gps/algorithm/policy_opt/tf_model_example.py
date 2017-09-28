@@ -485,6 +485,9 @@ def conv2d(img, w, b, strides=[1, 1, 1, 1], is_dilated=False):
     else:
         layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
     return layer
+    
+def lrelu(x, alpha=0.2):
+    return tf.where(x>=0.0, x, alpha*tf.nn.relu(x))
 
 def selu(x):
     with ops.name_scope('selu') as scope:
@@ -537,7 +540,7 @@ def dropout(layer, keep_prob=0.9, is_training=True, name=None, selu=False):
     else:
         return tf.add(layer, 0, name=name)
 
-def norm(layer, norm_type='batch_norm', decay=0.9, id=0, is_training=True, prefix='conv_'):
+def norm(layer, norm_type='batch_norm', decay=0.9, id=0, is_training=True, activation_fn=tf.nn.relu, prefix='conv_'):
     if norm_type != 'batch_norm' and norm_type != 'layer_norm':
         return tf.nn.relu(layer)
     with tf.variable_scope('norm_layer_%s%d' % (prefix, id)) as vs:
@@ -545,20 +548,22 @@ def norm(layer, norm_type='batch_norm', decay=0.9, id=0, is_training=True, prefi
             if is_training:
                 try:
                     layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs) # updates_collections=None
+                        scale=False, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs) # updates_collections=None
                 except ValueError:
                     layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+                        scale=False, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
             else:
                 layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
-                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+                    scale=False, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
         elif norm_type == 'layer_norm': # layer_norm
+            # Take activation_fn out to apply lrelu
             try:
-                layer = tf.contrib.layers.layer_norm(layer, center=True,
-                    scale=False, activation_fn=tf.nn.relu, scope=vs) # updates_collections=None
+                layer = activation_fn(tf.contrib.layers.layer_norm(layer, center=True,
+                    scale=False, scope=vs)) # updates_collections=None
+                
             except ValueError:
-                layer = tf.contrib.layers.layer_norm(layer, center=True,
-                    scale=False, activation_fn=tf.nn.relu, scope=vs, reuse=True)
+                layer = activation_fn(tf.contrib.layers.layer_norm(layer, center=True,
+                    scale=False, scope=vs, reuse=True))
         elif norm_type == 'selu':
             layer = selu(layer)
         else:

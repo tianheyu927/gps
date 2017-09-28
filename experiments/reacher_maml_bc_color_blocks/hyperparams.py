@@ -46,15 +46,18 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_demo'#_test' #reacher_color_blocks
 # DATA_DIR = BASE_DIR + '/../data/reacher_6_obj_image' #reacher_color_blocks
+# DIFF_COLOR_DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_arm_diff_colors' #reacher_color_blocks
+DIFF_COLOR_DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_diff_angle' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_diff_angle' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(50) #49
+np.random.seed(49) #50
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
@@ -66,13 +69,15 @@ CUBE_SIZE = 0.03
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 VAL_TRIALS = 50 #25
-TRAIN_TRIALS = 0 #0 #250 #500 #0
+TRAIN_TRIALS = 500 #0 #250 #500 #0
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
+COLOR_MAP = [[1, 0, 0, 1], [0, 1, 0, 1], [0, 0, 1, 1], [1, 1, 0, 1]]
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
 distractor_pos = {i: [] for i in xrange(COLOR_TRIALS)}
 distractor_color_idx = {i: [] for i in xrange(COLOR_TRIALS)}
 target_color = {i:None for i in xrange(COLOR_TRIALS)}
+arm_colors = []
 # cube_pos = {i: [] for i in xrange(COLOR_CONDITIONS)}
 # cube_color = {i: [] for i in xrange(COLOR_CONDITIONS)}
 
@@ -138,6 +143,11 @@ for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
             body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
             body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
+            
+# for i in xrange(COLOR_TRIALS):
+#     arm_color_idx = np.random.choice(range(len(COLOR_MAP)))
+#     for j in xrange(N_CUBES):
+#         arm_colors.append(COLOR_MAP[arm_color_idx])        
 
 pos_body_offset = [np.array([0.0, 0.1, 0.0]), np.array([0.0, 0.2, 0.0]),
                    np.array([-0.1, 0.2, 0.0]), np.array([-0.2, 0.2, 0.0]),
@@ -160,6 +170,7 @@ common = {
     'nn_demo': True, # Use neural network demonstrations. For experiment only
     'NN_demo_file': [os.path.join(DATA_DIR, 'demos_%d.pkl' % i) for i in xrange(COLOR_TRIALS)],
     'LG_demo_file': [os.path.join(DATA_DIR, 'demos_%d.pkl' % i) for i in xrange(COLOR_TRIALS)],
+    'noisy_demo_file': [os.path.join(DIFF_COLOR_DATA_DIR, 'demos_%d.pkl' % i) for i in xrange(COLOR_TRIALS)],
     'conditions': TOTAL_CONDITIONS,
     'train_conditions': range(TRAIN_CONDITIONS),
     'test_conditions': range(TRAIN_CONDITIONS, TOTAL_CONDITIONS),
@@ -240,7 +251,7 @@ pol_agent = [{
 
 demo_agent = [{
     'type': AgentMuJoCo,
-    'models': colored_reacher(ncubes=N_CUBES, target_color=target_color[j], cube_size=CUBE_SIZE, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color_idx[j]),
+    'models': colored_reacher(ncubes=N_CUBES, target_color=target_color[j], cube_size=CUBE_SIZE, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color_idx[j]),# arm_color=arm_colors[j]),
     'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
@@ -268,7 +279,7 @@ demo_agent = [{
     'image_height': IMAGE_HEIGHT,
     'image_channels': IMAGE_CHANNELS,
     'sensor_dims': SENSOR_DIMS,
-    'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
+    'camera_pos': np.array([0., -1.0, 1.5, 0.0, 0., 0.0]), #np.array([0., 0., 1.5, 0., 0., 0.]),
     'record_reward': True,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
@@ -327,9 +338,8 @@ algorithm['policy_opt'] = {
     'type': PolicyCloningMAML,
     'network_params': {
         'num_filters': [40, 40, 40], #20, 20, 20
-        'strides': [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]], 
         'filter_size': 3,
-        'obs_include': agent['obs_include'],
+        'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
         'image_width': IMAGE_WIDTH,
@@ -338,52 +348,63 @@ algorithm['policy_opt'] = {
         'sensor_dims': SENSOR_DIMS,
         'n_layers': 3,
         'layer_size': 200,
-        # 'n_state_fc_layers': 3,
-        # 'state_fc_layer_size': 20,
+        'num_units': 200,
+        # 'n_loss_layers': 3,
+        # 'loss_layer_size': 40,
         'bc': True,
     },
     'use_gpu': 1,
     'T': agent['T'],
     'demo_file': common['NN_demo_file'] if common['nn_demo'] else common['LG_demo_file'],
     'agent': pol_agent,
+    'noisy_demo_file': common['noisy_demo_file'], 
     'copy_param_scope': 'model',
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
-    'use_context': True, #True,
+    'use_context': False,
     'context_dim': 10,
     'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
     'stop_grad': False,
-    'iterations': 50000, #about 20 epochs
+    'iterations': 20000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': 0, #VAL_TRIALS*N_CUBES, #50
-    'step_size': 1e-3, #5e-4, #1e-5 # step size of gradient step
-    'num_updates': 1, #3,#1, # take one gradient step
-    'meta_batch_size': 5, #5, # number of tasks during training
+    'n_val': VAL_TRIALS*N_CUBES, #50
+    'step_size': 1e-3, #1e-5 # step size of gradient step
+    'num_updates': 1, # take one gradient step
+    'meta_batch_size': 25, #10, # number of tasks during training
     'weight_decay': 0.005, #0.005,
     'use_grad_reg': False,
     'grad_reg': 0.005,
     'use_clip': True,
     'clip_context': True,
-    'clip_min': -20, #-15.0,
-    'clip_max': 20, #15.0,
-    'use_fp': False,
-    'fp_relu': False,
-    'no_update_conv': False,
-    'use_state_concat_input': False, 
+    'clip_min': -20.0,
+    'clip_max': 20.0,
+    'add_noise': False,
+    'act_noise_std': 0.06,
     'update_batch_size': 1, # batch size for each task, used to be 1
-    'test_batch_size': 1,
+    'use_fp': False,
+    'use_noisy_demos': True,
+    'use_img_context': False,
+    'use_state_context': True,
+    'use_conv_context': True,
+    'normalize_img_context': True,
     'two_heads': True,
     'no_action': False,
+    'no_update_fc': False,
+    'learn_loss': False,
+    # 'no_state': True,
     'zero_state': False,
+    'use_lstm': False,
+    'flatten_2_head': False,
     # 'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_40_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
     'log_dir': '/home/kevin/gps/data/maml_bc_1000/4_layer_200_dim_20_3x3_filters_1_step_5e_4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
     # 'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_fixed_5e-4_mbs_5_ubs_1_update3_10_pos_clip_20_fix_transpose_bug_no_overlap_750_trials',
-    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_3_layers_200_dim_40_3x3_filters_fixed_1e-3_clip_20_mbs_5_ubs_1_update1_no_overlap_context_clip_300_trials_two_heads',
+    'save_dir': '/home/kevin/gps/data/models/maml_bc_1000_model_ln_3_layers_200_dim_40_3x3_filters_fixed_1e-3_clip_20_mbs_5_ubs_1_update1_no_overlap_img_context_clip_300_trials_diff_angle_view_two_heads',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
+    'noisy_demo_gif_dir': os.path.join(DIFF_COLOR_DATA_DIR, 'demo_gifs/'),
     'gif_prefix': 'color',
     'use_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',

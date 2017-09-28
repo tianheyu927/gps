@@ -325,6 +325,7 @@ algorithm['policy_opt'] = {
     'type': PolicyCloningLSTM,
     'network_params': {
         'num_filters': [40, 40, 40], #20, 20, 20
+        'filter_size': 5,
         'obs_include': agent['obs_include'],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
@@ -345,10 +346,10 @@ algorithm['policy_opt'] = {
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
     'color_hints': False,
-    'use_dropout': False,
+    'use_dropout': True,
     'keep_prob': 0.9,
     'decay': 0.9,
-    'iterations': 150000, #about 20 epochs
+    'iterations': 30000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
     'n_val': 0, #VAL_TRIALS*N_CUBES, #50
@@ -356,13 +357,15 @@ algorithm['policy_opt'] = {
     'use_clip': False,
     'clip_min': -10.0,
     'clip_max': 10.0,
-    'meta_batch_size': 5,
+    'meta_batch_size': 25,
     'update_batch_size': 1, # batch size for each task, used to be 1
     'test_batch_size': 1,
+    'ln_for_lstm': True,
+    'use_fp': True,
     # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
     'log_dir': '/tmp/data/lstm_bc_1000/4_layer_200_dim_40_3x3_filters_2048_lstm_size_mbs_5_ubs_1_ebs_1_10_pos_images_relu_750_trials',
     # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/lstm_bc_1000_model_ln_4_layers_200_dim_40_3x3_filters_512_lstm_size_mbs_5_ubs_1_tbs_1_10_pos_images_relu_750_trials_correct',
+    'save_dir': '/home/kevin/gps/data/models/lstm_bc_1000_model_ln_4_layers_200_dim_40_5x5_filters_512_lstm_with_ln_size_mbs_25_ubs_1_tbs_1_10_pos_images_relu_dropout_0.9_fp_300_trials_correct',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
     'use_vision': True,

@@ -16,12 +16,12 @@ COLOR_MAP = {
 
 # COLOR_RANGE = [i / 5 for i in xrange(5)]
 # COLOR_RANGE = [i / 8 for i in xrange(8)]
-# COLOR_RANGE = [i / 10 for i in xrange(10)]
-COLOR_RANGE = [(2*i+1) / 20 for i in xrange(10)]
+COLOR_RANGE = [i / 10 for i in xrange(10)]
+# COLOR_RANGE = [(2*i+1) / 20 for i in xrange(10)]
 # DOUBLE_COLOR_RANGE = [i / 20 for i in xrange(20)]
 # COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE for k in COLOR_RANGE]
 COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
-# COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
+COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
 # COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
 
@@ -120,7 +120,7 @@ def weighted_reacher(finger_density=1.0, arm_density=None):
 
     return mjcmodel
 
-def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.1,-.1), distractor_pos=None, distractor_color=None):
+def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.1,-.1), distractor_pos=None, distractor_color=None, arm_color=None):
     mjcmodel = default_model('reacher', regen_fn=lambda: colored_reacher(ncubes, target_color, cube_size, target_pos))
     worldbody = mjcmodel.root.worldbody()
     if type(target_color) is str or type(target_color) is np.string_:
@@ -128,21 +128,23 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     else:
         color_map = COLOR_MAP_CONT
     # Arena
-    #worldbody.geom(conaffinity="0",fromto="-.3 -.3 .01 .3 -.3 .01",name="sideS",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
-    #worldbody.geom(conaffinity="0",fromto=" .3 -.3 .01 .3  .3 .01",name="sideE",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
-    #worldbody.geom(conaffinity="0",fromto="-.3  .3 .01 .3  .3 .01",name="sideN",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
-    #worldbody.geom(conaffinity="0",fromto="-.3 -.3 .01 -.3 .3 .01",name="sideW",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
+    # worldbody.geom(conaffinity="0",fromto="-.3 -.3 .01 .3 -.3 .01",name="sideS",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
+    # worldbody.geom(conaffinity="0",fromto=" .3 -.3 .01 .3  .3 .01",name="sideE",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
+    # worldbody.geom(conaffinity="0",fromto="-.3  .3 .01 .3  .3 .01",name="sideN",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
+    # worldbody.geom(conaffinity="0",fromto="-.3 -.3 .01 -.3 .3 .01",name="sideW",rgba="0.9 0.4 0.6 1",size=".02",type="capsule")
 
 
     # Arm
+    if arm_color is None:
+        arm_color = [0.0, 0.4, 0.6, 1.0]
     worldbody.geom(conaffinity="0",contype="0",fromto="0 0 0 0 0 0.02",name="root",rgba="0.9 0.4 0.6 1",size=".011",type="cylinder")
     body = worldbody.body(name="body0", pos="0 0 .01")
-    body.geom(fromto="0 0 0 0.1 0 0",name="link0",rgba="0.0 0.4 0.6 1",size=".01",type="capsule")
+    body.geom(fromto="0 0 0 0.1 0 0",name="link0",rgba=arm_color,size=".01",type="capsule")
     # body.joint(axis="0 0 1",limited="false",name="joint0",pos="0 0 0",type="hinge")
     body.joint(axis="0 0 1",limited="true",name="joint0",pos="0 0 0",range="-3.14 3.14",type="hinge")
     body = body.body(name="body1",pos="0.1 0 0")
     body.joint(axis="0 0 1",limited="true",name="joint1",pos="0 0 0",range="-3.0 3.0",type="hinge")
-    body.geom(fromto="0 0 0 0.1 0 0",name="link1",rgba="0.0 0.4 0.6 1",size=".01",type="capsule")
+    body.geom(fromto="0 0 0 0.1 0 0",name="link1",rgba=arm_color,size=".01",type="capsule")
     body = body.body(name="fingertip",pos="0.11 0 0")
     body.site(name="fingertip",pos="0 0 0",size="0.01")
     body.geom(contype="0",name="fingertip",pos="0 0 0",rgba=COLOR_MAP['green'],size=".01",type="sphere")

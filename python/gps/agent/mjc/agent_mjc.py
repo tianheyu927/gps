@@ -409,6 +409,7 @@ class AgentMuJoCo(Agent):
         #                                cam_pos[0], cam_pos[1], cam_pos[2],
         #                                cam_pos[3], cam_pos[4], cam_pos[5])
         self._world[condition].plot(self._hyperparams['x0'][condition])
+        # import pdb; pdb.set_trace()
 
         if self._hyperparams['render']:
             if 'target_pos_body_offset' in self._hyperparams:
