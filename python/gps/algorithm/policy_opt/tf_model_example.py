@@ -1,5 +1,5 @@
 """ This file provides an example tensorflow network used to define a policy. """
-
+from __future__ import division
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -29,6 +29,8 @@ def init_bias(shape, name=None):
 
 def init_fc_weights_xavier(shape, name=None):
     fc_initializer =  tf.contrib.layers.xavier_initializer(dtype=tf.float32)
+    if len(shape) == 3:
+        shape = [1] + shape
     return safe_get(name, list(shape), initializer=fc_initializer, dtype=tf.float32)
 
 def init_conv_weights_xavier(shape, name=None):
@@ -46,7 +48,7 @@ def init_conv_weights_snn(shape, name=None):
 def batched_matrix_vector_multiply(vector, matrix):
     """ computes x^T A in mini-batches. """
     vector_batch_as_matricies = tf.expand_dims(vector, [1])
-    mult_result = tf.batch_matmul(vector_batch_as_matricies, matrix)
+    mult_result = tf.matmul(vector_batch_as_matricies, matrix)
     squeezed_result = tf.squeeze(mult_result, [1])
     return squeezed_result
 
@@ -87,29 +89,30 @@ def get_mlp_layers(mlp_input, number_layers, dimension_hidden, batch_norm=False,
     cur_top = mlp_input
     weights = []
     biases = []
-    for layer_step in range(0, number_layers):
-        in_shape = cur_top.get_shape().dims[1].value
-        cur_weight = init_weights([in_shape, dimension_hidden[layer_step]], name='w_' + str(layer_step))
-        cur_bias = init_bias([dimension_hidden[layer_step]], name='b_' + str(layer_step))
-        weights.append(cur_weight)
-        biases.append(cur_bias)
-        cur_top = tf.matmul(cur_top, cur_weight) + cur_bias
-        if layer_step != number_layers-1:  # final layer has no RELU
-            if not batch_norm:
-                cur_top = tf.nn.relu(cur_top)
-            else:
-                if is_training:
-                    with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
-                        try:
-                            cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
-                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
-                        except ValueError:
-                            cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
-                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+    with tf.variable_scope(tf.get_variable_scope()) as vscope:
+        for layer_step in range(0, number_layers):
+            in_shape = cur_top.get_shape().dims[1].value
+            cur_weight = init_weights([in_shape, dimension_hidden[layer_step]], name='w_' + str(layer_step))
+            cur_bias = init_bias([dimension_hidden[layer_step]], name='b_' + str(layer_step))
+            weights.append(cur_weight)
+            biases.append(cur_bias)
+            cur_top = tf.matmul(cur_top, cur_weight) + cur_bias
+            if layer_step != number_layers-1:  # final layer has no RELU
+                if not batch_norm:
+                    cur_top = tf.nn.relu(cur_top)
                 else:
-                    with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
-                        cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=False, center=True,
-                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                    if is_training:
+                        with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
+                            try:
+                                cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
+                                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                            except ValueError:
+                                cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
+                                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                    else:
+                        with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
+                            cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=False, center=True,
+                                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
     return cur_top, weights, biases
 
 
@@ -223,7 +226,7 @@ def multi_modal_network(dim_input=27, dim_output=7, batch_size=25, network_confi
 
     conv_out_flat = tf.reshape(conv_layer_2, [-1, conv_out_size])
 
-    fc_input = tf.concat(concat_dim=1, values=[conv_out_flat, state_input])
+    fc_input = tf.concat(axis=1, values=[conv_out_flat, state_input])
     
     fc_output, weights_FC, biases_FC = get_mlp_layers(fc_input, n_layers, dim_hidden, batch_norm=False, decay=decay)
 
@@ -331,12 +334,12 @@ def multi_modal_network_fp(dim_input=27, dim_output=7, batch_size=25, network_co
                               [-1, num_rows*num_cols])
         softmax = tf.nn.softmax(features)
 
-        fp_x = tf.reduce_sum(tf.mul(x_map, softmax), [1], keep_dims=True)
-        fp_y = tf.reduce_sum(tf.mul(y_map, softmax), [1], keep_dims=True)
+        fp_x = tf.reduce_sum(tf.multiply(x_map, softmax), [1], keep_dims=True)
+        fp_y = tf.reduce_sum(tf.multiply(y_map, softmax), [1], keep_dims=True)
 
-        fp = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
+        fp = tf.reshape(tf.concat(axis=1, values=[fp_x, fp_y]), [-1, num_fp*2])
 
-        fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
+        fc_input = tf.concat(axis=1, values=[fp, state_input]) # TODO - switch these two?
         fc_inputs.append(fc_input)
 
     fc_output, weights_FC, biases_FC = get_mlp_layers(fc_inputs[0], n_layers, dim_hidden, batch_norm=False, decay=decay, is_training=True)
@@ -455,12 +458,12 @@ def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, netw
                               [-1, num_rows*num_cols])
         softmax = tf.nn.softmax(features)
 
-        fp_x = tf.reduce_sum(tf.mul(x_map, softmax), [1], keep_dims=True)
-        fp_y = tf.reduce_sum(tf.mul(y_map, softmax), [1], keep_dims=True)
+        fp_x = tf.reduce_sum(tf.multiply(x_map, softmax), [1], keep_dims=True)
+        fp_y = tf.reduce_sum(tf.multiply(y_map, softmax), [1], keep_dims=True)
 
-        fp = tf.reshape(tf.concat(1, [fp_x, fp_y]), [-1, num_fp*2])
+        fp = tf.reshape(tf.concat(axis=1, values=[fp_x, fp_y]), [-1, num_fp*2])
 
-        fc_input = tf.concat(concat_dim=1, values=[fp, state_input]) # TODO - switch these two?
+        fc_input = tf.concat(axis=1, values=[fp, state_input]) # TODO - switch these two?
         fc_inputs.append(fc_input)
 
     fc_output, weights_FC, biases_FC = get_mlp_layers(fc_inputs[0], n_layers, dim_hidden, batch_norm=False, decay=decay, is_training=True)
@@ -479,21 +482,32 @@ def multi_modal_network_fp_large(dim_input=27, dim_output=7, batch_size=25, netw
 
     return nnet, fc_vars, last_conv_vars
 
-def conv2d(img, w, b, strides=[1, 1, 1, 1], is_dilated=False):
+def conv2d(img, w, b, strides=[1, 1, 1, 1], rate=2, is_dilated=False):
     if is_dilated:
-        layer = tf.nn.atrous_conv2d(img, w, rate=2, padding='SAME') + b
+        if strides[1] != 1:
+            global CONV_IMG_SIZE
+            if img.get_shape().dims[1].value:
+                CONV_IMG_SIZE = [int(np.ceil(float(img.get_shape().dims[1].value)/strides[1])), int(np.ceil(float(img.get_shape().dims[2].value)/strides[2]))]
+            else:
+                CONV_IMG_SIZE = [int(np.ceil(float(CONV_IMG_SIZE[0])/strides[1])), int(np.ceil(float(CONV_IMG_SIZE[1])/strides[2]))]
+            img = tf.image.resize_images(img, CONV_IMG_SIZE)
+        layer = tf.nn.atrous_conv2d(img, w, rate=rate, padding='SAME') + b
     else:
         layer = tf.nn.conv2d(img, w, strides=strides, padding='SAME') + b
     return layer
     
-def lrelu(x, alpha=0.2):
-    return tf.where(x>=0.0, x, alpha*tf.nn.relu(x))
+def conv1d(img, w, b, stride=1):
+    layer = tf.nn.conv1d(img, w, stride=stride, padding='SAME') + b
+    return layer
 
 def selu(x):
     with ops.name_scope('selu') as scope:
         alpha = 1.6732632423543772848170429916717
         scale = 1.0507009873554804934193349852946
         return scale*tf.where(x>=0.0, x, alpha*tf.nn.elu(x))
+        
+def lrelu(x, alpha=0.2):
+    return tf.where(x>=0.0, x, alpha*tf.nn.relu(x))
         
 # def dropout_selu(x, rate, alpha= -1.7580993408473766, fixedPointMean=0.0, fixedPointVar=1.0, 
 #                  noise_shape=None, seed=None, name=None, training=False):
@@ -606,6 +620,7 @@ class VBN(object):
                 out = tf.nn.relu(self._normalize(x, mean, mean_sq, "live"))
             # Update the mean and mean_sq when passing the reference data
             else:
+                # Is the implementation correct?
                 self.mean = tf.reduce_mean(x, [0, 1, 2], keep_dims=True)
                 self.mean_sq = tf.reduce_mean(tf.square(x), [0, 1, 2], keep_dims=True)
                 out = tf.nn.relu(self._normalize(x, self.mean, self.mean_sq, "reference"))

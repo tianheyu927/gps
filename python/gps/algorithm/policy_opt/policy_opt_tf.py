@@ -70,7 +70,7 @@ class PolicyOptTf(PolicyOpt):
         self.var = self._hyperparams['init_var'] * np.ones(dU)
         # use test action for policy action
         self.policy = TfPolicy(dU, self.obs_tensor, self.test_act_op, self.feat_op, self.image_op,
-                               np.zeros(dU), self._sess, self.graph, self.device_string, copy_param_scope=self._hyperparams['copy_param_scope'])
+                               np.zeros(dU), self._sess, self.graph, self.saver, self.device_string, copy_param_scope=self._hyperparams['copy_param_scope'])
         # List of indices for state (vector) data and image (tensor) data in observation.
         self.x_idx, self.img_idx, i = [], [], 0
         if 'obs_image_data' not in self._hyperparams['network_params']:
@@ -85,7 +85,7 @@ class PolicyOptTf(PolicyOpt):
         # self.policy.scale = np.eye(len(self.x_idx))
         # self.policy.bias = np.zeros(len(self.x_idx))
         with self.graph.as_default():
-            init_op = tf.initialize_all_variables()
+            init_op = tf.global_variables_initializer()
         self.run(init_op)
 
     def init_network(self):
@@ -101,6 +101,7 @@ class PolicyOptTf(PolicyOpt):
             self.action_tensor = tf_map.get_target_output_tensor()
             self.act_op = tf_map.get_output_op()
             self.test_act_op = tf_map.get_test_output_op() # used for policy action
+            test_act_op_dummy = tf.identity(self.test_act_op, name='demo_action')
             self.feat_op = tf_map.get_feature_op()
             self.image_op = tf_map.get_image_op()  # TODO - make this.
             self.weights = tf_map.get_weights() # get weights from model, used for metalearn
@@ -429,4 +430,3 @@ class PolicyOptTf(PolicyOpt):
             f.write(state['wts'])
             f.seek(0)
             self.restore_model(f.name)
-

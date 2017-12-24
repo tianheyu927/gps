@@ -16,12 +16,12 @@ COLOR_MAP = {
 
 # COLOR_RANGE = [i / 5 for i in xrange(5)]
 # COLOR_RANGE = [i / 8 for i in xrange(8)]
-COLOR_RANGE = [i / 10 for i in xrange(10)]
-# COLOR_RANGE = [(2*i+1) / 20 for i in xrange(10)]
+# COLOR_RANGE = [i / 10 for i in xrange(10)]
+COLOR_RANGE = [(2*i+1) / 20 for i in xrange(10)]
 # DOUBLE_COLOR_RANGE = [i / 20 for i in xrange(20)]
 # COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE[1:] for j in COLOR_RANGE for k in COLOR_RANGE]
 COLOR_MAP_CONT_LIST = [[i, j, k, 1.0] for i in COLOR_RANGE for j in COLOR_RANGE for k in COLOR_RANGE]
-COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
+# COLOR_MAP_CONT_LIST.remove([0.0, 0.0, 0.0, 1.0])
 # COLOR_MAP_CONT_LIST.extend([[0.0, j, k, 1.0] for j in COLOR_RANGE[1:] for k in COLOR_RANGE])
 COLOR_MAP_CONT = {i: color for i, color in enumerate(COLOR_MAP_CONT_LIST)}
 
@@ -146,14 +146,14 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     body.joint(axis="0 0 1",limited="true",name="joint1",pos="0 0 0",range="-3.0 3.0",type="hinge")
     body.geom(fromto="0 0 0 0.1 0 0",name="link1",rgba=arm_color,size=".01",type="capsule")
     body = body.body(name="fingertip",pos="0.11 0 0")
-    body.site(name="fingertip",pos="0 0 0",size="0.01")
+    # body.site(name="fingertip",pos="0 0 0",size="0.01")
     body.geom(contype="0",name="fingertip",pos="0 0 0",rgba=COLOR_MAP['green'],size=".01",type="sphere")
 
     # Target
     _target_pos = [target_pos[0], target_pos[1], 0.01]
     body = worldbody.body(name="target",pos=_target_pos)
     body.geom(rgba=color_map[target_color],type="box",size=cube_size*np.ones(3),density='0.00001',contype="0",conaffinity="0")
-    body.site(name="target",pos="0 0 0",size="0.01")
+    # body.site(name="target",pos="0 0 0",size="0.01")
 
     # Distractor cubes
     available_colors = color_map.keys()
@@ -166,6 +166,7 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
         else:
             pos = distractor_pos[i]
         # pos = pos*0.5-0.25
+        # Initially zero. Should be different when saving xmls
         pos += np.array([.1,-.1,.01])
         body = worldbody.body(name="cube_%d"%i,pos=pos)
         
@@ -181,10 +182,10 @@ def colored_reacher(ncubes=6, target_color="red", cube_size=0.012, target_pos=(.
     actuator.motor(ctrllimited="true",ctrlrange="-1.0 1.0",gear="200.0",joint="joint1")
 
 
-    #Background
-    background = worldbody.body(name='background_body', pos=[0,0,-10], axisangle=[0,1,0,0.05])
-    background_color = [0,0,0,1] #[0.2,0.2,0.2,1]
-    background.geom(name='background_box', type='box', rgba=background_color, size=[100,100,.1], contype=3, conaffinity=3)
+    # Background
+    # background = worldbody.body(name='background_body', pos=[0,0,-10], axisangle=[0,1,0,0.05])
+    # background_color = [0,0,0,1] #[0.2,0.2,0.2,1]
+    # background.geom(name='background_box', type='box', rgba=background_color, size=[100,100,.1], contype=3, conaffinity=3)
     return mjcmodel
 
 def colored_pointmass(ncubes=6, target_color="red", cube_size=0.025, target_position=np.array([1.3, 0.5, 0]), distractor_pos=None, distractor_color=None):

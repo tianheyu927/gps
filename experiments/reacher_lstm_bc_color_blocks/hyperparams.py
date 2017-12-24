@@ -47,24 +47,25 @@ BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap' #reacher_color_blocks
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_2_obj_images' #reacher_color_blocks
 
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(50) #49
+np.random.seed(49) #50
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
-N_CUBES = 3
+N_CUBES = 2 #3
 CUBE_SIZE = 0.03
 
 # Validation colors and training colors
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
 VAL_TRIALS = 50
-TRAIN_TRIALS = 0 #500
+TRAIN_TRIALS = 500 #500
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 
 demo_pos_body_offset = {i: [] for i in xrange(COLOR_TRIALS)}
@@ -324,17 +325,17 @@ algorithm['cost'] = [{
 algorithm['policy_opt'] = {
     'type': PolicyCloningLSTM,
     'network_params': {
-        'num_filters': [40, 40, 40], #20, 20, 20
-        'filter_size': 5,
-        'obs_include': agent['obs_include'],
+        'num_filters': [20, 20, 20], #20, 20, 20
+        'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
         'obs_vector_data': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],
         'obs_image_data': [RGB_IMAGE],
         'image_width': IMAGE_WIDTH,
         'image_height': IMAGE_HEIGHT,
         'image_channels': IMAGE_CHANNELS,
         'sensor_dims': SENSOR_DIMS,
-        'n_layers': 4,
-        'layer_size': 200,
+        'filter_size': 3,
+        'n_layers': 3,
+        'layer_size': 100,
         'lstm_size': 512,
         'bc': True,
     },
@@ -346,13 +347,13 @@ algorithm['policy_opt'] = {
     'norm_type': 'layer_norm', # True
     'is_dilated': False,
     'color_hints': False,
-    'use_dropout': True,
+    'use_dropout': False,
     'keep_prob': 0.9,
     'decay': 0.9,
     'iterations': 30000, #about 20 epochs
     'restore_iter': 0,
     'random_seed': SEED,
-    'n_val': 0, #VAL_TRIALS*N_CUBES, #50
+    'n_val': VAL_TRIALS*N_CUBES, #50
     'weight_decay': 0.005, #0.005,
     'use_clip': False,
     'clip_min': -10.0,
@@ -360,20 +361,22 @@ algorithm['policy_opt'] = {
     'meta_batch_size': 25,
     'update_batch_size': 1, # batch size for each task, used to be 1
     'test_batch_size': 1,
-    'ln_for_lstm': True,
-    'use_fp': True,
-    # 'log_dir': '/tmp/data/maml_bc/4_layer_100_dim_40_3x3_filters_1_step_1e_4_mbs_1_ubs_2_update3_hints',
-    'log_dir': '/tmp/data/lstm_bc_1000/4_layer_200_dim_40_3x3_filters_2048_lstm_size_mbs_5_ubs_1_ebs_1_10_pos_images_relu_750_trials',
-    # 'save_dir': '/tmp/data/maml_bc_model_ln_4_100_40_3x3_filters_fixed_1e-4_cnn_normalized_batch1_noise_mbs_1_ubs_2_update3_hints',
-    'save_dir': '/home/kevin/gps/data/models/lstm_bc_1000_model_ln_4_layers_200_dim_40_5x5_filters_512_lstm_with_ln_size_mbs_25_ubs_1_tbs_1_10_pos_images_relu_dropout_0.9_fp_300_trials_correct',
+    'ln_for_lstm': False,
+    'use_fp': False,
+    # 'log_dir': '/z/kevin/data/lstm_bc_1000/4_layer_100_dim_40_3x3_filters_1024_lstm_size_mbs_5_ubs_1_ebs_1_10_pos_images_relu_dropout_0.9_300_trials',
+    'log_dir': '/home/kevin/gps/data/models/lstm_bc_2_obj/3_layer_100_dim_20_3x3_filters_512_lstm_size_with_ln_mbs_25_ubs_1_tbs_1_10_pos_images_relu',
+    # 'log_dir': '/home/kevin/gps/data/lstm_bc_1000/4_layer_512_dim_40_3x3_filters_2048_lstm_size_mbs_5_ubs_1_ebs_1_10_pos_images_no_dropout',
+    # 'save_dir': '/z/kevin/data/lstm_bc_1000_model_ln_4_layers_100_dim_40_3x3_filters_1024_lstm_size_mbs_5_ubs_1_ebs_1_10_pos_images_relu_dropout_0.9_300_trials',
+    'save_dir': '/home/kevin/gps/data/models/lstm_bc_2_obj_model_ln_3_layers_100_dim_20_3x3_filters_512_lstm_with_ln_size_mbs_25_ubs_1_tbs_1_10_pos_images_relu',
+    # 'save_dir': '/home/kevin/gps/data/models/lstm_bc_1000_model_ln_4_layers_512_dim_40_3x3_filters_2048_lstm_size_mbs_5_ubs_1_ebs_1_10_pos_images_no_dropout',
     'plot_dir': common['data_files_dir'],
     'demo_gif_dir': os.path.join(DATA_DIR, 'demo_gifs/'),
+    'log_filename': EXP_DIR + 'log_bc.txt',
     'use_vision': True,
     'weights_file_prefix': EXP_DIR + 'policy',
-    'log_filename': EXP_DIR + 'log_bc.txt',
     'record_gif': {
-        'gif_dir': os.path.join(common['data_files_dir'], 'gifs_final/'),
-        'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs_final/'),
+        'gif_dir': os.path.join(common['data_files_dir'], 'gifs/'),
+        'test_gif_dir': os.path.join(common['data_files_dir'], 'test_gifs/'),
         'gifs_per_condition': 1,
     },
 }

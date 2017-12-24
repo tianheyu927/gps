@@ -68,7 +68,7 @@ class MJCModel(object):
         return self.file
     
     def save(self, path):
-        with open(path) as f:
+        with open(path, 'wb') as f:
             self.root.write(f)
 
     def close(self):

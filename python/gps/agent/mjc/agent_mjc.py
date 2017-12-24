@@ -321,7 +321,7 @@ class AgentMuJoCo(Agent):
             LOGGER.debug('Saving gif sample to :%s', record_gif)
             if record_gif_fps is None:
                 record_gif_fps = 1./self._hyperparams['dt']
-            imageio.mimsave(record_gif, images, fps=record_gif_fps)
+            imageio.mimsave(record_gif, images[:, ::-1, :, :], fps=record_gif_fps)
             if reset:
                 new_sample.reset(RGB_IMAGE)
                 new_sample.reset(RGB_IMAGE_SIZE)

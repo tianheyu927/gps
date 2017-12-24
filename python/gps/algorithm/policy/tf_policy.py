@@ -1,12 +1,14 @@
 import pickle
 import os
 import uuid
+import logging
 
 import numpy as np
 import tensorflow as tf
 
 from gps.algorithm.policy.policy import Policy
 
+LOGGER = logging.getLogger(__name__)
 
 class TfPolicy(Policy):
     """
@@ -20,7 +22,7 @@ class TfPolicy(Policy):
         sess: tf session.
         device_string: tf device string for running on either gpu or cpu.
     """
-    def __init__(self, dU, obs_tensor, act_op, feat_op, image_op, var, sess, graph, device_string, copy_param_scope=None):
+    def __init__(self, dU, obs_tensor, act_op, feat_op, image_op, var, sess, graph, saver, device_string, copy_param_scope=None):
         Policy.__init__(self)
         self.dU = dU
         self.obs_tensor = obs_tensor
@@ -29,6 +31,7 @@ class TfPolicy(Policy):
         self.image_op = image_op
         self._sess = sess
         self.graph = graph
+        self.saver = saver
         self.device_string = device_string
         self.chol_pol_covar = np.diag(np.sqrt(var))
         self.scale = None  # must be set from elsewhere based on observations
@@ -60,6 +63,7 @@ class TfPolicy(Policy):
             obs = np.expand_dims(obs, axis=0)
         obs[:, self.x_idx] = obs[:, self.x_idx].dot(self.scale) + self.bias
         action_mean = self.run(self.act_op, feed_dict={self.obs_tensor: obs})
+        import pdb; pdb.set_trace()
         if noise is None:
             u = action_mean
         else:
@@ -71,6 +75,11 @@ class TfPolicy(Policy):
             with self.graph.as_default():
                 result = self._sess.run(op, feed_dict=feed_dict)
         return result
+        
+    def save_model(self, fname):
+        LOGGER.debug('Saving model to: %s', fname)
+        with self.graph.as_default():
+            self.saver.save(self._sess, fname)
 
     def get_features(self, obs):
         """

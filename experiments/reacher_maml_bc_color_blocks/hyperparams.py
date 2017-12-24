@@ -46,8 +46,8 @@ SENSOR_DIMS = {
 BASE_DIR = '/'.join(str.split(__file__, '/')[:-2])
 EXP_DIR = '/'.join(str.split(__file__, '/')[:-1]) + '/'
 DEMO_DIR = BASE_DIR + '/../experiments/reacher_mdgps/'
-DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap'#_test' #reacher_color_blocks
-# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test' #reacher_color_blocks
+# DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_2_obj_images' #reacher_color_blocks
+DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_test'#_newer' #reacher_color_blocks
 # DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_demo'#_test' #reacher_color_blocks
 # DATA_DIR = BASE_DIR + '/../data/reacher_6_obj_image' #reacher_color_blocks
 # DIFF_COLOR_DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_1000_images_no_overlap_arm_diff_colors' #reacher_color_blocks
@@ -57,19 +57,19 @@ DIFF_COLOR_DATA_DIR = BASE_DIR + '/../data/reacher_color_blocks_larger_box_more_
 #CONDITIONS = 1
 TRAIN_CONDITIONS = 8
 N_VAL = 100
-np.random.seed(49) #50
+np.random.seed(50) #50
 DEMO_CONDITIONS = 10 #10 #6 #12
 COLOR_CONDITIONS = 999#511 #100 #80
 TEST_CONDITIONS = 0
 TOTAL_CONDITIONS = TRAIN_CONDITIONS+TEST_CONDITIONS
-N_CUBES = 3 #6
+N_CUBES = 3 #3
 CUBE_SIZE = 0.03
 
 # Validation colors and training colors
 VAL_COLORS = np.random.choice(np.arange(COLOR_CONDITIONS), size=N_VAL, replace=False)
 TRAIN_COLORS = np.arange(COLOR_CONDITIONS)[~VAL_COLORS]
-VAL_TRIALS = 50 #25
-TRAIN_TRIALS = 500 #0 #250 #500 #0
+VAL_TRIALS = 0 #0 #50 #25
+TRAIN_TRIALS = 50 #50 #500 #0 #250 #500 #0
 COLOR_TRIALS = (TRAIN_TRIALS + VAL_TRIALS) * N_CUBES
 COLOR_MAP = [[1, 0, 0, 1], [0, 1, 0, 1], [0, 0, 1, 1], [1, 1, 0, 1]]
 
@@ -111,17 +111,21 @@ for i in xrange(TRAIN_TRIALS):
         distractor_color_idx[i*N_CUBES + k] = sampled_colors[np.arange(N_CUBES) != k]
     for j in xrange(DEMO_CONDITIONS):
         cube_pos = np.random.rand(N_CUBES, 2)
+        cube_pos[:, 0] = 0.4*cube_pos[:, 0] - 0.3
+        cube_pos[:, 1] = 0.4*cube_pos[:, 1] - 0.1
         pair_dist = cdist(cube_pos, cube_pos)
         pair_dist = pair_dist[pair_dist != 0]
         while np.any(pair_dist < CUBE_SIZE*5.0):
             cube_pos = np.random.rand(N_CUBES, 2)
+            cube_pos[:, 0] = 0.4*cube_pos[:, 0] - 0.3
+            cube_pos[:, 1] = 0.4*cube_pos[:, 1] - 0.1
             pair_dist = cdist(cube_pos, cube_pos)
             pair_dist = pair_dist[pair_dist != 0]
         for k in xrange(N_CUBES):
             body_offset = np.zeros((N_CUBES, 3))
-            body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
-            body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
-            body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
+            body_offset[0] = np.array([cube_pos[k, 0], cube_pos[k, 1] ,0])
+            body_offset[1:, 0] = cube_pos[np.arange(N_CUBES) != k, 0]
+            body_offset[1:, 1] = cube_pos[np.arange(N_CUBES) != k, 1]
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
 # Let validation color be the last 10*6=60 colors
 for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
@@ -131,17 +135,21 @@ for i in xrange(TRAIN_TRIALS, TRAIN_TRIALS+VAL_TRIALS):
         distractor_color_idx[i*N_CUBES + k] = sampled_colors[np.arange(N_CUBES) != k]
     for j in xrange(DEMO_CONDITIONS):
         cube_pos = np.random.rand(N_CUBES, 2)
+        cube_pos[:, 0] = 0.4*cube_pos[:, 0] - 0.3
+        cube_pos[:, 1] = 0.4*cube_pos[:, 1] - 0.1
         pair_dist = cdist(cube_pos, cube_pos)
         pair_dist = pair_dist[pair_dist != 0]
         while np.any(pair_dist < CUBE_SIZE*5.0):
             cube_pos = np.random.rand(N_CUBES, 2)
+            cube_pos[:, 0] = 0.4*cube_pos[:, 0] - 0.3
+            cube_pos[:, 1] = 0.4*cube_pos[:, 1] - 0.1
             pair_dist = cdist(cube_pos, cube_pos)
             pair_dist = pair_dist[pair_dist != 0]
         for k in xrange(N_CUBES):
             body_offset = np.zeros((N_CUBES, 3))
-            body_offset[0] = np.array([0.4*cube_pos[k, 0]-0.3, 0.4*cube_pos[k, 1]-0.1 ,0])
-            body_offset[1:, 0] = 0.4*cube_pos[np.arange(N_CUBES) != k, 0]-0.3
-            body_offset[1:, 1] = 0.4*cube_pos[np.arange(N_CUBES) != k, 1]-0.1
+            body_offset[0] = np.array([cube_pos[k, 0], cube_pos[k, 1] ,0])
+            body_offset[1:, 0] = cube_pos[np.arange(N_CUBES) != k, 0]
+            body_offset[1:, 1] = cube_pos[np.arange(N_CUBES) != k, 1]
             demo_pos_body_offset[i*N_CUBES + k].append(body_offset)
             
 # for i in xrange(COLOR_TRIALS):
@@ -211,7 +219,9 @@ agent = {
 pol_agent = [{
     'type': AgentMuJoCo,
     # for testing
-    'models': colored_reacher(ncubes=N_CUBES, target_color=target_color[j], cube_size=CUBE_SIZE, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color_idx[j]),
+    'models': [colored_reacher(ncubes=N_CUBES, target_pos=np.array([.1, -.1, .01]) + demo_pos_body_offset[j][i][0], target_color=target_color[j], cube_size=CUBE_SIZE, \
+                distractor_pos=demo_pos_body_offset[j][i][1:], distractor_color=distractor_color_idx[j])\
+                for i in xrange(DEMO_CONDITIONS)],
     'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
@@ -249,9 +259,51 @@ pol_agent = [{
     },
 } for j in xrange(COLOR_TRIALS)]
 
+# pol_agent = [{
+#     'type': AgentMuJoCo,
+#     # for testing
+#     'models': colored_reacher(ncubes=N_CUBES, target_color=target_color[j], cube_size=CUBE_SIZE, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color_idx[j]),
+#     'exp_name': 'reacher',
+#     'x0': np.zeros(4),
+#     'dt': 0.05,
+#     'substeps': 5,
+#     'randomly_sample_bodypos': False,
+#     'sampling_range_bodypos': [np.array([-0.3,-0.1, 0.0]), np.array([0.1, 0.3, 0.0])], # Format is [lower_lim, upper_lim]
+#     'prohibited_ranges_bodypos':[ [None, None, None, None] ],
+#     'modify_cost_on_sample': False,
+#     'pos_body_offset': demo_pos_body_offset[j],
+#     'pos_body_idx': np.arange(4, 4+N_CUBES), #np.array([4]),
+#     # 'distractor_color': distractor_color[j],
+#     'color_idx': np.arange(5, 4+N_CUBES),
+#     'conditions': DEMO_CONDITIONS,
+#     'T': 50,
+#     'state_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET,
+#                       END_EFFECTOR_POINT_VELOCITIES_NO_TARGET],  # no IMAGE_FEAT # TODO - may want to include fp velocities.
+#     'obs_include': [JOINT_ANGLES, JOINT_VELOCITIES, END_EFFECTOR_POINTS_NO_TARGET, END_EFFECTOR_POINT_VELOCITIES_NO_TARGET, RGB_IMAGE],
+#     'target_idx': np.array(list(range(3,6))),
+#     'meta_include': [RGB_IMAGE_SIZE],
+#     'image_width': IMAGE_WIDTH,
+#     'image_height': IMAGE_HEIGHT,
+#     'image_channels': IMAGE_CHANNELS,
+#     'sensor_dims': SENSOR_DIMS,
+#     'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]),
+#     'record_reward': True,
+#     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+#         for i in range(DEMO_CONDITIONS)],
+#     'filter_demos': {
+#         'type': 'last',
+#         'state_idx': range(4, 7),
+#         'target_ee_idx': range(7, 10),
+#         'target': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
+#                             for i in xrange(DEMO_CONDITIONS)],
+#         'success_upper_bound': 0.05,
+#     },
+# } for j in xrange(COLOR_TRIALS)]
+
 demo_agent = [{
     'type': AgentMuJoCo,
-    'models': colored_reacher(ncubes=N_CUBES, target_color=target_color[j], cube_size=CUBE_SIZE, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color_idx[j]),# arm_color=arm_colors[j]),
+    # 'models': colored_reacher(ncubes=N_CUBES, target_color=target_color[j], cube_size=CUBE_SIZE, distractor_pos=np.zeros((N_CUBES-1, 3)), distractor_color=distractor_color_idx[j]),# arm_color=arm_colors[j]),
+    'models': colored_reacher(ncubes=N_CUBES, target_color=target_color[j], target_pos=np.array([.1, -.1, .01]) + demo_pos_body_offset[j][i][0], cube_size=CUBE_SIZE, distractor_pos=demo_pos_body_offset[j][i][1:], distractor_color=distractor_color_idx[j]),# arm_color=arm_colors[j]),
     'exp_name': 'reacher',
     'x0': np.zeros(4),
     'dt': 0.05,
@@ -279,7 +331,7 @@ demo_agent = [{
     'image_height': IMAGE_HEIGHT,
     'image_channels': IMAGE_CHANNELS,
     'sensor_dims': SENSOR_DIMS,
-    'camera_pos': np.array([0., -1.0, 1.5, 0.0, 0., 0.0]), #np.array([0., 0., 1.5, 0., 0., 0.]),
+    'camera_pos': np.array([0., 0., 1.5, 0., 0., 0.]), #np.array([0., -1.0, 1.5, 0.0, 0., 0.0]), #
     'record_reward': True,
     'target_end_effector': [np.concatenate([np.array([.1, -.1, .01])+ demo_pos_body_offset[j][i][0], np.array([0., 0., 0.])])
         for i in range(DEMO_CONDITIONS)],
