@@ -529,7 +529,8 @@ class PolicyCloningMAML(PolicyOptTf):
                 if i == n_layers - 1 and self._hyperparams.get('mixture_density', False):
                     num_mixtures = self._hyperparams.get('num_mixtures', 20)
                     weights['w_%d' % i] = init_weights([in_shape, (dim_hidden[i] + 2)*num_mixtures], name='w_%d' % i)
-                weights['w_%d' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d' % i)
+                else:
+                    weights['w_%d' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d' % i)
                 # weights['w_%d' % i] = init_fc_weights_xavier([in_shape, dim_hidden[i]], name='w_%d' % i)
             if i == n_layers - 1 and self._hyperparams.get('mixture_density', False):
                 num_mixtures = self._hyperparams.get('num_mixtures', 20)
@@ -883,10 +884,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 # only use dropout for post-update
                 if use_dropout:# and meta_testing:
                     fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i, selu=use_selu)
-            if i == n_layers - 1:
+            if i == n_layers - 1: # just for postupdate for now
                 if self._hyperparams.get('non_linearity_out', False):
                     fc_output = self.activation_fn(fc_output)
-                elif self._hyperparams.get('mixture_density', False):
+                elif self._hyperparams.get('mixture_density', False) and meta_testing:
                     ds = tf.contrib.distributions
                     num_mixtures = self._hyperparams.get('num_mixtures', 20)
                     mixture_params = tf.reshape(fc_output, [-1, self.mixture_dim, num_mixtures])
@@ -895,7 +896,7 @@ class PolicyCloningMAML(PolicyOptTf):
                     alpha = mixture_params[:, -1, :]
                     mix_gauss = ds.Mixture(
                           cat=ds.Categorical(probs=tf.nn.softmax(alpha, dim=1)),
-                          components=[ds.MultivariateNormalDiag(loc=mu[:, :, m], scale_diag=tf.expand_dims(sigma[:, m], axis=1))
+                          components=[ds.MultivariateNormalDiag(loc=mu[:, :, m], scale_diag=tf.tile(tf.expand_dims(sigma[:, m], axis=1), [1, mu.get_shape().dims[1].value]))
                           for m in xrange(num_mixtures)])
                     fc_output = mix_gauss
         # return fc_output, fp, moving_mean, moving_variance
