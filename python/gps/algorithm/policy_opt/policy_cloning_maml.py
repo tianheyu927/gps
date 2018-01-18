@@ -233,7 +233,15 @@ class PolicyCloningMAML(PolicyOptTf):
                 result = self.construct_model(input_tensors=input_tensors, prefix=prefix, dim_input=self._dO, dim_output=self._dU,
                                           network_config=self._hyperparams['network_params'])
             # outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test = result
-            outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients = result
+            stop_lossb, gripper_lossb = None, None
+            if self._hyperparams.get('stop_signal', False) and self._hyperparams.get('gripper_command_signal', False):
+                outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, stop_lossb, gripper_lossb = result
+            elif self._hyperparams.get('gripper_command_signal', False):
+                outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, gripper_lossb = result
+            elif self._hyperparams.get('stop_signal', False):
+                outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, stop_lossb = result
+            else:                
+                outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients = result
             if 'Testing' in prefix:
                 self.obs_tensor = self.obsa
                 self.state_tensor = self.statea
@@ -253,12 +261,21 @@ class PolicyCloningMAML(PolicyOptTf):
             total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
             total_final_eept_losses2 = [tf.reduce_sum(final_eept_lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
             total_control_losses2 = [tf.reduce_sum(control_lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
-
+            total_stop_loss2, total_gripper_loss2 = None, None
+            if stop_lossb is not None:
+                total_stop_loss2 = tf.reduce_sum(stop_lossb) / tf.to_float(self.meta_batch_size)
+            if gripper_lossb is not None:
+                total_gripper_loss2 = tf.reduce_sum(gripper_lossb) / tf.to_float(self.meta_batch_size)
+            
             if 'Training' in prefix:
                 self.total_loss1 = total_loss1
                 self.total_losses2 = total_losses2
                 self.total_final_eept_losses2 = total_final_eept_losses2
                 self.total_control_losses2 = total_control_losses2
+                if total_stop_loss2 is not None:
+                    self.total_stop_loss2 = total_stop_loss2
+                if total_gripper_loss2 is not None:
+                    self.total_gripper_loss2 = total_gripper_loss2
                 self.lossesa = lossesa # for testing
                 self.lossesb = lossesb[-1] # for testing
             elif 'Validation' in prefix:
@@ -266,6 +283,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 self.val_total_losses2 = total_losses2
                 self.val_total_final_eept_losses2 = total_final_eept_losses2
                 self.val_total_control_losses2 = total_control_losses2
+                if total_stop_loss2 is not None:
+                    self.val_total_stop_loss2 = total_stop_loss2
+                if total_gripper_loss2 is not None:
+                    self.val_total_gripper_loss2 = total_gripper_loss2
             # self.val_total_loss1 = tf.contrib.copy_graph.get_copied_op(total_loss1, self.graph)
             # self.val_total_losses2 = [tf.contrib.copy_graph.get_copied_op(total_losses2[i], self.graph) for i in xrange(len(total_losses2))]
  
@@ -317,6 +338,10 @@ class PolicyCloningMAML(PolicyOptTf):
                     for k in xrange(len(self.sorted_weight_keys)):
                         summ.append(tf.summary.histogram('Gradient_of_%s_step_%d' % (self.sorted_weight_keys[k], j), gradients[j][k]))
                         # summ.append(tf.summary.scalar('Gradient_norm_of_%s_step_%d' % (self.sorted_weight_keys[k], j), tf.sqrt(tf.reduce_sum(tf.square(gradients[j][k])))))
+                if self.total_stop_loss2 is not None:
+                    summ.append(tf.summary.scalar(prefix + 'Post-update_stop_loss', self.total_stop_loss2))
+                if self.total_gripper_loss2 is not None:
+                    summ.append(tf.summary.scalar(prefix + 'Post-update_gripper_loss', self.total_gripper_loss2))
                 if self._hyperparams.get('clip_metagradient', False):
                     for grad, var in self.gvs:
                         summ.append(tf.summary.histogram('meta_grad_'+ var.name.split('/')[-1][:-2], grad))
@@ -337,6 +362,10 @@ class PolicyCloningMAML(PolicyOptTf):
                     summ.append(tf.summary.scalar(prefix + 'Post-update_loss_step_%d' % j, self.val_total_losses2[j]))
                     summ.append(tf.summary.scalar(prefix + 'Post-update_control_loss_step_%d' % j, self.val_total_control_losses2[j]))
                     summ.append(tf.summary.scalar(prefix + 'Post-update_final_eept_loss_step_%d' % j, self.val_total_final_eept_losses2[j]))
+                if self.total_stop_loss2 is not None:
+                    summ.append(tf.summary.scalar(prefix + 'Post-update_stop_loss', self.val_total_stop_loss2))
+                if self.total_gripper_loss2 is not None:
+                    summ.append(tf.summary.scalar(prefix + 'Post-update_gripper_loss', self.val_total_gripper_loss2))
                 self.val_summ_op = tf.summary.merge(summ)
 
     def construct_image_input(self, nn_input, x_idx, img_idx, light_augs=None, network_config=None):
@@ -528,14 +557,22 @@ class PolicyCloningMAML(PolicyOptTf):
             else:
                 if i == n_layers - 1 and self._hyperparams.get('mixture_density', False):
                     num_mixtures = self._hyperparams.get('num_mixtures', 20)
-                    weights['w_%d' % i] = init_weights([in_shape, (dim_hidden[i] + 2)*num_mixtures], name='w_%d' % i)
+                    dim_out_ = dim_hidden[i]
+                    rem = 0
+                    if self._hyperparams.get('stop_signal', False):
+                        dim_out_ -= 1
+                        rem += 1
+                    if self._hyperparams.get('gripper_command_signal', False):
+                        dim_out_ -= 1
+                        rem += 1
+                    weights['w_%d' % i] = init_weights([in_shape, (dim_out_ + 2)*num_mixtures + rem], name='w_%d' % i)
                 else:
                     weights['w_%d' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d' % i)
                 # weights['w_%d' % i] = init_fc_weights_xavier([in_shape, dim_hidden[i]], name='w_%d' % i)
             if i == n_layers - 1 and self._hyperparams.get('mixture_density', False):
                 num_mixtures = self._hyperparams.get('num_mixtures', 20)
-                weights['b_%d' % i] = init_weights([(dim_hidden[i] + 2)*num_mixtures], name='b_%d' % i)
-                self.mixture_dim = dim_hidden[i] + 2
+                weights['b_%d' % i] = init_weights([(dim_out_ + 2)*num_mixtures + rem], name='b_%d' % i)
+                self.mixture_dim = dim_out_ + 2
             else:
                 weights['b_%d' % i] = init_bias([dim_hidden[i]], name='b_%d' % i)
             if (i == n_layers - 1 or (i == 0 and self._hyperparams.get('zero_state', False) and not self._hyperparams.get('sep_state', False))) and \
@@ -884,21 +921,28 @@ class PolicyCloningMAML(PolicyOptTf):
                 # only use dropout for post-update
                 if use_dropout:# and meta_testing:
                     fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i, selu=use_selu)
-            if i == n_layers - 1: # just for postupdate for now
+            if i == n_layers - 1:
                 if self._hyperparams.get('non_linearity_out', False):
                     fc_output = self.activation_fn(fc_output)
-                elif self._hyperparams.get('mixture_density', False) and meta_testing:
+                elif self._hyperparams.get('mixture_density', False) and meta_testing: # just for postupdate for now
+                    stop_signal, gripper_command = None, None
+                    if self._hyperparams.get('stop_signal', False):
+                        stop_signal = tf.expand_dims(fc_output[:, -1], axis=1)
+                        fc_output = fc_output[:, :-1]
+                    if self._hyperparams.get('gripper_command_signal', False):
+                        gripper_command = tf.expand_dims(fc_output[:, -1], axis=1)
+                        fc_output = fc_output[:, :-1]
                     ds = tf.contrib.distributions
                     num_mixtures = self._hyperparams.get('num_mixtures', 20)
                     mixture_params = tf.reshape(fc_output, [-1, self.mixture_dim, num_mixtures])
                     mu = mixture_params[:, :-2, :]
-                    sigma = mixture_params[:, -2, :]
+                    sigma = tf.exp(mixture_params[:, -2, :])
                     alpha = mixture_params[:, -1, :]
                     mix_gauss = ds.Mixture(
                           cat=ds.Categorical(probs=tf.nn.softmax(alpha, dim=1)),
-                          components=[ds.MultivariateNormalDiag(loc=mu[:, :, m], scale_diag=tf.tile(tf.expand_dims(sigma[:, m], axis=1), [1, mu.get_shape().dims[1].value]))
+                          components=[ds.MultivariateNormalDiag(loc=mu[:, :, m], scale_identity_multiplier=sigma[:, m])
                           for m in xrange(num_mixtures)])
-                    fc_output = mix_gauss
+                    fc_output = (mix_gauss, gripper_command, stop_signal)
         # return fc_output, fp, moving_mean, moving_variance
         return fc_output
         
@@ -958,7 +1002,7 @@ class PolicyCloningMAML(PolicyOptTf):
             state = tf.concat(axis=1, values=[c, m])
             lstm_outputs.append(m)
         lstm_output = tf.concat(axis=0, values=lstm_outputs)
-        return self.fc_forward(lstm_output, weights, is_training=is_training, testing=testing, network_config=network_config)
+        return self.fc_forward(lstm_output, weights, is_training=is_training, meta_testing=meta_testing, testing=testing, network_config=network_config)
 
     def construct_model(self, input_tensors=None, prefix='Training_', dim_input=27, dim_output=7, batch_size=25, network_config=None):
         """
@@ -1146,7 +1190,7 @@ class PolicyCloningMAML(PolicyOptTf):
                 # else:
                     # actiona = actiona[:, 6:]
                     # actionb = actionb[:, 6:]
-                    
+                
                 if self._hyperparams.get('no_action', False):
                     actiona = tf.zeros_like(actiona)
 
@@ -1209,7 +1253,23 @@ class PolicyCloningMAML(PolicyOptTf):
                 if self._hyperparams.get('learn_loss', False):
                     local_lossa = act_loss_eps * self.learn_loss(local_outputa, actiona, weights, network_config=network_config)
                 else:
-                    local_lossa = act_loss_eps * euclidean_loss_layer(local_outputa, actiona, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                    if not self._hyperparams.get('no_action', False):
+                        discrete_loss = 0.0
+                        outputa_ = tf.identity(local_outputa)
+                        actiona_ = tf.identity(actiona)
+                        if self._hyperparams.get('stop_signal', True):
+                            stop_lossa = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.expand_dims(actiona[:, -1], axis=1), logits=tf.expand_dims(local_outputa[:, -1], axis=1))
+                            discrete_loss += tf.reduce_mean(stop_lossa)
+                            outputa_ = outputa_[:, :-1]
+                            actiona_ = actiona_[:, :-1]
+                        if self._hyperparams.get('gripper_command_signal', True):
+                            gripper_lossa = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.expand_dims(actiona[:, -2], axis=1), logits=tf.expand_dims(local_outputa[:, -2], axis=1))
+                            discrete_loss += tf.reduce_mean(gripper_lossa)
+                            outputa_ = outputa_[:, :-1]
+                            actiona_ = actiona_[:, :-1]
+                        local_lossa = act_loss_eps * (euclidean_loss_layer(outputa_, actiona_, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) + discrete_loss)
+                    else:
+                        local_lossa = act_loss_eps * euclidean_loss_layer(local_outputa, actiona, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
                 if self._hyperparams.get('learn_final_eept', False):
                     local_lossa += final_eept_loss_eps * final_eept_lossa
                 grads = tf.gradients(local_lossa, weights.values())
@@ -1304,17 +1364,54 @@ class PolicyCloningMAML(PolicyOptTf):
                         outputa_2_head, _ = self.forward(inputa, state_inputa_new, fast_weights, update=update, is_training=False, testing=testing, network_config=network_config)
                 # fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
                 if self._hyperparams.get('mixture_density', False):
-                    local_outputbs.append(outputb.sample())
+                    outputb, gripper_command, stop_signal = outputb
+                    if num_updates == 1 and testing:
+                        samples = tf.stack([outputb.sample() for _ in range(100)])
+                        sample_probs = outputb.prob(samples)
+                        output_sample = samples[tf.argmax(sample_probs)]
+                    else:
+                        output_sample = outputb.sample()
+                    if gripper_command is not None:
+                        gripper_command_out = tf.cast(tf.sigmoid(gripper_command)>0.5, tf.float32)
+                        output_sample = tf.concat([output_sample, gripper_command_out], axis=1)
+                    if stop_signal is not None:
+                        stop_signal_out = tf.cast(tf.sigmoid(stop_signal)>0.5, tf.float32)
+                        output_sample = tf.concat([output_sample, stop_signal_out], axis=1)
+                    local_outputbs.append(output_sample)
                 else:
                     local_outputbs.append(outputb)
                 if self._hyperparams.get('learn_final_eept', False):
                     final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
                 else:
                     final_eept_lossb = tf.constant(0.0)
+                discrete_loss = 0.0
+                if not self._hyperparams.get('mixture_density', False):
+                    outputb_ = tf.identity(outputb)
+                actionb_ = tf.identity(actionb)
+                if self._hyperparams.get('stop_signal', True):
+                    if self._hyperparams.get('mixture_density', False):
+                        stop_signal_logitb = stop_signal
+                    else:
+                        stop_signal_logitb = tf.expand_dims(outputb[:, -1], axis=1)
+                    stop_lossb = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.expand_dims(actionb[:, -1], axis=1), logits=stop_signal_logitb)
+                    discrete_loss += tf.reduce_mean(stop_lossb)
+                    if not self._hyperparams.get('mixture_density', False):
+                        outputb_ = outputb_[:, :-1]
+                    actionb_ = actionb_[:, :-1]
+                if self._hyperparams.get('gripper_command_signal', True):
+                    if self._hyperparams.get('mixture_density', False):
+                        gripper_command_logitb = gripper_command
+                    else:
+                        gripper_command_logitb = tf.expand_dims(outputb[:, -2], axis=1)
+                    gripper_lossb = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.expand_dims(actionb[:, -2], axis=1), logits=gripper_command_logitb)
+                    discrete_loss += tf.reduce_mean(gripper_lossb)
+                    if not self._hyperparams.get('mixture_density', False):
+                        outputb_ = outputb_[:, :-1]
+                    actionb_ = actionb_[:, :-1]
                 if self._hyperparams.get('mixture_density', False):
-                    local_lossb = -act_loss_eps * outputb.log_prob(actionb)
+                    local_lossb = act_loss_eps * (tf.reduce_mean(-outputb.log_prob(actionb_)) + discrete_loss)
                 else:
-                    local_lossb = act_loss_eps * euclidean_loss_layer(outputb, actionb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                    local_lossb = act_loss_eps * (euclidean_loss_layer(outputb_, actionb_, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) + discrete_loss)
                 control_lossb = tf.identity(local_lossb)
                 if self._hyperparams.get('learn_loss_reg', False):
                     if self._hyperparams.get('no_action', False):
@@ -1460,7 +1557,20 @@ class PolicyCloningMAML(PolicyOptTf):
                             outputb_2_head, _ = self.forward(inputbs[j+1], state_inputb_new, fast_weights, update=update, is_training=False, testing=testing, network_config=network_config)
                             outputa_2_head, _ = self.forward(inputas[j+1], state_inputa_new, fast_weights, update=update, is_training=False, testing=testing, network_config=network_config)
                     if self._hyperparams.get('mixture_density', False):
-                        local_outputbs.append(output.sample())
+                        output, gripper_command, stop_signal = output
+                        if num_updates == 1 and testing:
+                            samples = tf.stack([output.sample() for _ in range(100)])
+                            sample_probs = output.prob(samples)
+                            output_sample = samples[tf.argmax(sample_probs)]
+                        else:
+                            output_sample = output.sample()
+                        if gripper_command is not None:
+                            gripper_command_out = tf.cast(tf.sigmoid(gripper_command)>0.5, tf.float32)
+                            output_sample = tf.concat([output_sample, gripper_command_out], axis=1)
+                        if stop_signal is not None:
+                            stop_signal_out = tf.cast(tf.sigmoid(stop_signal)>0.5, tf.float32)
+                            output_sample = tf.concat([output_sample, stop_signal_out], axis=1)
+                        local_outputbs.append(output_sample)
                     else:
                         local_outputbs.append(output)
                     if self._hyperparams.get('learn_final_eept', False):
@@ -1468,10 +1578,34 @@ class PolicyCloningMAML(PolicyOptTf):
                     else:
                         final_eept_lossb = tf.constant(0.0)
                     # fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
+                    discrete_loss = 0.0
+                    if not self._hyperparams.get('mixture_density', False):
+                        output_ = tf.identity(output)
+                    actionb_ = tf.identity(actionb)
+                    if self._hyperparams.get('stop_signal', True):
+                        if self._hyperparams.get('mixture_density', False):
+                            stop_signal_logitb = stop_signal
+                        else:
+                            stop_signal_logitb = tf.expand_dims(output[:, -1], axis=1)
+                        stop_lossb = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.expand_dims(actionb[:, -1], axis=1), logits=stop_signal_logitb)
+                        discrete_loss += tf.reduce_mean(stop_lossb)
+                        if not self._hyperparams.get('mixture_density', False):
+                            output_ = output_[:, :-1]
+                        actionb_ = actionb_[:, :-1]
+                    if self._hyperparams.get('gripper_command_signal', True):
+                        if self._hyperparams.get('mixture_density', False):
+                            gripper_command_logitb = gripper_command
+                        else:
+                            gripper_command_logitb = tf.expand_dims(output[:, -2], axis=1)
+                        gripper_lossb = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.expand_dims(actionb[:, -2], axis=1), logits=gripper_command_logitb)
+                        discrete_loss += tf.reduce_mean(gripper_lossb)
+                        if not self._hyperparams.get('mixture_density', False):
+                            output_ = output_[:, :-1]
+                        actionb_ = actionb_[:, :-1]
                     if self._hyperparams.get('mixture_density', False):
-                        lossb = -act_loss_eps * output.log_prob(actionb)
+                        lossb = act_loss_eps * (tf.reduce_mean(-output.log_prob(actionb_)) + discrete_loss)
                     else:
-                        lossb = act_loss_eps * euclidean_loss_layer(output, actionb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+                        lossb = act_loss_eps * (euclidean_loss_layer(output_, actionb_, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) + discrete_loss)
                     control_lossb = tf.identity(lossb)
                     if self._hyperparams.get('learn_loss_reg', False):
                         if self._hyperparams.get('no_action', False):
@@ -1502,6 +1636,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 fast_weights_values = [fast_weights[key] for key in self.sorted_weight_keys]
                 # use post update output
                 local_fn_output = [local_outputa, local_outputbs, local_outputbs[-1], local_lossa, local_lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept_predb[0], fast_weights_values, gradients_summ]
+                if self._hyperparams.get('stop_signal', False):
+                    local_fn_output.append(tf.reduce_mean(stop_lossb))
+                if self._hyperparams.get('gripper_command_signal', False):
+                    local_fn_output.append(tf.reduce_mean(gripper_lossb))
                 return local_fn_output
 
         if self.norm_type:
@@ -1520,6 +1658,10 @@ class PolicyCloningMAML(PolicyOptTf):
         
         # out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, tf.float32, tf.float32, tf.float32, tf.float32]
         out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, tf.float32, [tf.float32]*num_updates, [tf.float32]*num_updates, [tf.float32]*num_updates, tf.float32, tf.float32, tf.float32, [tf.float32]*len(self.weights.keys()), [[tf.float32]*len(self.weights.keys())]*num_updates]
+        if self._hyperparams.get('stop_signal', False):
+            out_dtype.append(tf.float32)
+        if self._hyperparams.get('gripper_command_signal', False):
+            out_dtype.append(tf.float32)
         if self._hyperparams.get('aggressive_light_aug', False) and 'Testing' not in prefix:
             result = tf.map_fn(batch_metalearn, elems=(inputa, inputb, actiona, actionb, lighting), dtype=out_dtype)
         else:        
