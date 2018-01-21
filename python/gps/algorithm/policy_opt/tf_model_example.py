@@ -52,7 +52,6 @@ def batched_matrix_vector_multiply(vector, matrix):
     squeezed_result = tf.squeeze(mult_result, [1])
     return squeezed_result
 
-
 def euclidean_loss_layer(a, b, precision, multiplier=100.0, behavior_clone=False, use_l1=False, eps=0.01):
     """ Math:  out = (action - mlp_out)'*precision*(action-mlp_out)
                     = (u-uhat)'*A*(u-uhat)"""
@@ -67,6 +66,11 @@ def euclidean_loss_layer(a, b, precision, multiplier=100.0, behavior_clone=False
             return tf.reduce_mean(eps*tf.square(uP) + tf.abs(uP))
         # return tf.reduce_mean(uP*uP)  # this last dot product is then summed, so we just the sum all at once.
         return tf.reduce_mean(tf.square(uP))
+
+def acosine_loss(a, b, weights=1.0):
+    a = tf.nn.l2_normalize(a, dim=1)
+    b = tf.nn.l2_normalize(b, dim=1)
+    return tf.reduce_mean(tf.acos(tf.losses.cosine_distance(a, b, dim=1, weights=weights)))
 
 def get_input_layer(dim_input, dim_output, behavior_clone=False):
     """produce the placeholder inputs that are used to run ops forward and backwards.
