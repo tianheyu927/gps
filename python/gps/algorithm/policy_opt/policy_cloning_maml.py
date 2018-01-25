@@ -734,7 +734,7 @@ class PolicyCloningMAML(PolicyOptTf):
         vbn = getattr(self, name)
         return vbn(tensor, update=update)
 
-    def forward(self, image_input, state_input, weights, meta_testing=False, update=False, is_training=True, testing=False, network_config=None):
+    def forward(self, image_input, state_input, weights, pick_labels=None, meta_testing=False, update=False, is_training=True, testing=False, network_config=None):
         # tile up context variable
         if self._hyperparams.get('use_state_context', False):
             # if not testing:
@@ -954,8 +954,11 @@ class PolicyCloningMAML(PolicyOptTf):
                     pick_eept_concat = tf.reshape(pick_eept_pred, [-1, T, len(pick_eept_range)])[:, 0, :]
                     pick_eept_concat = tf.reshape(tf.tile(tf.expand_dims(pick_eept_concat, axis=1), [1, T, 1]), [-1, len(pick_eept_range)])
                     # final_eept_concat = tf.reshape(tf.tile(tf.reshape(final_eept_concat, [-1]), [T]), [-1, len(final_eept_range)])
+                pick_eept_concat = pick_labels * pick_eept_concat
                 if self._hyperparams.get('stop_grad_ee', False):
                     pick_eept_concat = tf.stop_gradient(pick_eept_concat)
+                else:
+                    pick_eept_concat = tf.cond(tf.reduce_all(tf.equal(pick_labels, tf.ones_like(pick_labels))), lambda: pick_eept_concat, lambda: tf.stop_gradient(pick_eept_concat))
                 fc_input = tf.concat(axis=1, values=[fc_input, pick_eept_concat])
                 # fc_input = tf.concat(concat_dim=1, values=[fc_input, pick_eept_pred])
             else:
@@ -1419,10 +1422,10 @@ class PolicyCloningMAML(PolicyOptTf):
                     final_eeptas = [final_eepta]*num_updates
                 if 'Training' in prefix:
                     # local_outputa, fp, moving_mean, moving_variance = self.forward(inputa, state_inputa, weights, network_config=network_config)
-                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa_new, weights, network_config=network_config)
+                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa_new, weights, pick_labels=pick_labels, network_config=network_config)
                 else:
                     # local_outputa, _, moving_mean_test, moving_variance_test = self.forward(inputa, state_inputa, weights, is_training=False, network_config=network_config)
-                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa_new, weights, update=update, is_training=False, network_config=network_config)
+                    local_outputa, final_eept_preda = self.forward(inputa, state_inputa_new, weights, pick_labels=pick_labels, update=update, is_training=False, network_config=network_config)
                 if self._hyperparams.get('learn_final_eept', False):
                     if self._hyperparams.get('pred_pick_eept', False):
                         final_eept_preda, pick_eept_preda = final_eept_preda
@@ -1544,12 +1547,12 @@ class PolicyCloningMAML(PolicyOptTf):
                 else:
                     fast_weights = dict(zip(weights.keys(), [weights[key] - self.step_size*gradients[key] for key in weights.keys()]))
                 if 'Training' in prefix:
-                    outputb, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, meta_testing=True, network_config=network_config)
+                    outputb, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, pick_labels=pick_labels, meta_testing=True, network_config=network_config)
                     if self._hyperparams.get('learn_loss_reg', False):
                         outputb_2_head, _ = self.forward(inputb, state_inputb_new, fast_weights, network_config=network_config)
                         outputa_2_head, _ = self.forward(inputa, state_inputa_new, fast_weights, network_config=network_config)
                 else:
-                    outputb, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, meta_testing=True, update=update, is_training=False, testing=testing, network_config=network_config)
+                    outputb, final_eept_predb = self.forward(inputb, state_inputb_new, fast_weights, pick_labels=pick_labels, meta_testing=True, update=update, is_training=False, testing=testing, network_config=network_config)
                     if self._hyperparams.get('learn_loss_reg', False):
                         outputb_2_head, _ = self.forward(inputb, state_inputb_new, fast_weights, update=update, is_training=False, testing=testing, network_config=network_config)
                         outputa_2_head, _ = self.forward(inputa, state_inputa_new, fast_weights, update=update, is_training=False, testing=testing, network_config=network_config)
@@ -1558,7 +1561,7 @@ class PolicyCloningMAML(PolicyOptTf):
                     outputb, gripper_command, stop_signal = outputb
                     if num_updates == 1 and testing:
                         samples = tf.stack([outputb.sample() for _ in range(20)])
-                        sample_probs = outputb.prob(samples)
+                        sample_probs = tf.squeeze(output.prob(samples))
                         output_sample = samples[tf.argmax(sample_probs)]
                     else:
                         output_sample = outputb.sample()
@@ -1661,7 +1664,7 @@ class PolicyCloningMAML(PolicyOptTf):
                             inputas[j+1] = tf.concat(axis=1, values=[fast_context, inputas[j+1]])
                         state_inputa_new = None
                         
-                    outputa, final_eept_preda = self.forward(inputas[j+1], state_inputa_new, fast_weights, network_config=network_config)
+                    outputa, final_eept_preda = self.forward(inputas[j+1], state_inputa_new, fast_weights, pick_labels=pick_labels, network_config=network_config)
                     if self._hyperparams.get('learn_final_eept', False):
                         if self._hyperparams.get('pred_pick_eept', False):
                             final_eept_preda, pick_eept_preda = final_eept_preda
@@ -1758,13 +1761,13 @@ class PolicyCloningMAML(PolicyOptTf):
                     else:
                         fast_weights = dict(zip(fast_weights.keys(), [fast_weights[key] - self.step_size*gradients[key] for key in fast_weights.keys()]))
                     if 'Training' in prefix:
-                        output, final_eept_predb = self.forward(inputbs[j+1], state_inputb_new, fast_weights, meta_testing=True, network_config=network_config)
+                        output, final_eept_predb = self.forward(inputbs[j+1], state_inputb_new, fast_weights, pick_labels=pick_labels, meta_testing=True, network_config=network_config)
                         # output = self.forward(inputb, state_inputb, fast_weights, update=update, is_training=False, network_config=network_config)
                         if self._hyperparams.get('learn_loss_reg', False):
                             outputb_2_head, _ = self.forward(inputbs[j+1], state_inputb_new, fast_weights, network_config=network_config)
                             outputa_2_head, _ = self.forward(inputas[j+1], state_inputa_new, fast_weights, network_config=network_config)
                     else:
-                        output, final_eept_predb = self.forward(inputbs[j+1], state_inputb_new, fast_weights, meta_testing=True, update=update, is_training=False, testing=testing, network_config=network_config)
+                        output, final_eept_predb = self.forward(inputbs[j+1], state_inputb_new, fast_weights, pick_labels=pick_labels, meta_testing=True, update=update, is_training=False, testing=testing, network_config=network_config)
                         if self._hyperparams.get('learn_loss_reg', False):
                             outputb_2_head, _ = self.forward(inputbs[j+1], state_inputb_new, fast_weights, update=update, is_training=False, testing=testing, network_config=network_config)
                             outputa_2_head, _ = self.forward(inputas[j+1], state_inputa_new, fast_weights, update=update, is_training=False, testing=testing, network_config=network_config)
@@ -1772,7 +1775,8 @@ class PolicyCloningMAML(PolicyOptTf):
                         output, gripper_command, stop_signal = output
                         if j == num_updates - 2 and testing:
                             samples = tf.stack([output.sample() for _ in range(20)])
-                            sample_probs = output.prob(samples)
+                            sample_probs = tf.squeeze(output.prob(samples))
+                            import pdb; pdb.set_trace()
                             output_sample = samples[tf.argmax(sample_probs)]
                         else:
                             output_sample = output.sample()
