@@ -211,15 +211,19 @@ class PolicyCloningMAML(PolicyOptTf):
         if self._hyperparams.get('agent', False):
             del self._hyperparams['agent']
 
-    def init_network(self, graph, input_tensors=None, restore_iter=0, prefix='Training_'):
+    def init_network(self, graph, input_tensors=None, depth_tensors=None, restore_iter=0, prefix='Training_'):
         """ Helper method to initialize the tf networks used """
         with graph.as_default():
-            image_tensors = None
+            image_tensors, depth_tensors = None, None
             if self._hyperparams.get('use_vision', True):
                 if 'Training' in prefix:
                     image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], restore_iter=restore_iter)
+                    if self._hyperparams.get('use_depth', False):
+                        image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], use_depth=True, restore_iter=restore_iter)
                 elif 'Validation' in prefix:
                     image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], restore_iter=restore_iter, train=False)
+                    if self._hyperparams.get('use_depth', False):
+                        image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], use_depth=True, restore_iter=restore_iter, train=False)
             if image_tensors is not None:
                 # image_tensors = tf.reshape(image_tensors, [self.meta_batch_size, (self.update_batch_size+1)*self.T, -1])
                 # inputa = tf.slice(image_tensors, [0, 0, 0], [-1, self.update_batch_size*self.T, -1])
@@ -227,6 +231,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 inputa = image_tensors[:, :self.update_batch_size*self.T, :]
                 inputb = image_tensors[:, self.update_batch_size*self.T:, :]
                 input_tensors = {'inputa': inputa, 'inputb': inputb}
+                if depth_tensors is not None:
+                    deptha = depth_tensors[:, :self.update_batch_size*self.T, :]
+                    depthb = depth_tensors[:, self.update_batch_size*self.T:, :]
+                    input_tensors.update({'deptha': deptha, 'depthb': depthb})
             else:
                 input_tensors = None
             with Timer('building TF network'):
@@ -403,9 +411,13 @@ class PolicyCloningMAML(PolicyOptTf):
                     summ.append(tf.summary.scalar(prefix + 'Post-update_pick_eept_loss', self.val_total_pick_eept_loss2))
                 self.val_summ_op = tf.summary.merge(summ)
 
-    def construct_image_input(self, nn_input, x_idx, img_idx, light_augs=None, network_config=None):
+    def construct_image_input(self, nn_input, x_idx, img_idx, use_depth=False, light_augs=None, network_config=None):
         state_input = nn_input[:, 0:x_idx[-1]+1]
         flat_image_input = nn_input[:, x_idx[-1]+1:img_idx[-1]+1]
+        if use_depth:
+            depth_input = nn_input[:, img_idx[-1]+1:]
+        else:
+            depth_input = None
     
         # image goes through 3 convnet layers
         num_filters = network_config['num_filters']
@@ -415,6 +427,10 @@ class PolicyCloningMAML(PolicyOptTf):
         num_channels = network_config['image_channels']
         image_input = tf.reshape(flat_image_input, [-1, num_channels, im_width, im_height])
         image_input = tf.transpose(image_input, perm=[0,3,2,1])
+        if use_depth:
+            depth_input = tf.reshape(depth_input, [-1, 1, im_width, im_height])
+            depth_input = tf.transpose(depth_input, perm=[0,3,2,1])
+            
         if self._hyperparams.get('aggressive_light_aug', False) and light_augs is not None:
             img_hsv = tf.image.rgb_to_hsv(image_input)
             img_h = img_hsv[..., 0]
@@ -431,6 +447,8 @@ class PolicyCloningMAML(PolicyOptTf):
             image_input = image_input * 255.0 - tf.convert_to_tensor(np.array([103.939, 116.779, 123.68], np.float32))
             # 'RGB'->'BGR'
             image_input = image_input[:, :, :, ::-1]
+        if use_depth:
+            image_input = tf.concatenate((image_input, depth_input), axis=3)
         return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
@@ -472,10 +490,24 @@ class PolicyCloningMAML(PolicyOptTf):
                 fan_in += num_channels
             if self._hyperparams.get('use_conv_context', False):
                 weights['img_context'] = safe_get('img_context', initializer=tf.zeros([im_height, im_width, num_channels], dtype=tf.float32))
+                if self._hyperparams.get('use_depth', False):
+                    weights['depth_context'] = safe_get('depth_context', initializer=tf.zeros([im_height, im_width, 1], dtype=tf.float32))
                 if self._hyperparams.get('normalize_img_context', False):
                     weights['img_context'] = tf.clip_by_value(weights['img_context'], 0., 1.)
+                    if self._hyperparams.get('use_depth', False):
+                        weights['depth_context'] = tf.clip_by_value(weights['depth_context'], 0., 1.)
             for i in xrange(n_conv_layers):
                 # if not pretrain or (i != 0 and i != 1):
+                if i == 0 and self._hyperparams.get('use_depth', False):
+                    if self.norm_type == 'selu':
+                        weights['wc_depth_%d' % (i+1)] = init_conv_weights_snn([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                    elif initialization == 'xavier':                
+                        weights['wc_depth_%d' % (i+1)] = init_conv_weights_xavier([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                    elif initialization == 'random':
+                        weights['wc_depth_%d' % (i+1)] = init_weights([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                    else:
+                        raise NotImplementedError
+                    weights['bc_depth_%d' % (i+1)] = init_bias([num_filters[i]], name='bc_depth_%d' % (i+1))
                 if not pretrain or i != 0:
                     if self.norm_type == 'selu':
                         weights['wc%d' % (i+1)] = init_conv_weights_snn([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
@@ -734,8 +766,11 @@ class PolicyCloningMAML(PolicyOptTf):
         vbn = getattr(self, name)
         return vbn(tensor, update=update)
 
-    def forward(self, image_input, state_input, weights, pick_labels=None, meta_testing=False, update=False, is_training=True, testing=False, network_config=None):
+    def forward(self, image_input, state_input, weights, use_depth=False, pick_labels=None, meta_testing=False, update=False, is_training=True, testing=False, network_config=None):
         # tile up context variable
+        if self._hyperparams.get('use_vision', False) and use_depth:
+            depth_input = image_input[:, :, :, -1]
+            image_input = image_input[:, :, :, :-1]
         if self._hyperparams.get('use_state_context', False):
             # if not testing:
             #     if not meta_testing:
@@ -789,6 +824,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 img_context = tf.zeros_like(conv_layer)
                 img_context += weights['img_context']
                 conv_layer = tf.concat(axis=3, values=[conv_layer, img_context])
+                if use_depth:
+                    depth_context = tf.zeros_like(depth_input)
+                    depth_context += weights['img_context']
+                    depth_input = tf.concat(axis=3, values=[depth_input, depth_context])
             for i in xrange(n_conv_layers):
                 if norm_type == 'vbn':
                     if not use_dropout:
@@ -798,12 +837,14 @@ class PolicyCloningMAML(PolicyOptTf):
                         conv_layer = dropout(self.vbn(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), \
                                         name='vbn_%d' % (i+1), update=update), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
                 else:
+                    conv_layer = conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated)
+                    if i == 0 and use_depth:
+                        depth_conv_out = conv2d(img=depth_input, w=weights['wc_depth_%d' % (i+1)], b=weights['bc_depth_%d' % (i+1)], strides=strides[i], is_dilated=is_dilated)
+                        conv_layer = tf.concat((conv_layer, depth_context), axis=3)
                     if not use_dropout:
-                        conv_layer = norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), \
-                                        norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn)
+                        conv_layer = norm(conv_layer, norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn)
                     else:
-                        conv_layer = dropout(norm(conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated), \
-                                        norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
+                        conv_layer = dropout(norm(conv_layer, norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
             if self._hyperparams.get('use_fp', False):
                 _, num_rows, num_cols, num_fp = conv_layer.get_shape()
                 if is_dilated:
@@ -1183,6 +1224,9 @@ class PolicyCloningMAML(PolicyOptTf):
             else:
                 self.obsa = obsa = input_tensors['inputa'] # meta_batch_size x update_batch_size x dim_input
                 self.obsb = obsb = input_tensors['inputb']
+                if self._hyperparams.get('use_depth', False):
+                    self.deptha = deptha = input_tensors['deptha'] # meta_batch_size x update_batch_size x dim_input
+                    self.depthb = depthb = input_tensors['depthb']
         else:
             self.obsa, self.obsb = None, None
         # Temporary in order to make testing work
@@ -1233,6 +1277,9 @@ class PolicyCloningMAML(PolicyOptTf):
                 lighting = self.lighting_tensor
             inputa = tf.concat(axis=2, values=[statea, obsa])
             inputb = tf.concat(axis=2, values=[stateb, obsb])
+            if self._hyperparams.get('use_depth', False):
+                inputa = tf.concat(axis=2, values=[inputa, deptha])
+                inputb = tf.concat(axis=2, values=[inputb, depthb])
         else:
             inputa = statea
             inputb = stateb
@@ -1280,6 +1327,7 @@ class PolicyCloningMAML(PolicyOptTf):
             stop_signal_eps = self._hyperparams.get('stop_signal_eps', 1.0)
             gripper_command_signal_eps = self._hyperparams.get('gripper_command_signal_eps', 1.0)
             acosine_loss_eps = self._hyperparams.get('acosine_loss_eps', 0.5)
+            use_depth = self._hyperparams.get('use_depth', False)
             if self._hyperparams.get('use_context', False):
                 # self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
                 self.context_var = safe_get('context_variable', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
@@ -1386,8 +1434,8 @@ class PolicyCloningMAML(PolicyOptTf):
                 
                 # Convert to image dims
                 if self._hyperparams.get('use_vision', True):
-                    inputa, flat_img_inputa, state_inputa = self.construct_image_input(inputa, x_idx, img_idx, light_augs=lighting, network_config=network_config)
-                    inputb, flat_img_inputb, state_inputb = self.construct_image_input(inputb, x_idx, img_idx, light_augs=lighting, network_config=network_config)
+                    inputa, flat_img_inputa, state_inputa = self.construct_image_input(inputa, x_idx, img_idx, use_depth=use_depth, light_augs=lighting, network_config=network_config)
+                    inputb, flat_img_inputb, state_inputb = self.construct_image_input(inputb, x_idx, img_idx, use_depth=use_depth, light_augs=lighting, network_config=network_config)
                     inputas = [inputa]*num_updates
                     inputbs = [inputb]*num_updates
                     if self._hyperparams.get('zero_state', False):
@@ -1774,10 +1822,14 @@ class PolicyCloningMAML(PolicyOptTf):
                     if self._hyperparams.get('mixture_density', False):
                         output, gripper_command, stop_signal = output
                         if j == num_updates - 2 and testing:
-                            samples = tf.stack([output.sample() for _ in range(20)])
-                            sample_probs = tf.squeeze(output.prob(samples))
-                            import pdb; pdb.set_trace()
-                            output_sample = samples[tf.argmax(sample_probs)]
+                            # samples = tf.stack([output.sample() for _ in range(20)])
+                            # sample_probs = tf.squeeze(output.prob(samples))
+                            # output_sample = samples[tf.argmax(sample_probs)]
+                            # samples = tf.stack([output.sample() for _ in range(50)])
+                            samples = output.sample(100)
+                            sample_probs = output.prob(tf.reshape(samples, [-1, samples.get_shape().dims[-1].value]))
+                            # this assumes T=1 at test time
+                            output_sample = samples[tf.argmax(sample_probs, axis=0)]
                         else:
                             output_sample = output.sample()
                         if gripper_command is not None:
@@ -2096,17 +2148,25 @@ class PolicyCloningMAML(PolicyOptTf):
             # self.val_img_folders = {i: os.path.join(self.demo_gif_dir, 'color_%d' % i) for i in self.val_idx}
             val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '%d' % i) for i in self.val_idx}
             # val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d' % (i+93)) for i in self.val_idx}
+            if self._hyperparams.get('use_depth', False):
+                train_depth_img_folders = {i: os.path.join(self.demo_gif_depth_dir, self.gif_prefix + '%d' % i) for i in self.train_idx}
+                val_depth_img_folders = {i: os.path.join(self.demo_gif_depth_dir, self.gif_prefix + '%d' % i) for i in self.val_idx}
             if noisy:
                 # noisy_train_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d_noisy' % i) for i in self.train_idx}
                 # noisy_val_img_folders = {i: os.path.join(self.demo_gif_dir, self.gif_prefix + '_%d_noisy' % i) for i in self.val_idx}
                 noisy_train_img_folders = {i: os.path.join(self.noisy_demo_gif_dir, self.gif_prefix + '%d' % i) for i in self.train_idx}
                 noisy_val_img_folders = {i: os.path.join(self.noisy_demo_gif_dir, self.gif_prefix + '%d' % i) for i in self.val_idx}
+                if self._hyperparams.get('use_depth', False):
+                    noisy_train_depth_img_folders = {i: os.path.join(self.noisy_demo_gif_depth_dir, self.gif_prefix + '%d' % i) for i in self.train_idx}
+                    noisy_val_depth_img_folders = {i: os.path.join(self.noisy_demo_gif_depth_dir, self.gif_prefix + '%d' % i) for i in self.val_idx}
             TEST_PRINT_INTERVAL = 500
             TOTAL_ITERS = self._hyperparams['iterations']
             is_push = self._hyperparams.get('push', False)
             # VAL_ITERS = int(TOTAL_ITERS / 500)
             self.all_training_filenames = []
             self.all_val_filenames = []
+            self.all_training_filenames_depth = []
+            self.all_val_filenames_depth = []
             self.training_batch_idx = {i: OrderedDict() for i in xrange(TOTAL_ITERS)}
             self.val_batch_idx = {i: OrderedDict() for i in TEST_PRINT_INTERVAL*np.arange(1, int(TOTAL_ITERS/TEST_PRINT_INTERVAL))}
             if noisy:
@@ -2126,6 +2186,9 @@ class PolicyCloningMAML(PolicyOptTf):
                 for idx in sampled_train_idx:
                     if self._hyperparams.get('use_vision', True):
                         sampled_folder = train_img_folders[idx]
+                        if self._hyperparams.get('use_depth', False):
+                            depth_sampled_folder = train_depth_img_folders[idx]
+                            depth_image_paths = natsorted(os.listdir(sampled_folder))  
                         if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                             image_paths = natsorted([p for p in os.listdir(sampled_folder) if 'samp0' in p])
                         elif self._hyperparams.get('bird_view', False):
@@ -2142,6 +2205,9 @@ class PolicyCloningMAML(PolicyOptTf):
                             import pdb; pdb.set_trace()
                         if noisy:
                             noisy_sampled_folder = noisy_train_img_folders[idx]
+                            if self._hyperparams.get('use_depth', False):
+                                noisy_depth_sampled_folder = noisy_train_depth_img_folders[idx]
+                                noisy_depth_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                             # noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                             if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                                 noisy_image_paths = natsorted([p for p in os.listdir(noisy_sampled_folder) if 'samp0' in p])
@@ -2170,6 +2236,9 @@ class PolicyCloningMAML(PolicyOptTf):
                             else:
                                 sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+self.test_batch_size, replace=False) # True
                             sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
+                            # assume no sample traj
+                            if self._hyperparams.get('use_depth', False):
+                                depth_sampled_images = [os.path.join(depth_sampled_folder, depth_image_paths[i]) for i in sampled_image_idx]
                         else:
                             if self._hyperparams.get('sample_traj', False) and self._hyperparams['num_samples'] > 1:
                                 num_samples = self._hyperparams['num_samples']
@@ -2182,7 +2251,12 @@ class PolicyCloningMAML(PolicyOptTf):
                                 sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.test_batch_size, replace=False)
                             sampled_images = [os.path.join(noisy_sampled_folder, noisy_image_paths[i]) for i in noisy_sampled_image_idx]
                             sampled_images.extend([os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx])
+                            if self._hyperparams.get('use_depth', False):
+                                depth_sampled_images = [os.path.join(noisy_depth_sampled_folder, noisy_depth_image_paths[i]) for i in noisy_sampled_image_idx]
+                                depth_sampled_images.extend([os.path.join(depth_sampled_folder, depth_image_paths[i]) for i in sampled_image_idx])
                         self.all_training_filenames.extend(sampled_images)
+                        if self._hyperparams.get('use_depth', False):
+                            self.all_training_filenames_depth.extend(depth_sampled_images)
                         self.training_batch_idx[itr][idx] = sampled_image_idx
                         if noisy:
                             self.noisy_training_batch_idx[itr][idx] = noisy_sampled_image_idx
@@ -2202,6 +2276,9 @@ class PolicyCloningMAML(PolicyOptTf):
                     for idx in sampled_val_idx:
                         if self._hyperparams.get('use_vision', True):
                             sampled_folder = val_img_folders[idx]
+                            if self._hyperparams.get('use_depth', False):
+                                depth_sampled_folder = val_depth_img_folders[idx]
+                                depth_image_paths = natsorted(os.listdir(sampled_folder)) 
                             if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                                 image_paths = natsorted([p for p in os.listdir(sampled_folder) if 'samp0' in p])
                             elif self._hyperparams.get('bird_view', False):
@@ -2215,6 +2292,9 @@ class PolicyCloningMAML(PolicyOptTf):
                             assert len(image_paths) == self.demos[idx]['demoX'].shape[0]
                             if noisy:
                                 noisy_sampled_folder = noisy_val_img_folders[idx]
+                                if self._hyperparams.get('use_depth', False):
+                                    noisy_depth_sampled_folder = noisy_val_depth_img_folders[idx]
+                                    noisy_depth_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                                 # noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                                 if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                                     noisy_image_paths = natsorted([p for p in os.listdir(noisy_sampled_folder) if 'samp0' in p])
@@ -2238,6 +2318,8 @@ class PolicyCloningMAML(PolicyOptTf):
                                     sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+self.test_batch_size, replace=False)
                                 # sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.update_batch_size+self.test_batch_size, replace=False) # True
                                 sampled_images = [os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx]
+                                if self._hyperparams.get('use_depth', False):
+                                    depth_sampled_images = [os.path.join(depth_sampled_folder, depth_image_paths[i]) for i in sampled_image_idx]
                             else:
                                 if self._hyperparams.get('sample_traj', False) and self._hyperparams['num_samples'] > 1:
                                     num_samples = self._hyperparams['num_samples']
@@ -2252,7 +2334,12 @@ class PolicyCloningMAML(PolicyOptTf):
                                 # sampled_image_idx = np.random.choice(range(len(image_paths)), size=self.test_batch_size, replace=False) # True
                                 sampled_images = [os.path.join(noisy_sampled_folder, noisy_image_paths[i]) for i in noisy_sampled_image_idx]
                                 sampled_images.extend([os.path.join(sampled_folder, image_paths[i]) for i in sampled_image_idx])
+                                if self._hyperparams.get('use_depth', False):
+                                    depth_sampled_images = [os.path.join(noisy_depth_sampled_folder, noisy_depth_image_paths[i]) for i in noisy_sampled_image_idx]
+                                    depth_sampled_images.extend([os.path.join(depth_sampled_folder, depth_image_paths[i]) for i in sampled_image_idx])
                             self.all_val_filenames.extend(sampled_images)
+                            if self._hyperparams.get('use_depth', False):
+                                self.all_val_filenames_depth.extend(depth_sampled_images)
                             self.val_batch_idx[itr][idx] = sampled_image_idx
                             if noisy:
                                 self.noisy_val_batch_idx[itr][idx] = noisy_sampled_image_idx
@@ -2263,16 +2350,22 @@ class PolicyCloningMAML(PolicyOptTf):
                             else:
                                 self.val_batch_idx[itr][idx] = np.random.choice(range(self.demos[idx]['demoX'].shape[0]), size=self.update_batch_size+self.test_batch_size, replace=False) # True
 
-    def make_batch_tensor(self, network_config, restore_iter=0, train=True):
+    def make_batch_tensor(self, network_config, restore_iter=0, use_depth=False, train=True):
         # TODO: load images using tensorflow fileReader and gif decoder
         TEST_INTERVAL = 500
         batch_image_size = (self.update_batch_size + self.test_batch_size) * self.meta_batch_size
         if train:
-            all_filenames = self.all_training_filenames
+            if use_depth:
+                all_filenames = self.all_training_filenames_depth
+            else:
+                all_filenames = self.all_training_filenames
             if restore_iter > 0:
                 all_filenames = all_filenames[batch_image_size*(restore_iter+1):]
         else:
-            all_filenames = self.all_val_filenames
+            if use_depth:
+                all_filenames = self.all_val_filenames_depth
+            else:
+                all_filenames = self.all_val_filenames
             if restore_iter > 0:
                 all_filenames = all_filenames[batch_image_size*(int(restore_iter/TEST_INTERVAL)+1):]
         
@@ -2287,9 +2380,12 @@ class PolicyCloningMAML(PolicyOptTf):
         image = tf.image.decode_gif(image_file)
         # should be T x C x W x H
         image.set_shape((self.T, im_height, im_width, num_channels))
+        if use_depth:
+            # assuming padding the grayscale depth video into rgb
+            image = tf.expand_dims(img[:, :, :, 0], axis=3)
         image = tf.cast(image, tf.float32)
         image /= 255.0
-        if self._hyperparams.get('use_hsv', False):
+        if self._hyperparams.get('use_hsv', False) and not use_depth:
             eps_min, eps_max = self._hyperparams.get('random_V', (0.5, 1.5))
             assert eps_max >= eps_min >= 0
             # convert to HSV only fine if input images in [0, 1]
@@ -2324,13 +2420,20 @@ class PolicyCloningMAML(PolicyOptTf):
         self.light_aug = {}
         num_samples = self._hyperparams.get('num_light_samples', 3)
         rng = self._hyperparams.get('rng', 0.3)
-        if 'num_push_train' in self._hyperparams:
-            for i in xrange(self._hyperparams['num_push_train'] // 2):
+        if 'num_push_train_1' in self._hyperparams:
+            num_place = len(self.train_idx) - self._hyperparams['num_push_train_1'] - self._hyperparams['num_push_train_2']
+            for i in xrange(self._hyperparams['num_push_train_1'] // 2):
                 light = np.random.uniform(low=-rng, high=rng, size=(num_samples, 1))
                 self.light_aug.update({2*i: light, 2*i+1: light.copy()})
-            for i in xrange((len(self.demos) - self._hyperparams['num_push_train'] - self._hyperparams['num_push_val'])//3):
+            for i in xrange(num_place//3):
                 light = np.random.uniform(low=-rng, high=rng, size=(num_samples, 1))
-                self.light_aug.update({self._hyperparams['num_push_train']+3*i: light, self._hyperparams['num_push_train']+3*i+1: light.copy(), self._hyperparams['num_push_train']+3*i+2: light.copy()})
+                self.light_aug.update({self._hyperparams['num_push_train_1']+3*i: light, self._hyperparams['num_push_train_1']+3*i+1: light.copy(), self._hyperparams['num_push_train_1']+3*i+2: light.copy()})
+            for i in xrange(self._hyperparams['num_push_train_2'] // 2):
+                light = np.random.uniform(low=-rng, high=rng, size=(num_samples, 1))
+                self.light_aug.update({self._hyperparams['num_push_train_1']+num_place+2*i: light, self._hyperparams['num_push_train_1']+num_place+2*i+1: light.copy()})
+            for i in xrange((len(self.val_idx) - self._hyperparams['num_push_val'])//3):
+                light = np.random.uniform(low=-rng, high=rng, size=(num_samples, 1))
+                self.light_aug.update({len(self.train_idx)+3*i: light, len(self.train_idx)+3*i+1: light.copy(), len(self.train_idx)+3*i+2: light.copy()})
             for i in xrange(self._hyperparams['num_push_val'] // 2):
                 light = np.random.uniform(low=-rng, high=rng, size=(num_samples, 1))
                 self.light_aug.update({len(self.demos) - self._hyperparams['num_push_val']+2*i: light, len(self.demos) - self._hyperparams['num_push_val']+2*i+1: light.copy()})
@@ -2540,6 +2643,7 @@ class PolicyCloningMAML(PolicyOptTf):
 
         # Keep track of tensorflow iterations for loading solver states.
         self.tf_iter += self._hyperparams['iterations']
+
 
     def eval_fast_weights(self):
         fast_weights = {}
