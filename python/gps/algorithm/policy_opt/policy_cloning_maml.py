@@ -219,11 +219,11 @@ class PolicyCloningMAML(PolicyOptTf):
                 if 'Training' in prefix:
                     image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], restore_iter=restore_iter)
                     if self._hyperparams.get('use_depth', False):
-                        image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], use_depth=True, restore_iter=restore_iter)
+                        depth_tensors = self.make_batch_tensor(self._hyperparams['network_params'], use_depth=True, restore_iter=restore_iter)
                 elif 'Validation' in prefix:
                     image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], restore_iter=restore_iter, train=False)
                     if self._hyperparams.get('use_depth', False):
-                        image_tensors = self.make_batch_tensor(self._hyperparams['network_params'], use_depth=True, restore_iter=restore_iter, train=False)
+                        depth_tensors = self.make_batch_tensor(self._hyperparams['network_params'], use_depth=True, restore_iter=restore_iter, train=False)
             if image_tensors is not None:
                 # image_tensors = tf.reshape(image_tensors, [self.meta_batch_size, (self.update_batch_size+1)*self.T, -1])
                 # inputa = tf.slice(image_tensors, [0, 0, 0], [-1, self.update_batch_size*self.T, -1])
@@ -338,6 +338,11 @@ class PolicyCloningMAML(PolicyOptTf):
                 flat_img_inputa = tf.transpose(flat_img_inputa, perm=[0,1,4,3,2])
                 flat_img_inputb = tf.reshape(flat_img_inputb, [self.meta_batch_size, self.T, num_channels, im_width, im_height])
                 flat_img_inputb = tf.transpose(flat_img_inputb, perm=[0,1,4,3,2])
+                if self._hyperparams.get('use_depth', False):
+                    depth_img_inputa = tf.reshape(deptha, [self.meta_batch_size, self.T, 1, im_width, im_height])
+                    depth_img_inputa = tf.transpose(depth_img_inputa, perm=[0,1,4,3,2])
+                    depth_img_inputb = tf.reshape(depthb, [self.meta_batch_size, self.T, 1, im_width, im_height])
+                    depth_img_inputb = tf.transpose(depth_img_inputb, perm=[0,1,4,3,2])
             if 'Training' in prefix:
                 optimizer_name = self._hyperparams.get('optimizer', 'adam')
                 if optimizer_name == 'adam':
@@ -364,6 +369,9 @@ class PolicyCloningMAML(PolicyOptTf):
                     for i in xrange(self.meta_batch_size):
                         summ.append(tf.summary.image('Training_imagea_%d' % i, flat_img_inputa[i, -2:, :, :, :]*255.0, max_outputs=1))
                         summ.append(tf.summary.image('Training_imageb_%d' % i, flat_img_inputb[i, -2:, :, :, :]*255.0, max_outputs=1))
+                        if self._hyperparams.get('use_depth', False):
+                            summ.append(tf.summary.image('Training_depth_imagea_%d' % i, depth_img_inputa[i, -2:, :, :, :], max_outputs=1))
+                            summ.append(tf.summary.image('Training_depth_imageb_%d' % i, depth_img_inputb[i, -2:, :, :, :], max_outputs=1))
                 for j in xrange(self.num_updates):
                     summ.append(tf.summary.scalar(prefix + 'Post-update_loss_step_%d' % j, self.total_losses2[j]))
                     summ.append(tf.summary.scalar(prefix + 'Post-update_control_loss_step_%d' % j, self.total_control_losses2[j]))
@@ -396,6 +404,10 @@ class PolicyCloningMAML(PolicyOptTf):
                     for i in xrange(self.meta_batch_size):
                         summ.append(tf.summary.image('Validation_imagea_%d' % i, flat_img_inputa[i, -2:, :, :, :]*255.0, max_outputs=1))
                         summ.append(tf.summary.image('Validation_imageb_%d' % i, flat_img_inputb[i, -2:, :, :, :]*255.0, max_outputs=1))
+                        if self._hyperparams.get('use_depth', False):
+                            summ.append(tf.summary.image('Validation_depth_imagea_%d' % i, depth_img_inputa[i, -2:, :, :, :], max_outputs=1))
+                            summ.append(tf.summary.image('Validation_depth_imageb_%d' % i, depth_img_inputb[i, -2:, :, :, :], max_outputs=1))
+
                 for j in xrange(self.num_updates):
                     summ.append(tf.summary.scalar(prefix + 'Post-update_loss_step_%d' % j, self.val_total_losses2[j]))
                     summ.append(tf.summary.scalar(prefix + 'Post-update_control_loss_step_%d' % j, self.val_total_control_losses2[j]))
@@ -448,7 +460,7 @@ class PolicyCloningMAML(PolicyOptTf):
             # 'RGB'->'BGR'
             image_input = image_input[:, :, :, ::-1]
         if use_depth:
-            image_input = tf.concatenate((image_input, depth_input), axis=3)
+            image_input = tf.concat(axis=3, values=[image_input, depth_input])
         return image_input, flat_image_input, state_input
     
     def construct_weights(self, dim_input=27, dim_output=7, network_config=None):
@@ -490,24 +502,25 @@ class PolicyCloningMAML(PolicyOptTf):
                 fan_in += num_channels
             if self._hyperparams.get('use_conv_context', False):
                 weights['img_context'] = safe_get('img_context', initializer=tf.zeros([im_height, im_width, num_channels], dtype=tf.float32))
-                if self._hyperparams.get('use_depth', False):
-                    weights['depth_context'] = safe_get('depth_context', initializer=tf.zeros([im_height, im_width, 1], dtype=tf.float32))
+                # if self._hyperparams.get('use_depth', False):
+                #     weights['depth_context'] = safe_get('depth_context', initializer=tf.zeros([im_height, im_width, 1], dtype=tf.float32))
                 if self._hyperparams.get('normalize_img_context', False):
                     weights['img_context'] = tf.clip_by_value(weights['img_context'], 0., 1.)
-                    if self._hyperparams.get('use_depth', False):
-                        weights['depth_context'] = tf.clip_by_value(weights['depth_context'], 0., 1.)
+                    # if self._hyperparams.get('use_depth', False):
+                    #     weights['depth_context'] = tf.clip_by_value(weights['depth_context'], 0., 1.)
             for i in xrange(n_conv_layers):
                 # if not pretrain or (i != 0 and i != 1):
                 if i == 0 and self._hyperparams.get('use_depth', False):
+                    num_filters_depth = 16
                     if self.norm_type == 'selu':
-                        weights['wc_depth_%d' % (i+1)] = init_conv_weights_snn([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                        weights['wc_depth_%d' % (i+1)] = init_conv_weights_snn([filter_sizes[i], filter_sizes[i], 1, num_filters_depth], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
                     elif initialization == 'xavier':                
-                        weights['wc_depth_%d' % (i+1)] = init_conv_weights_xavier([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                        weights['wc_depth_%d' % (i+1)] = init_conv_weights_xavier([filter_sizes[i], filter_sizes[i], 1, num_filters_depth], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
                     elif initialization == 'random':
-                        weights['wc_depth_%d' % (i+1)] = init_weights([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
+                        weights['wc_depth_%d' % (i+1)] = init_weights([filter_sizes[i], filter_sizes[i], 1, num_filters_depth], name='wc_depth_%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
                     else:
                         raise NotImplementedError
-                    weights['bc_depth_%d' % (i+1)] = init_bias([num_filters[i]], name='bc_depth_%d' % (i+1))
+                    weights['bc_depth_%d' % (i+1)] = init_bias([num_filters_depth], name='bc_depth_%d' % (i+1))
                 if not pretrain or i != 0:
                     if self.norm_type == 'selu':
                         weights['wc%d' % (i+1)] = init_conv_weights_snn([filter_sizes[i], filter_sizes[i], fan_in, num_filters[i]], name='wc%d' % (i+1)) # 5x5 conv, 1 input, 32 outputs
@@ -519,6 +532,8 @@ class PolicyCloningMAML(PolicyOptTf):
                         raise NotImplementedError
                     weights['bc%d' % (i+1)] = init_bias([num_filters[i]], name='bc%d' % (i+1))
                     fan_in = num_filters[i]
+                    if i == 0 and not pretrain and self._hyperparams.get('use_depth', False):
+                        fan_in += 16
                 else:
                     import h5py
                     
@@ -532,6 +547,8 @@ class PolicyCloningMAML(PolicyOptTf):
                     weights['wc%d' % (i+1)].assign(conv_weight)
                     weights['bc%d' % (i+1)].assign(conv_bias)
                     fan_in = conv_weight.shape[-1]
+                    if self._hyperparams.get('use_depth', False):
+                        fan_in += 16
 
             # fc weights
             # in_shape = 40 # dimension after feature computation
@@ -766,10 +783,11 @@ class PolicyCloningMAML(PolicyOptTf):
         vbn = getattr(self, name)
         return vbn(tensor, update=update)
 
-    def forward(self, image_input, state_input, weights, use_depth=False, pick_labels=None, meta_testing=False, update=False, is_training=True, testing=False, network_config=None):
+    def forward(self, image_input, state_input, weights, pick_labels=None, meta_testing=False, update=False, is_training=True, testing=False, network_config=None):
         # tile up context variable
+        use_depth = self._hyperparams.get('use_depth', False)
         if self._hyperparams.get('use_vision', False) and use_depth:
-            depth_input = image_input[:, :, :, -1]
+            depth_input = tf.expand_dims(image_input[:, :, :, -1], axis=3)
             image_input = image_input[:, :, :, :-1]
         if self._hyperparams.get('use_state_context', False):
             # if not testing:
@@ -824,10 +842,10 @@ class PolicyCloningMAML(PolicyOptTf):
                 img_context = tf.zeros_like(conv_layer)
                 img_context += weights['img_context']
                 conv_layer = tf.concat(axis=3, values=[conv_layer, img_context])
-                if use_depth:
-                    depth_context = tf.zeros_like(depth_input)
-                    depth_context += weights['img_context']
-                    depth_input = tf.concat(axis=3, values=[depth_input, depth_context])
+                # if use_depth:
+                #     depth_context = tf.zeros_like(depth_input)
+                #     depth_context += weights['depth_context']
+                #     depth_input = tf.concat(axis=3, values=[depth_input, depth_context])
             for i in xrange(n_conv_layers):
                 if norm_type == 'vbn':
                     if not use_dropout:
@@ -840,7 +858,7 @@ class PolicyCloningMAML(PolicyOptTf):
                     conv_layer = conv2d(img=conv_layer, w=weights['wc%d' % (i+1)], b=weights['bc%d' % (i+1)], strides=strides[i], is_dilated=is_dilated)
                     if i == 0 and use_depth:
                         depth_conv_out = conv2d(img=depth_input, w=weights['wc_depth_%d' % (i+1)], b=weights['bc_depth_%d' % (i+1)], strides=strides[i], is_dilated=is_dilated)
-                        conv_layer = tf.concat((conv_layer, depth_context), axis=3)
+                        conv_layer = tf.concat(axis=3, values=[conv_layer, depth_conv_out])
                     if not use_dropout:
                         conv_layer = norm(conv_layer, norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn)
                     else:
@@ -2188,7 +2206,7 @@ class PolicyCloningMAML(PolicyOptTf):
                         sampled_folder = train_img_folders[idx]
                         if self._hyperparams.get('use_depth', False):
                             depth_sampled_folder = train_depth_img_folders[idx]
-                            depth_image_paths = natsorted(os.listdir(sampled_folder))  
+                            depth_image_paths = natsorted(os.listdir(depth_sampled_folder))  
                         if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                             image_paths = natsorted([p for p in os.listdir(sampled_folder) if 'samp0' in p])
                         elif self._hyperparams.get('bird_view', False):
@@ -2207,7 +2225,7 @@ class PolicyCloningMAML(PolicyOptTf):
                             noisy_sampled_folder = noisy_train_img_folders[idx]
                             if self._hyperparams.get('use_depth', False):
                                 noisy_depth_sampled_folder = noisy_train_depth_img_folders[idx]
-                                noisy_depth_image_paths = natsorted(os.listdir(noisy_sampled_folder))
+                                noisy_depth_image_paths = natsorted(os.listdir(noisy_depth_sampled_folder))
                             # noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                             if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                                 noisy_image_paths = natsorted([p for p in os.listdir(noisy_sampled_folder) if 'samp0' in p])
@@ -2278,7 +2296,7 @@ class PolicyCloningMAML(PolicyOptTf):
                             sampled_folder = val_img_folders[idx]
                             if self._hyperparams.get('use_depth', False):
                                 depth_sampled_folder = val_depth_img_folders[idx]
-                                depth_image_paths = natsorted(os.listdir(sampled_folder)) 
+                                depth_image_paths = natsorted(os.listdir(depth_sampled_folder)) 
                             if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                                 image_paths = natsorted([p for p in os.listdir(sampled_folder) if 'samp0' in p])
                             elif self._hyperparams.get('bird_view', False):
@@ -2294,7 +2312,7 @@ class PolicyCloningMAML(PolicyOptTf):
                                 noisy_sampled_folder = noisy_val_img_folders[idx]
                                 if self._hyperparams.get('use_depth', False):
                                     noisy_depth_sampled_folder = noisy_val_depth_img_folders[idx]
-                                    noisy_depth_image_paths = natsorted(os.listdir(noisy_sampled_folder))
+                                    noisy_depth_image_paths = natsorted(os.listdir(noisy_depth_sampled_folder))
                                 # noisy_image_paths = natsorted(os.listdir(noisy_sampled_folder))
                                 if self._hyperparams.get('sample_traj', False) and self._hyperparams.get('no_sample', False):
                                     noisy_image_paths = natsorted([p for p in os.listdir(noisy_sampled_folder) if 'samp0' in p])
@@ -2382,7 +2400,7 @@ class PolicyCloningMAML(PolicyOptTf):
         image.set_shape((self.T, im_height, im_width, num_channels))
         if use_depth:
             # assuming padding the grayscale depth video into rgb
-            image = tf.expand_dims(img[:, :, :, 0], axis=3)
+            image = tf.expand_dims(image[:, :, :, 0], axis=3)
         image = tf.cast(image, tf.float32)
         image /= 255.0
         if self._hyperparams.get('use_hsv', False) and not use_depth:
