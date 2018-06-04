@@ -247,10 +247,10 @@ class PolicyCloningMAML(PolicyOptTf):
 										  network_config=self._hyperparams['network_params'])
 			# outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test = result
 			stop_lossb, gripper_lossb = None, None
-			if self._hyperparams.get('stop_signal', False) and self._hyperparams.get('gripper_command_signal', False):
-				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, stop_lossb, gripper_lossb = result
-			elif self._hyperparams.get('gripper_command_signal', False):
-				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, gripper_lossb = result
+			if self._hyperparams.get('stop_signal', False) and self._hyperparams.get('gripper_command_signal', False) and self._hyperparams.get('pred_pick_eept', False):
+				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, stop_lossb, gripper_lossb, pred_pick_eept = result
+			elif self._hyperparams.get('gripper_command_signal', False) and self._hyperparams.get('pred_pick_eept', False):
+				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, gripper_lossb, pred_pick_eept = result
 			elif self._hyperparams.get('stop_signal', False):
 				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, stop_lossb = result
 			else:                
@@ -264,6 +264,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				self.test_act_op = test_output # post-update output
 				toy_output_variable = tf.add(test_output, 0, name='output_action')
 				toy_final_eept_var = tf.add(final_eept, 0, name='final_ee')
+				if self._hyperparams.get('pred_pick_eept', False):
+					toy_pick_eept_var = tf.add(pred_pick_eept, 0, name='pick_ee')
 				self.image_op = flat_img_inputb
 				self.fast_weights = {key: fast_weights_values[i] for i, key in enumerate(self.sorted_weight_keys)}
 			if 'Training' in prefix:
@@ -272,6 +274,12 @@ class PolicyCloningMAML(PolicyOptTf):
 
 			trainable_vars = tf.trainable_variables()
 			total_gripper_loss2, val_total_gripper_loss2 = None, None
+			if self._hyperparams.get('pred_pick_eept_all', False):
+				train_pick_batch_size = self.meta_batch_size
+				val_pick_batch_size = self.meta_batch_size
+			else:
+				train_pick_batch_size = self.train_pick_batch_size
+				val_pick_batch_size = self.val_pick_batch_size
 			if self._hyperparams.get('pred_pick_eept', False) and gripper_lossb is not None:
 				pick_eept_loss_eps = self._hyperparams.get('pick_eept_loss_eps', 0.5)
 				gripper_command_signal_eps = self._hyperparams.get('gripper_command_signal_eps', 5.0)
@@ -279,19 +287,19 @@ class PolicyCloningMAML(PolicyOptTf):
 					lossesa = lossesa - pick_eept_loss_eps * pick_eept_lossa - gripper_command_signal_eps * gripper_lossa
 				lossesb[-1] = lossesb[-1] - pick_eept_loss_eps * pick_eept_lossb - gripper_command_signal_eps * gripper_lossb
 				if 'Training' in prefix:
-					self.total_pick_eept_loss2 = tf.reduce_sum(pick_eept_lossb) / tf.to_float(self.train_pick_batch_size)
-					total_gripper_loss2 = tf.reduce_sum(gripper_lossb) / tf.to_float(self.train_pick_batch_size)
+					self.total_pick_eept_loss2 = tf.reduce_sum(pick_eept_lossb) / tf.to_float(train_pick_batch_size)
+					total_gripper_loss2 = tf.reduce_sum(gripper_lossb) / tf.to_float(train_pick_batch_size)
 					total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(self.meta_batch_size)
 					if self._hyperparams.get('use_noisy_demos', False):            
-						total_loss1 += pick_eept_loss_eps * tf.reduce_sum(pick_eept_lossa) / tf.to_float(self.train_pick_batch_size)
+						total_loss1 += pick_eept_loss_eps * tf.reduce_sum(pick_eept_lossa) / tf.to_float(train_pick_batch_size)
 					total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
 					total_losses2[-1] += pick_eept_loss_eps * self.total_pick_eept_loss2 + gripper_command_signal_eps * total_gripper_loss2
 				elif 'Validation' in prefix:
-					self.val_total_pick_eept_loss2 = tf.reduce_sum(pick_eept_lossb) / tf.to_float(self.val_pick_batch_size)
-					val_total_gripper_loss2 = tf.reduce_sum(gripper_lossb) / tf.to_float(self.val_pick_batch_size)
+					self.val_total_pick_eept_loss2 = tf.reduce_sum(pick_eept_lossb) / tf.to_float(val_pick_batch_size)
+					val_total_gripper_loss2 = tf.reduce_sum(gripper_lossb) / tf.to_float(val_pick_batch_size)
 					total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(self.meta_batch_size)
 					if self._hyperparams.get('use_noisy_demos', False):            
-						total_loss1 += pick_eept_loss_eps * tf.reduce_sum(pick_eept_lossa) / tf.to_float(self.val_pick_batch_size)
+						total_loss1 += pick_eept_loss_eps * tf.reduce_sum(pick_eept_lossa) / tf.to_float(val_pick_batch_size)
 					total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(self.meta_batch_size) for j in range(self.num_updates)]
 					total_losses2[-1] += pick_eept_loss_eps * self.val_total_pick_eept_loss2 + gripper_command_signal_eps * val_total_gripper_loss2
 			else:                
@@ -325,7 +333,7 @@ class PolicyCloningMAML(PolicyOptTf):
 				self.val_total_loss1 = total_loss1
 				self.val_total_losses2 = total_losses2
 				self.val_total_final_eept_losses2 = total_final_eept_losses2
-				self.val_total_pick_eept_loss2 = tf.reduce_sum(pick_eept_lossb) / tf.to_float(self.val_pick_batch_size)
+				self.val_total_pick_eept_loss2 = tf.reduce_sum(pick_eept_lossb) / tf.to_float(val_pick_batch_size)
 				self.val_total_control_losses2 = total_control_losses2
 				self.val_total_acosine_loss2 = total_acosine_loss2
 				self.val_total_action_loss2 = total_control_losses2[-1]
@@ -619,6 +627,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				in_shape += (len(final_eept_range))
 			if self._hyperparams.get('pred_pick_eept', False) and not self._hyperparams.get('final_state', False):
 				pick_eept_range = self._hyperparams['pick_eept_range']
+				if 'pick_eept_range_xy' in self._hyperparams:
+					pick_eept_range = self._hyperparams['pick_eept_range_xy']
 				pick_eept_in_shape = self.conv_out_size
 				if self._hyperparams.get('use_state_context', False):
 					weights['context_pick_eept'] = safe_get('context_pick_eept', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
@@ -1045,6 +1055,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				final_eept_pred = None
 			if self._hyperparams.get('pred_pick_eept', False):
 				pick_eept_range = self._hyperparams['pick_eept_range']
+				if 'pick_eept_range_xy' in self._hyperparams:
+					pick_eept_range = self._hyperparams['pick_eept_range_xy']
 				if testing:
 					T = 1
 				else:
@@ -1106,6 +1118,7 @@ class PolicyCloningMAML(PolicyOptTf):
 					pick_eept_concat = tf.stop_gradient(pick_eept_concat)
 				else:
 					pick_eept_concat = tf.cond(tf.reduce_all(tf.equal(pick_labels, tf.ones_like(pick_labels))), lambda: pick_eept_concat, lambda: tf.stop_gradient(pick_eept_concat))
+					# pick_eept_concat = tf.Print(pick_eept_concat, [pick_labels, tf.equal(pick_labels, tf.ones_like(pick_labels)), tf.reduce_all(tf.equal(pick_labels, tf.ones_like(pick_labels))), pick_eept_concat], 'Testing pred_pick_eept ')
 				fc_input = tf.concat(axis=1, values=[fc_input, pick_eept_concat])
 				# fc_input = tf.concat(concat_dim=1, values=[fc_input, pick_eept_pred])
 			else:
@@ -1636,6 +1649,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				
 				if 'pick_eept_range' in self._hyperparams:
 					pick_eept_range = self._hyperparams['pick_eept_range']
+					if 'pick_eept_range_xy' in self._hyperparams:
+						pick_eept_range = self._hyperparams['pick_eept_range_xy']
 					if self._hyperparams.get('pred_pick_eept', False):
 						pick_eepta = actiona[:, pick_eept_range[0]:pick_eept_range[-1]+1]
 						pick_eeptb = actionb[:, pick_eept_range[0]:pick_eept_range[-1]+1]
@@ -2258,6 +2273,8 @@ class PolicyCloningMAML(PolicyOptTf):
 					local_fn_output.append(tf.reduce_mean(stop_lossb))
 				if self._hyperparams.get('gripper_command_signal', False):
 					local_fn_output.append(tf.reduce_mean(gripper_lossb))
+				if self._hyperparams.get('pred_pick_eept', False):
+					local_fn_output.append(pick_eept_predb[0])
 				return local_fn_output
 
 		if self.norm_type:
@@ -2297,6 +2314,8 @@ class PolicyCloningMAML(PolicyOptTf):
 		if self._hyperparams.get('stop_signal', False):
 			out_dtype.append(tf.float32)
 		if self._hyperparams.get('gripper_command_signal', False):
+			out_dtype.append(tf.float32)
+		if self._hyperparams.get('pred_pick_eept', False):
 			out_dtype.append(tf.float32)
 		if self._hyperparams.get('aggressive_light_aug', False) and 'Testing' not in prefix:
 			if self._hyperparams.get('pred_pick_eept', False):
@@ -2468,6 +2487,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				else:
 					if hasattr(self, 'push_train_list') and idx in self.push_train_list:
 						continue
+					if 'transition_train_list_depth' in self._hyperparams and idx in self._hyperparams['transition_train_list_depth']:
+						continue
 					self.train_other_idxes.append(idx)
 			for idx in self.val_idx:
 				if demos[idx]['is_pick_place'] == 1.:
@@ -2576,8 +2597,16 @@ class PolicyCloningMAML(PolicyOptTf):
 				else:
 					sampled_train_pick_idx = random.sample(self.train_pick_idxes, self.train_pick_batch_size)
 					if hasattr(self, 'push_train_list'):
-						sampled_train_push_idx = random.sample(self.push_train_list, self.train_pick_batch_size)
-						sampled_train_other_idx = random.sample(self.train_other_idxes, self.meta_batch_size - 2*self.train_pick_batch_size)
+						if 'train_push_batch_size' in self._hyperparams:
+							train_push_batch_size = self._hyperparams['train_push_batch_size']
+						else:
+							train_push_batch_size = self.train_pick_batch_size
+						sampled_train_push_idx = random.sample(self.push_train_list, train_push_batch_size)
+						if 'transition_train_list_depth' in self._hyperparams:
+							sampled_transition_idx = random.sample(self._hyperparams['transition_train_list_depth'], train_push_batch_size)
+							sampled_train_push_idx += sampled_transition_idx
+							train_push_batch_size *= 2
+						sampled_train_other_idx = random.sample(self.train_other_idxes, self.meta_batch_size - train_push_batch_size - self.train_pick_batch_size)
 						sampled_train_other_idx = sampled_train_other_idx + sampled_train_push_idx
 					else:
 						sampled_train_other_idx = random.sample(self.train_other_idxes, self.meta_batch_size-self.train_pick_batch_size)
@@ -2900,6 +2929,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				X = np.array(X)
 		if self._hyperparams.get('pred_pick_eept'):
 			pick_labels = np.array([demos[k]['is_pick_place'] for k in idxes.keys()]).astype('f')
+			if self._hyperparams.get('pred_pick_eept_all', False):
+				pick_labels = np.ones_like(pick_labels)
 		if 'num_learned_loss' in self._hyperparams:
 			task_labels = np.array([demos[k]['task_labels'] for k in idxes.keys()]).astype('f')
 		try:
@@ -2907,6 +2938,8 @@ class PolicyCloningMAML(PolicyOptTf):
 		except AssertionError:
 			import pdb; pdb.set_trace()
 		assert X.shape[2] == len(self.x_idx)
+		if X.shape[0] != self.meta_batch_size:
+			import pdb; pdb.set_trace()
 		if not self._hyperparams.get('aggressive_light_aug', False):
 			if self._hyperparams.get('pred_pick_eept', False):
 				if 'num_learned_loss' in self._hyperparams:
