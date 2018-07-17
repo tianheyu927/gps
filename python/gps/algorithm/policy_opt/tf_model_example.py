@@ -11,6 +11,9 @@ from tensorflow.python.ops import array_ops
 from gps.algorithm.policy_opt.tf_utils import TfMap
 import numpy as np
 
+def int_shape(x):
+    return list(map(int, x.get_shape()))
+
 def safe_get(name, *args, **kwargs):
     """ Same as tf.get_variable, except flips on reuse_variables automatically """
     try:
@@ -52,6 +55,7 @@ def batched_matrix_vector_multiply(vector, matrix):
     squeezed_result = tf.squeeze(mult_result, [1])
     return squeezed_result
 
+
 def euclidean_loss_layer(a, b, precision, multiplier=100.0, behavior_clone=False, use_l1=False, eps=0.01):
     """ Math:  out = (action - mlp_out)'*precision*(action-mlp_out)
                     = (u-uhat)'*A*(u-uhat)"""
@@ -70,7 +74,7 @@ def euclidean_loss_layer(a, b, precision, multiplier=100.0, behavior_clone=False
 def acosine_loss(a, b, weights=1.0):
     a = tf.nn.l2_normalize(a, dim=1)
     b = tf.nn.l2_normalize(b, dim=1)
-    return tf.reduce_mean(tf.acos(tf.losses.cosine_distance(a, b, dim=1, weights=weights)))
+    return tf.reduce_mean(tf.acos(tf.reduce_sum(a*b, axis=1)))
 
 def get_input_layer(dim_input, dim_output, behavior_clone=False):
     """produce the placeholder inputs that are used to run ops forward and backwards.
@@ -93,30 +97,29 @@ def get_mlp_layers(mlp_input, number_layers, dimension_hidden, batch_norm=False,
     cur_top = mlp_input
     weights = []
     biases = []
-    with tf.variable_scope(tf.get_variable_scope()) as vscope:
-        for layer_step in range(0, number_layers):
-            in_shape = cur_top.get_shape().dims[1].value
-            cur_weight = init_weights([in_shape, dimension_hidden[layer_step]], name='w_' + str(layer_step))
-            cur_bias = init_bias([dimension_hidden[layer_step]], name='b_' + str(layer_step))
-            weights.append(cur_weight)
-            biases.append(cur_bias)
-            cur_top = tf.matmul(cur_top, cur_weight) + cur_bias
-            if layer_step != number_layers-1:  # final layer has no RELU
-                if not batch_norm:
-                    cur_top = tf.nn.relu(cur_top)
+    for layer_step in range(0, number_layers):
+        in_shape = cur_top.get_shape().dims[1].value
+        cur_weight = init_weights([in_shape, dimension_hidden[layer_step]], name='w_' + str(layer_step))
+        cur_bias = init_bias([dimension_hidden[layer_step]], name='b_' + str(layer_step))
+        weights.append(cur_weight)
+        biases.append(cur_bias)
+        cur_top = tf.matmul(cur_top, cur_weight) + cur_bias
+        if layer_step != number_layers-1:  # final layer has no RELU
+            if not batch_norm:
+                cur_top = tf.nn.relu(cur_top)
+            else:
+                if is_training:
+                    with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
+                        try:
+                            cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
+                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
+                        except ValueError:
+                            cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
+                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
                 else:
-                    if is_training:
-                        with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
-                            try:
-                                cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
-                                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs)
-                            except ValueError:
-                                cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=True, center=True,
-                                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
-                    else:
-                        with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
-                            cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=False, center=True,
-                                    scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
+                    with tf.variable_scope('bn_layer_%d' % layer_step) as vs:
+                        cur_top = tf.contrib.layers.batch_norm(cur_top, is_training=False, center=True,
+                                scale=False, decay=decay, activation_fn=tf.nn.relu, updates_collections=None, scope=vs, reuse=True)
     return cur_top, weights, biases
 
 
@@ -503,6 +506,19 @@ def conv2d(img, w, b, strides=[1, 1, 1, 1], rate=2, is_dilated=False):
 def conv1d(img, w, b, stride=1):
     layer = tf.nn.conv1d(img, w, stride=stride, padding='SAME') + b
     return layer
+    
+
+def down_shifted_conv2d(x, w, b, stride=[1, 1], **kwargs):
+    filter_size = int_shape(w)
+    img = tf.pad(img, [[0, 0], [filter_size[0] - 1, 0],
+                   [int((filter_size[1] - 1) / 2), int((filter_size[1] - 1) / 2)], [0, 0]])
+    return tf.nn.conv2d(img, w, strides=strides, pad='VALID')
+    
+def causal_conv1d(img, w, b, stride=1):
+    filter_size = int_shape(w)
+    img = tf.pad(img, [[0, 0], [filter_size[0] - 1, 0], [0, 0]])
+    layer = tf.nn.conv1d(img, w, stride=stride, padding='VALID') + b
+    return layer
 
 def selu(x):
     with ops.name_scope('selu') as scope:
@@ -512,43 +528,46 @@ def selu(x):
         
 def lrelu(x, alpha=0.2):
     return tf.where(x>=0.0, x, alpha*tf.nn.relu(x))
-        
-# def dropout_selu(x, rate, alpha= -1.7580993408473766, fixedPointMean=0.0, fixedPointVar=1.0, 
-#                  noise_shape=None, seed=None, name=None, training=False):
-#     """Dropout to a value with rescaling."""
 
-#     def dropout_selu_impl(x, rate, alpha, noise_shape, seed, name):
-#         keep_prob = 1.0 - rate
-#         x = ops.convert_to_tensor(x, name="x")
-#         if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
-#             raise ValueError("keep_prob must be a scalar tensor or a float in the "
-#                                              "range (0, 1], got %g" % keep_prob)
-#         keep_prob = ops.convert_to_tensor(keep_prob, dtype=x.dtype, name="keep_prob")
-#         keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+def swish(x):
+    return tf.nn.sigmoid(x) * x
 
-#         alpha = ops.convert_to_tensor(alpha, dtype=x.dtype, name="alpha")
-#         keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+def dropout_selu(x, rate, alpha= -1.7580993408473766, fixedPointMean=0.0, fixedPointVar=1.0, 
+                 noise_shape=None, seed=None, name=None, training=False):
+    """Dropout to a value with rescaling."""
 
-#         if tensor_util.constant_value(keep_prob) == 1:
-#             return x
+    def dropout_selu_impl(x, rate, alpha, noise_shape, seed, name):
+        keep_prob = 1.0 - rate
+        x = ops.convert_to_tensor(x, name="x")
+        if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
+            raise ValueError("keep_prob must be a scalar tensor or a float in the "
+                                             "range (0, 1], got %g" % keep_prob)
+        keep_prob = ops.convert_to_tensor(keep_prob, dtype=x.dtype, name="keep_prob")
+        keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
-#         noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
-#         random_tensor = keep_prob
-#         random_tensor += random_ops.random_uniform(noise_shape, seed=seed, dtype=x.dtype)
-#         binary_tensor = math_ops.floor(random_tensor)
-#         ret = x * binary_tensor + alpha * (1-binary_tensor)
+        alpha = ops.convert_to_tensor(alpha, dtype=x.dtype, name="alpha")
+        keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
-#         a = tf.sqrt(fixedPointVar / (keep_prob *((1-keep_prob) * tf.pow(alpha-fixedPointMean,2) + fixedPointVar)))
+        if tensor_util.constant_value(keep_prob) == 1:
+            return x
 
-#         b = fixedPointMean - a * (keep_prob * fixedPointMean + (1 - keep_prob) * alpha)
-#         ret = a * ret + b
-#         ret.set_shape(x.get_shape())
-#         return ret
+        noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
+        random_tensor = keep_prob
+        random_tensor += random_ops.random_uniform(noise_shape, seed=seed, dtype=x.dtype)
+        binary_tensor = math_ops.floor(random_tensor)
+        ret = x * binary_tensor + alpha * (1-binary_tensor)
 
-#     with ops.name_scope(name, "dropout", [x]) as name:
-#         return utils.smart_cond(training,
-#             lambda: dropout_selu_impl(x, rate, alpha, noise_shape, seed, name),
-#             lambda: array_ops.identity(x))
+        a = tf.sqrt(fixedPointVar / (keep_prob *((1-keep_prob) * tf.pow(alpha-fixedPointMean,2) + fixedPointVar)))
+
+        b = fixedPointMean - a * (keep_prob * fixedPointMean + (1 - keep_prob) * alpha)
+        ret = a * ret + b
+        ret.set_shape(x.get_shape())
+        return ret
+
+    with ops.name_scope(name, "dropout", [x]) as name:
+        return utils.smart_cond(training,
+            lambda: dropout_selu_impl(x, rate, alpha, noise_shape, seed, name),
+            lambda: array_ops.identity(x))
             
 def dropout(layer, keep_prob=0.9, is_training=True, name=None, selu=False):
     if selu:
@@ -558,30 +577,30 @@ def dropout(layer, keep_prob=0.9, is_training=True, name=None, selu=False):
     else:
         return tf.add(layer, 0, name=name)
 
-def norm(layer, norm_type='batch_norm', decay=0.9, id=0, is_training=True, activation_fn=tf.nn.relu, prefix='conv_'):
+def norm(layer, norm_type='batch_norm', decay=0.9, center=True, scale=False, id=0, is_training=True, activation_fn=tf.nn.relu, prefix='conv_'):
     if norm_type != 'batch_norm' and norm_type != 'layer_norm':
         return tf.nn.relu(layer)
     with tf.variable_scope('norm_layer_%s%d' % (prefix, id)) as vs:
         if norm_type == 'batch_norm':
             if is_training:
                 try:
-                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs) # updates_collections=None
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=center,
+                        scale=scale, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs) # updates_collections=None #scale used to be false for mil
                 except ValueError:
-                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=True,
-                        scale=False, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+                    layer = tf.contrib.layers.batch_norm(layer, is_training=True, center=center,
+                        scale=scale, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
             else:
-                layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=True,
-                    scale=False, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
+                layer = tf.contrib.layers.batch_norm(layer, is_training=False, center=center,
+                    scale=scale, decay=decay, activation_fn=activation_fn, updates_collections=None, scope=vs, reuse=True) # updates_collections=None
         elif norm_type == 'layer_norm': # layer_norm
             # Take activation_fn out to apply lrelu
             try:
-                layer = activation_fn(tf.contrib.layers.layer_norm(layer, center=True,
-                    scale=False, scope=vs)) # updates_collections=None
+                layer = activation_fn(tf.contrib.layers.layer_norm(layer, center=center,
+                    scale=scale, scope=vs)) # updates_collections=None #used to be false for mil
                 
             except ValueError:
-                layer = activation_fn(tf.contrib.layers.layer_norm(layer, center=True,
-                    scale=False, scope=vs, reuse=True))
+                layer = activation_fn(tf.contrib.layers.layer_norm(layer, center=center,
+                    scale=scale, scope=vs, reuse=True))
         elif norm_type == 'selu':
             layer = selu(layer)
         else:

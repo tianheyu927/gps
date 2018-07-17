@@ -95,6 +95,7 @@ class PolicyCloningMAML(PolicyOptTf):
 		# if self._hyperparams.get('pred_pick_eept', False):
 		self.train_pick_batch_size = self._hyperparams.get('train_pick_batch_size', 0)
 		self.val_pick_batch_size = self._hyperparams.get('val_pick_batch_size', 0)
+		self.norm_scale = self._hyperparams.get('norm_scale', False)
 		if self._hyperparams.get('activation_fn', 'lrelu'):
 			self.activation_fn = lrelu
 		else:
@@ -247,14 +248,16 @@ class PolicyCloningMAML(PolicyOptTf):
 										  network_config=self._hyperparams['network_params'])
 			# outputas, outputbs, test_outputa, lossesa, lossesb, flat_img_inputa, fp, moving_mean, moving_variance, moving_mean_test, moving_variance_test = result
 			stop_lossb, gripper_lossb = None, None
-			if self._hyperparams.get('stop_signal', False) and self._hyperparams.get('gripper_command_signal', False) and self._hyperparams.get('pred_pick_eept', False):
-				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, stop_lossb, gripper_lossb, pred_pick_eept = result
+			if self._hyperparams.get('stop_signal', False) and self._hyperparams.get('gripper_command_signal', False) and self._hyperparams.get('pred_pick_eept', False) and self._hyperparams.get('pred_phase', False):
+				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, time_lossb, task_label_loss, task_label_pred, stop_lossb, gripper_lossb, pred_pick_eept, phase_out = result
+			elif self._hyperparams.get('stop_signal', False) and self._hyperparams.get('gripper_command_signal', False) and self._hyperparams.get('pred_pick_eept', False):
+				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, time_lossb, task_label_loss, task_label_pred, stop_lossb, gripper_lossb, pred_pick_eept = result
 			elif self._hyperparams.get('gripper_command_signal', False) and self._hyperparams.get('pred_pick_eept', False):
-				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, gripper_lossb, pred_pick_eept = result
+				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, time_lossb, task_label_loss, task_label_pred, gripper_lossb, pred_pick_eept = result
 			elif self._hyperparams.get('stop_signal', False):
-				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, stop_lossb = result
+				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, time_lossb, task_label_loss, task_label_pred, stop_lossb = result
 			else:                
-				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, task_label_loss, task_label_pred, = result
+				outputas, outputbs, test_output, lossesa, lossesb, final_eept_lossesb, control_lossesb, flat_img_inputa, flat_img_inputb, final_eept, fast_weights_values, gradients, acosine_lossb, pick_eept_lossa, pick_eept_lossb, time_lossb, task_label_loss, task_label_pred, = result
 			if 'Testing' in prefix:
 				self.obs_tensor = self.obsa
 				self.state_tensor = self.statea
@@ -262,6 +265,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				self.act_op = outputas
 				self.outputbs = outputbs
 				self.test_act_op = test_output # post-update output
+				if self._hyperparams.get('pred_phase', False):
+					test_output = tf.concat(axis=2, values=[test_output, phase_out])
 				toy_output_variable = tf.add(test_output, 0, name='output_action')
 				toy_final_eept_var = tf.add(final_eept, 0, name='final_ee')
 				if self._hyperparams.get('pred_pick_eept', False):
@@ -312,6 +317,7 @@ class PolicyCloningMAML(PolicyOptTf):
 			if stop_lossb is not None:
 				total_stop_loss2 = tf.reduce_sum(stop_lossb) / tf.to_float(self.meta_batch_size)
 			total_acosine_loss2 = tf.reduce_sum(acosine_lossb) / tf.to_float(self.meta_batch_size)
+			total_time_loss2 = tf.reduce_sum(time_lossb) / tf.to_float(self.meta_batch_size)
 			
 			if 'Training' in prefix:
 				self.total_loss1 = total_loss1
@@ -321,6 +327,7 @@ class PolicyCloningMAML(PolicyOptTf):
 				self.total_acosine_loss2 = total_acosine_loss2
 				self.total_action_loss2 = total_control_losses2[-1]
 				self.total_task_label_loss2 = total_task_label_loss2
+				self.total_time_loss2 = total_time_loss2
 				if total_stop_loss2 is not None:
 					self.total_stop_loss2 = total_stop_loss2
 					self.total_action_loss2 = self.total_action_loss2 - self._hyperparams.get('stop_signal_eps', 10.0)*total_stop_loss2
@@ -338,6 +345,7 @@ class PolicyCloningMAML(PolicyOptTf):
 				self.val_total_acosine_loss2 = total_acosine_loss2
 				self.val_total_action_loss2 = total_control_losses2[-1]
 				self.val_total_task_label_loss2 = total_task_label_loss2
+				self.val_total_time_loss2 = total_time_loss2
 				if total_stop_loss2 is not None:
 					self.val_total_stop_loss2 = total_stop_loss2
 					self.val_total_action_loss2 = self.val_total_action_loss2 - self._hyperparams.get('stop_signal_eps', 10.0)*total_stop_loss2
@@ -414,6 +422,8 @@ class PolicyCloningMAML(PolicyOptTf):
 					summ.append(tf.summary.scalar(prefix + 'Post-update_pick_eept_loss', self.total_pick_eept_loss2))
 				if 'num_learned_loss' in self._hyperparams:
 					summ.append(tf.summary.scalar(prefix + 'task_label_loss', self.total_task_label_loss2))
+				if self._hyperparams.get('pred_time_left', False) or self._hyperparams.get('pred_phase', False):
+					summ.append(tf.summary.scalar(prefix + 'time_loss', self.total_time_loss2))
 				if self._hyperparams.get('clip_metagradient', False):
 					for grad, var in self.gvs:
 						summ.append(tf.summary.histogram('meta_grad_'+ var.name.split('/')[-1][:-2], grad))
@@ -449,6 +459,8 @@ class PolicyCloningMAML(PolicyOptTf):
 					summ.append(tf.summary.scalar(prefix + 'Post-update_pick_eept_loss', self.val_total_pick_eept_loss2))
 				if 'num_learned_loss' in self._hyperparams:
 					summ.append(tf.summary.scalar(prefix + 'task_label_loss', self.val_total_task_label_loss2))
+				if self._hyperparams.get('pred_time_left', False) or self._hyperparams.get('pred_phase', False):
+					summ.append(tf.summary.scalar(prefix + 'time_loss', self.val_total_time_loss2))
 				self.val_summ_op = tf.summary.merge(summ)
 				
 	def construct_image_input(self, nn_input, x_idx, img_idx, use_depth=False, light_augs=None, network_config=None):
@@ -506,7 +518,6 @@ class PolicyCloningMAML(PolicyOptTf):
 			use_fp = self._hyperparams.get('use_fp', False)
 			pretrain = self._hyperparams.get('pretrain', False)
 			train_conv1 = self._hyperparams.get('train_conv1', False)
-			initialization = self._hyperparams.get('initialization', 'xavier')
 			if pretrain:
 				num_filters[0] = 64
 				# strides[0] = [1, 1, 1, 1]
@@ -590,7 +601,7 @@ class PolicyCloningMAML(PolicyOptTf):
 					weights['context_final_eept'] = safe_get('context_final_eept', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
 					final_eept_in_shape += self._hyperparams.get('context_dim', 10)
 				n_layers_ee = network_config.get('n_layers_ee', 1)
-				layer_size_ee = [self._hyperparams.get('layer_size_ee', 40)]*(n_layers_ee-1)
+				layer_size_ee = [network_config.get('layer_size_ee', 40)]*(n_layers_ee-1)
 				layer_size_ee.append(len(final_eept_range))
 				for i in xrange(n_layers_ee):
 					weights['w_ee_%d' % i] = init_weights([final_eept_in_shape, layer_size_ee[i]], name='w_ee_%d' % i)
@@ -616,13 +627,22 @@ class PolicyCloningMAML(PolicyOptTf):
 										weights['w_1d_conv_2_head_tasklabel_%d' % j] = init_weights([1, two_head_in_shape, num_learned_loss], name='w_1d_conv_2_head_tasklabel_%d' % j)
 										weights['b_1d_conv_2_head_tasklabel_%d' % j] = init_bias([num_learned_loss], name='b_1d_conv_2_head_tasklabel_%d' % j)
 						else:
-							n_layers_ee_2_head = self._hyperparams.get('n_layers_ee_2_head', 1)
-							layer_size_ee_2_head = [self._hyperparams.get('layer_size_ee', 40)]*(n_layers_ee_2_head-1)
+							n_layers_ee_2_head = network_config.get('n_layers_ee_2_head', 1)
+							layer_size_ee_2_head = [network_config.get('layer_size_ee', 40)]*(n_layers_ee_2_head-1)
 							layer_size_ee_2_head.append(len(final_eept_range))
 							for j in xrange(n_layers_ee_2_head):
 								weights['w_ee_two_heads_%d' % j] = init_weights([two_head_in_shape, layer_size_ee_2_head[j]], name='w_ee_two_heads_%d' % j)
 								weights['b_ee_two_heads_%d' % j] = init_bias([layer_size_ee_2_head[j]], name='b_ee_two_heads_%d' % j)
 								two_head_in_shape = layer_size_ee_2_head[j]
+						if network_config.get('n_layers_ee_2_head_val', 1) > 1:
+							two_head_val_in_shape = final_eept_in_shape
+							n_layers_ee_2_head_val = network_config.get('n_layers_ee_2_head_val', 1)
+							layer_size_ee_2_head_val = [network_config.get('layer_size_ee', 40)]*(n_layers_ee_2_head_val-2)
+							layer_size_ee_2_head_val.append(len(final_eept_range))
+							for i in xrange(n_layers_ee_2_head_val-1):
+								weights['w_ee_%d' % (i+n_layers_ee)] = init_weights([two_head_val_in_shape, layer_size_ee_2_head_val[i]], name='w_ee_%d' % (i+n_layers_ee))
+								weights['b_ee_%d' % (i+n_layers_ee)] = init_bias([layer_size_ee_2_head_val[i]], name='b_ee_%d' % (i+n_layers_ee))
+								two_head_val_in_shape = layer_size_ee_2_head_val[i]
 					final_eept_in_shape = layer_size_ee[i]
 				in_shape += (len(final_eept_range))
 			if self._hyperparams.get('pred_pick_eept', False) and not self._hyperparams.get('final_state', False):
@@ -656,15 +676,67 @@ class PolicyCloningMAML(PolicyOptTf):
 									weights['w_1d_conv_2_head_pick_ee_%d' % j] = init_weights([1, two_head_in_shape, temporal_num_filters[j]], name='w_1d_conv_2_head_pick_ee_%d' % j)
 									weights['b_1d_conv_2_head_pick_ee_%d' % j] = init_bias([temporal_num_filters[j]], name='b_1d_conv_2_head_pick_ee_%d' % j)
 						else:
-							n_layers_pick_ee_2_head = self._hyperparams.get('n_layers_pick_ee_2_head', 1)
-							layer_size_pick_ee_2_head = [self._hyperparams.get('layer_size_pick_ee', 40)]*(n_layers_pick_ee_2_head-1)
+							n_layers_pick_ee_2_head = network_config.get('n_layers_pick_ee_2_head', 1)
+							layer_size_pick_ee_2_head = [network_config.get('layer_size_pick_ee', 40)]*(n_layers_pick_ee_2_head-1)
 							layer_size_pick_ee_2_head.append(len(pick_eept_range))
 							for j in xrange(n_layers_pick_ee_2_head):
 								weights['w_pick_ee_two_heads_%d' % j] = init_weights([two_head_in_shape, layer_size_pick_ee_2_head[j]], name='w_pick_ee_two_heads_%d' % j)
 								weights['b_pick_ee_two_heads_%d' % j] = init_bias([layer_size_pick_ee_2_head[j]], name='b_pick_ee_two_heads_%d' % j)
 								two_head_in_shape = layer_size_pick_ee_2_head[j]
+						if network_config.get('n_layers_pick_ee_2_head_val', 1) > 1:
+							two_head_val_in_shape = pick_eept_in_shape
+							n_layers_pick_ee_2_head_val = network_config.get('n_layers_pick_ee_2_head_val', 1)
+							layer_size_pick_ee_2_head_val = [network_config.get('layer_size_pick_ee', 40)]*(n_layers_pick_ee_2_head_val-2)
+							layer_size_pick_ee_2_head_val.append(len(pick_eept_range))
+							for i in xrange(n_layers_pick_ee_2_head_val-1):
+								weights['w_pick_ee_%d' % (i+n_layers_pick_ee)] = init_weights([two_head_val_in_shape, layer_size_pick_ee_2_head_val[i]], name='w_pick_ee_%d' % (i+n_layers_pick_ee))
+								weights['b_pick_ee_%d' % (i+n_layers_pick_ee)] = init_bias([layer_size_pick_ee_2_head_val[i]], name='b_pick_ee_%d' % (i+n_layers_pick_ee))
+								two_head_val_in_shape = layer_size_pick_ee_2_head_val[i]
 					pick_eept_in_shape = layer_size_pick_ee[i]
 				in_shape += (len(pick_eept_range))
+			if self._hyperparams.get('pred_phase', False) and not self._hyperparams.get('final_state', False):
+				phase_range = self._hyperparams['phase_range']
+				phase_in_shape = self.conv_out_size
+				if self._hyperparams.get('use_state_context', False):
+					weights['context_phase'] = safe_get('context_phase', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
+					phase_in_shape += self._hyperparams.get('context_dim', 10)
+				n_layers_phase = network_config.get('n_layers_phase', 1)
+				layer_size_phase = [self._hyperparams.get('layer_size_phase', 40)]*(n_layers_phase-1)
+				layer_size_phase.append(len(phase_range))
+				if self._hyperparams.get('use_discretization_phase', False):
+					layer_size_phase[-1] = len(phase_range) * self.n_bins_phase
+				for i in xrange(n_layers_phase):
+					weights['w_phase_%d' % i] = init_weights([phase_in_shape, layer_size_phase[i]], name='w_phase_%d' % i)
+					weights['b_phase_%d' % i] = init_bias([layer_size_phase[i]], name='b_phase_%d' % i)
+					if i == n_layers_phase - 1 and self._hyperparams.get('two_heads', False) and self._hyperparams.get('no_phase', False):
+						two_head_in_shape = phase_in_shape
+						if self._hyperparams.get('learn_phase_layer', False):
+							two_head_in_shape += layer_size_phase[-1]
+						if network_config.get('temporal_conv_2_head_phase', False):
+							temporal_kernel_size = network_config.get('1d_kernel_size', 2)
+							temporal_num_filters = network_config.get('1d_num_filters_phase', [32, 32, 32])
+							temporal_num_filters[-1] = len(phase_range)
+							for j in xrange(len(temporal_num_filters)):
+								if j != len(temporal_num_filters) - 1:
+									weights['w_1d_conv_2_head_phase_%d' % j] = init_weights([temporal_kernel_size, two_head_in_shape, temporal_num_filters[j]], name='w_1d_conv_2_head_phase_%d' % j)
+									weights['b_1d_conv_2_head_phase_%d' % j] = init_bias([temporal_num_filters[j]], name='b_1d_conv_2_head_phase_%d' % j)
+									two_head_in_shape = temporal_num_filters[j]
+								else:
+									weights['w_1d_conv_2_head_phase_%d' % j] = init_weights([1, two_head_in_shape, temporal_num_filters[j]], name='w_1d_conv_2_head_phase_%d' % j)
+									weights['b_1d_conv_2_head_phase_%d' % j] = init_bias([temporal_num_filters[j]], name='b_1d_conv_2_head_phase_%d' % j)
+									if 'num_learned_loss' in self._hyperparams:
+										num_learned_loss = self._hyperparams['num_learned_loss']
+										weights['w_1d_conv_2_head_tasklabel_%d' % j] = init_weights([1, two_head_in_shape, num_learned_loss], name='w_1d_conv_2_head_tasklabel_%d' % j)
+										weights['b_1d_conv_2_head_tasklabel_%d' % j] = init_bias([num_learned_loss], name='b_1d_conv_2_head_tasklabel_%d' % j)
+						else:
+							n_layers_phase_2_head = self._hyperparams.get('n_layers_phase_2_head', 1)
+							layer_size_phase_2_head = [self._hyperparams.get('layer_size_phase', 40)]*(n_layers_phase_2_head-1)
+							layer_size_phase_2_head.append(len(phase_range))
+							for j in xrange(n_layers_phase_2_head):
+								weights['w_phase_two_heads_%d' % j] = init_weights([two_head_in_shape, layer_size_phase_2_head[j]], name='w_phase_two_heads_%d' % j)
+								weights['b_phase_two_heads_%d' % j] = init_bias([layer_size_phase_2_head[j]], name='b_phase_two_heads_%d' % j)
+								two_head_in_shape = layer_size_phase_2_head[j]
+					phase_in_shape = layer_size_phase[i]
 		else:
 			in_shape = dim_input
 		if self._hyperparams.get('free_state', False):
@@ -697,6 +769,12 @@ class PolicyCloningMAML(PolicyOptTf):
 			rem += 1
 		if self._hyperparams.get('gripper_command_signal', False):
 			rem += 1
+		if network_config.get('use_causal_conv', False):
+			causal_temporal_kernel_size = network_config.get('causal_1d_kernel_size', 2)
+			causal_temporal_num_filters = network_config.get('causal_1d_num_filters', [32, 32, 32])
+			causal_temporal_num_filters[-1] = dim_output
+			dim_hidden = causal_temporal_num_filters
+			n_layers = len(causal_temporal_num_filters)
 		for i in xrange(n_layers):
 			if i == 0:
 				if 'num_concat_last_states' in self._hyperparams:
@@ -738,10 +816,15 @@ class PolicyCloningMAML(PolicyOptTf):
 						dim_out_final = self.n_actions*self.n_bins + rem
 					if self._hyperparams.get('lstm_for_control', False):
 						weights.update(self.construct_lstm_weights(in_shape, dim_out_final, network_config=network_config, two_head=True))
+					elif network_config.get('use_causal_conv', False):
+						weights['w_causal_%d' % i] = init_weights([1, in_shape, dim_out_final], name='w_causal_%d' % i)
 					else:
 						weights['w_%d' % i] = init_weights([in_shape, dim_out_final], name='w_%d' % i)
 				else:
-					weights['w_%d' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d' % i)
+					if network_config.get('use_causal_conv', False):
+						weights['w_causal_%d' % i] = init_weights([causal_temporal_kernel_size, in_shape, causal_temporal_num_filters[i]], name='w_causal_%d' % i)
+					else:
+						weights['w_%d' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d' % i)
 				# weights['w_%d' % i] = init_fc_weights_xavier([in_shape, dim_hidden[i]], name='w_%d' % i)
 			if i == n_layers - 1:
 				if not self._hyperparams.get('lstm_for_control', False):
@@ -758,7 +841,10 @@ class PolicyCloningMAML(PolicyOptTf):
 			if (i == n_layers - 1 or (i == 0 and self._hyperparams.get('zero_state', False) and not self._hyperparams.get('sep_state', False))) and \
 				self._hyperparams.get('two_heads', False):
 				if i == 0:
-					weights['w_%d_two_heads' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d_two_heads' % i)
+					if network_config.get('use_causal_conv', False):
+						weights['w_causal_%d_two_heads' % i] = init_weights([causal_temporal_kernel_size, in_shape, dim_hidden[i]], name='w_causal_%d_two_heads' % i)
+					else:
+						weights['w_%d_two_heads' % i] = init_weights([in_shape, dim_hidden[i]], name='w_%d_two_heads' % i)
 					weights['b_%d_two_heads' % i] = init_bias([dim_hidden[i]], name='b_%d_two_heads' % i)
 				else:
 					if self._hyperparams.get('learn_action_layer', False):
@@ -900,6 +986,9 @@ class PolicyCloningMAML(PolicyOptTf):
 			if self._hyperparams.get('pred_pick_eept', False):
 				context_pick_eept = tf.transpose(tf.gather(tf.transpose(tf.zeros_like(flatten_image)), range(self._hyperparams.get('context_dim', 10))))
 				context_pick_eept += weights['context_pick_eept']
+			if self._hyperparams.get('pred_phase', False):
+				context_phase = tf.transpose(tf.gather(tf.transpose(tf.zeros_like(flatten_image)), range(self._hyperparams.get('context_dim', 10))))
+				context_phase += weights['context_phase']
 		if self._hyperparams.get('use_vision', True):
 			norm_type = self.norm_type
 			decay = network_config.get('decay', 0.9)
@@ -947,9 +1036,9 @@ class PolicyCloningMAML(PolicyOptTf):
 						depth_conv_out = conv2d(img=depth_input, w=weights['wc_depth_%d' % (i+1)], b=weights['bc_depth_%d' % (i+1)], strides=strides[i], is_dilated=is_dilated)
 						conv_layer = tf.concat(axis=3, values=[conv_layer, depth_conv_out])
 					if not use_dropout:
-						conv_layer = norm(conv_layer, norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn)
+						conv_layer = norm(conv_layer, norm_type=norm_type, decay=decay, scale=self.norm_scale, id=i, is_training=is_training, activation_fn=self.activation_fn)
 					else:
-						conv_layer = dropout(norm(conv_layer, norm_type=norm_type, decay=decay, id=i, is_training=is_training, activation_fn=self.activation_fn), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
+						conv_layer = dropout(norm(conv_layer, norm_type=norm_type, decay=decay, scale=self.norm_scale, id=i, is_training=is_training, activation_fn=self.activation_fn), keep_prob=prob, is_training=is_training, name='dropout_%d' % (i+1))
 			if self._hyperparams.get('use_fp', False):
 				_, num_rows, num_cols, num_fp = conv_layer.get_shape()
 				if is_dilated:
@@ -1000,18 +1089,31 @@ class PolicyCloningMAML(PolicyOptTf):
 				# only predict the final eept using the initial image
 				# use video for preupdate only if no_final_eept
 				if (not self._hyperparams.get('learn_final_eept_whole_traj', False)) or meta_testing:
-					final_ee_inp = final_ee_inp[:, 0, :]
+					if self._hyperparams.get('random_concat', False) and not testing:
+						random_concat_init_idxes = self._hyperparams['random_concat_init_idxes']
+						final_ee_inp = tf.concat(axis=0, values=[final_ee_inp[:, segment_idx, :] for segment_idx in random_concat_init_idxes])
+					else:
+						final_ee_inp = final_ee_inp[:, 0, :]
 				else:
 					final_ee_inp = tf.reshape(final_ee_inp, [-1, conv_size])
 				n_layers_ee = network_config.get('n_layers_ee', 1)
 				final_eept_pred = final_ee_inp
 				for i in xrange(n_layers_ee):
 					if i != n_layers_ee - 1:
-						final_eept_pred = tf.nn.relu(tf.matmul(final_eept_pred, weights['w_ee_%d' % i]) + weights['b_ee_%d' % i])
+						final_eept_pred = self.activation_fn(tf.matmul(final_eept_pred, weights['w_ee_%d' % i]) + weights['b_ee_%d' % i])
 					else:
 						if self._hyperparams.get('two_heads', False) and not meta_testing and self._hyperparams.get('no_final_eept', False):
 							if self._hyperparams.get('learn_eept_layer', False):
 								final_eept_pred_test = tf.matmul(final_eept_pred, weights['w_ee_%d' % i]) + weights['b_ee_%d' % i]
+								if network_config.get('n_layers_ee_2_head_val', 1) > 1:
+									n_layers_ee_2_head_val = self._hyperparams.get('n_layers_ee_2_head_val', 1)
+									final_eept_pred_test = self.activation_fn(final_eept_pred_test)
+									for k in xrange(n_layers_ee_2_head_val-1):
+										final_eept_pred_test = tf.matmul(final_eept_pred_test, weights['w_ee_%d' % (k+n_layers_ee)]) + weights['b_ee_%d' % (k+n_layers_ee)]
+										if j != n_layers_ee_2_head_val - 2:
+											final_eept_pred_test = self.activation_fn(final_eept_pred_test)
+								final_eept_pred_test = tf.reshape(final_eept_pred_test, [-1, self.T, len(final_eept_range)])
+								final_eept_pred_test = tf.reshape(tf.tile(tf.expand_dims(final_eept_pred_test[:, 0, :], axis=1), [1, self.T, 1]), [-1, len(final_eept_range)])
 								final_eept_pred = tf.concat(axis=1, values=[final_eept_pred, final_eept_pred_test])
 							if network_config.get('temporal_conv_2_head_ee', False):
 								final_eept_pred = tf.reshape(final_eept_pred, [-1, self.T, final_eept_pred.get_shape().dims[-1].value])
@@ -1020,7 +1122,7 @@ class PolicyCloningMAML(PolicyOptTf):
 								for j in xrange(len(temporal_num_filters)):
 									if j != len(temporal_num_filters) - 1:
 										final_eept_pred = norm(conv1d(img=final_eept_pred, w=weights['w_1d_conv_2_head_ee_%d' % j], b=weights['b_1d_conv_2_head_ee_%d' % j]), \
-														norm_type=self.norm_type, id=n_conv_layers+j, is_training=is_training, activation_fn=self.activation_fn)
+														norm_type=self.norm_type, scale=self.norm_scale, id=n_conv_layers+j, is_training=is_training, activation_fn=self.activation_fn)
 									else:
 										if 'num_learned_loss' in self._hyperparams and loss_idx is None:
 											task_label_pred = conv1d(img=final_eept_pred, w=weights['w_1d_conv_2_head_tasklabel_%d' % j], b=weights['b_1d_conv_2_head_tasklabel_%d' % j])
@@ -1031,14 +1133,30 @@ class PolicyCloningMAML(PolicyOptTf):
 								for j in xrange(n_layers_ee_2_head):
 									final_eept_pred = tf.matmul(final_eept_pred, weights['w_ee_two_heads_%d' % j]) + weights['b_ee_two_heads_%d' % j]
 									if j != n_layers_ee_2_head - 1:
-										final_eept_pred = tf.nn.relu(final_eept_pred)
+										final_eept_pred = self.activation_fn(final_eept_pred)
 						else:
 							final_eept_pred = tf.matmul(final_eept_pred, weights['w_ee_%d' % i]) + weights['b_ee_%d' % i]
+							if self._hyperparams.get('two_heads', False) and meta_testing and network_config.get('n_layers_ee_2_head_val', 1) > 1:
+								n_layers_ee_2_head_val = self._hyperparams.get('n_layers_ee_2_head_val', 1)
+								final_eept_pred = self.activation_fn(final_eept_pred)
+								for k in xrange(n_layers_ee_2_head_val-1):
+									final_eept_pred = tf.matmul(final_eept_pred, weights['w_ee_%d' % (k+n_layers_ee)]) + weights['b_ee_%d' % (k+n_layers_ee)]
+									if j != n_layers_ee_2_head_val - 2:
+										final_eept_pred = self.activation_fn(final_eept_pred)
 				if (not self._hyperparams.get('learn_final_eept_whole_traj', False)) or meta_testing:
-					# this seems to only work when ubs=tbs=1
-					# final_eept_pred = tf.reshape(tf.tile(tf.reshape(final_eept_pred, [-1]), [T]), [-1, len(final_eept_range)])
-					final_eept_pred = tf.reshape(tf.tile(tf.expand_dims(final_eept_pred, axis=1), [1, T, 1]), [-1, len(final_eept_range)])
-					final_eept_concat = tf.identity(final_eept_pred)
+					if self._hyperparams.get('random_concat', False) and not testing:
+						random_concat_init_idxes = self._hyperparams['random_concat_init_idxes']
+						segment_lens = [random_concat_init_idxes[j+1] - random_concat_init_idxes[j] for j in xrange(len(random_concat_init_idxes)-1)]
+						segment_lens.append(T - random_concat_init_idxes[-1])
+						final_eept_pred_list = [tf.tile(tf.expand_dims(tf.expand_dims(final_eept_pred[i], axis=0), axis=0), [1, segment_lens[i], 1]) \
+												for i in xrange(len(random_concat_init_idxes))]
+						final_eept_pred = tf.reshape(tf.concat(axis=1, values=final_eept_pred_list), [-1, len(final_eept_range)])
+						final_eept_concat = tf.identity(final_eept_pred)
+					else:
+						# this seems to only work when ubs=tbs=1
+						# final_eept_pred = tf.reshape(tf.tile(tf.reshape(final_eept_pred, [-1]), [T]), [-1, len(final_eept_range)])
+						final_eept_pred = tf.reshape(tf.tile(tf.expand_dims(final_eept_pred, axis=1), [1, T, 1]), [-1, len(final_eept_range)])
+						final_eept_concat = tf.identity(final_eept_pred)
 				else:
 					# Assume tbs == 1
 					# Only provide the FC layers with final_eept_pred at first time step
@@ -1070,18 +1188,31 @@ class PolicyCloningMAML(PolicyOptTf):
 				# only predict the final eept using the initial image
 				# use video for preupdate only if no_final_eept
 				if meta_testing:
-					pick_ee_inp = pick_ee_inp[:, 0, :]
+					if self._hyperparams.get('random_concat', False) and not testing:
+						random_concat_init_idxes = self._hyperparams['random_concat_init_idxes']
+						pick_ee_inp = tf.concat(axis=0, values=[pick_ee_inp[:, segment_idx, :] for segment_idx in random_concat_init_idxes])
+					else:
+						pick_ee_inp = pick_ee_inp[:, 0, :]
 				else:
 					pick_ee_inp = tf.reshape(pick_ee_inp, [-1, conv_size])
 				n_layers_pick_ee = network_config.get('n_layers_pick_ee', 1)
 				pick_eept_pred = pick_ee_inp
 				for i in xrange(n_layers_pick_ee):
 					if i != n_layers_pick_ee - 1:
-						pick_eept_pred = tf.nn.relu(tf.matmul(pick_eept_pred, weights['w_ee_%d' % i]) + weights['b_ee_%d' % i])
+						pick_eept_pred = self.activation_fn(tf.matmul(pick_eept_pred, weights['w_ee_%d' % i]) + weights['b_ee_%d' % i])
 					else:
 						if self._hyperparams.get('two_heads', False) and not meta_testing and self._hyperparams.get('no_final_eept', False):
 							if self._hyperparams.get('learn_pick_eept_layer', False):
 								pick_eept_pred_test = tf.matmul(pick_eept_pred, weights['w_pick_ee_%d' % i]) + weights['b_pick_ee_%d' % i]
+								if network_config.get('n_layers_pick_ee_2_head_val', 1) > 1:
+									n_layers_pick_ee_2_head_val = self._hyperparams.get('n_layers_pick_ee_2_head_val', 1)
+									pick_eept_pred_test = self.activation_fn(pick_eept_pred_test)
+									for k in xrange(n_layers_pick_ee_2_head_val-1):
+										pick_eept_pred_test = tf.matmul(pick_eept_pred_test, weights['w_pick_ee_%d' % (k+n_layers_pick_ee)]) + weights['b_pick_ee_%d' % (k+n_layers_pick_ee)]
+										if j != n_layers_pick_ee_2_head_val - 2:
+											pick_eept_pred_test = self.activation_fn(pick_eept_pred_test)
+								pick_eept_pred_test = tf.reshape(pick_eept_pred_test, [-1, self.T, len(pick_eept_range)])
+								pick_eept_pred_test = tf.reshape(tf.tile(tf.expand_dims(pick_eept_pred_test[:, 0, :], axis=1), [1, self.T, 1]), [-1, len(pick_eept_range)])
 								pick_eept_pred = tf.concat(axis=1, values=[pick_eept_pred, pick_eept_pred_test])
 							if network_config.get('temporal_conv_2_head_ee', False):
 								pick_eept_pred = tf.reshape(pick_eept_pred, [-1, self.T, pick_eept_pred.get_shape().dims[-1].value])
@@ -1090,7 +1221,7 @@ class PolicyCloningMAML(PolicyOptTf):
 								for j in xrange(len(temporal_num_filters)):
 									if j != len(temporal_num_filters) - 1:
 										pick_eept_pred = norm(conv1d(img=pick_eept_pred, w=weights['w_1d_conv_2_head_pick_ee_%d' % j], b=weights['b_1d_conv_2_head_pick_ee_%d' % j]), \
-														norm_type=self.norm_type, id=n_conv_layers+j, is_training=is_training, activation_fn=self.activation_fn)
+														norm_type=self.norm_type, scale=self.norm_scale, id=n_conv_layers+j, is_training=is_training, activation_fn=self.activation_fn)
 									else:
 										pick_eept_pred = conv1d(img=pick_eept_pred, w=weights['w_1d_conv_2_head_pick_ee_%d' % j], b=weights['b_1d_conv_2_head_pick_ee_%d' % j])
 								pick_eept_pred = tf.reshape(pick_eept_pred, [-1, len(pick_eept_range)])
@@ -1099,14 +1230,30 @@ class PolicyCloningMAML(PolicyOptTf):
 								for j in xrange(n_layers_pick_ee_2_head):
 									pick_eept_pred = tf.matmul(pick_eept_pred, weights['w_pick_ee_two_heads_%d' % j]) + weights['b_pick_ee_two_heads_%d' % j]
 									if j != n_layers_pick_ee_2_head - 1:
-										pick_eept_pred = tf.nn.relu(pick_eept_pred)
+										pick_eept_pred = self.activation_fn(pick_eept_pred)
 						else:
 							pick_eept_pred = tf.matmul(pick_eept_pred, weights['w_pick_ee_%d' % i]) + weights['b_pick_ee_%d' % i]
+							if self._hyperparams.get('two_heads', False) and meta_testing and network_config.get('n_layers_pick_ee_2_head_val', 1) > 1:
+								n_layers_pick_ee_2_head_val = self._hyperparams.get('n_layers_pick_ee_2_head_val', 1)
+								pick_eept_pred = self.activation_fn(pick_eept_pred)
+								for k in xrange(n_layers_pick_ee_2_head_val-1):
+									pick_eept_pred = tf.matmul(pick_eept_pred, weights['w_pick_ee_%d' % (k+n_layers_pick_ee)]) + weights['b_pick_ee_%d' % (k+n_layers_pick_ee)]
+									if j != n_layers_pick_ee_2_head_val - 2:
+										pick_eept_pred = self.activation_fn(pick_eept_pred)
 				if meta_testing:
-					# this seems to only work when ubs=tbs=1
-					# final_eept_pred = tf.reshape(tf.tile(tf.reshape(pick_eept_pred, [-1]), [T]), [-1, len(final_eept_range)])
-					pick_eept_pred = tf.reshape(tf.tile(tf.expand_dims(pick_eept_pred, axis=1), [1, T, 1]), [-1, len(pick_eept_range)])
-					pick_eept_concat = tf.identity(pick_eept_pred)
+					if self._hyperparams.get('random_concat', False) and not testing:
+						random_concat_init_idxes = self._hyperparams['random_concat_init_idxes']
+						segment_lens = [random_concat_init_idxes[j+1] - random_concat_init_idxes[j] for j in xrange(len(random_concat_init_idxes)-1)]
+						segment_lens.append(T - random_concat_init_idxes[-1])
+						pick_eept_pred_list = [tf.tile(tf.expand_dims(tf.expand_dims(pick_eept_pred[i], axis=0), axis=0), [1, segment_lens[i], 1])
+												for i in xrange(len(random_concat_init_idxes))]
+						pick_eept_pred = tf.reshape(tf.concat(axis=1, values=pick_eept_pred_list), [-1, len(pick_eept_range)])
+						pick_eept_concat = tf.identity(pick_eept_pred)
+					else:
+						# this seems to only work when ubs=tbs=1
+						# final_eept_pred = tf.reshape(tf.tile(tf.reshape(pick_eept_pred, [-1]), [T]), [-1, len(final_eept_range)])
+						pick_eept_pred = tf.reshape(tf.tile(tf.expand_dims(pick_eept_pred, axis=1), [1, T, 1]), [-1, len(pick_eept_range)])
+						pick_eept_concat = tf.identity(pick_eept_pred)
 				else:
 					# Assume tbs == 1
 					# Only provide the FC layers with pick_eept_pred at first time step
@@ -1123,9 +1270,59 @@ class PolicyCloningMAML(PolicyOptTf):
 				# fc_input = tf.concat(concat_dim=1, values=[fc_input, pick_eept_pred])
 			else:
 				pick_eept_pred = None
+			if self._hyperparams.get('pred_phase', False):
+				phase_range = self._hyperparams['phase_range']
+				if testing:
+					T = 1
+				else:
+					T = self.T
+				phase_inp = tf.reshape(conv_out_flat, [-1, T, self.conv_out_size])
+				conv_size = self.conv_out_size
+				if self._hyperparams.get('use_state_context', False):
+					context_dim = self._hyperparams.get('context_dim', 10)
+					phase_inp = tf.concat(axis=2, values=[phase_inp, tf.reshape(context_phase, [-1, T, context_dim])])
+					conv_size += context_dim
+				# only predict the final eept using the initial image
+				# use video for preupdate only if no_phase
+				phase_inp = tf.reshape(phase_inp, [-1, conv_size])
+				n_layers_phase = network_config.get('n_layers_phase', 1)
+				phase_pred = phase_inp
+				for i in xrange(n_layers_phase):
+					if i != n_layers_phase - 1:
+						phase_pred = self.activation_fn(tf.matmul(phase_pred, weights['w_phase_%d' % i]) + weights['b_phase_%d' % i])
+					else:
+						if self._hyperparams.get('two_heads', False) and not meta_testing and self._hyperparams.get('no_phase', False):
+							if self._hyperparams.get('learn_phase_layer', False):
+								phase_pred_test = tf.matmul(phase_pred, weights['w_phase_%d' % i]) + weights['b_phase_%d' % i]
+								phase_pred = tf.concat(axis=1, values=[phase_pred, phase_pred_test])
+							if network_config.get('temporal_conv_2_head_phase', False):
+								phase_pred = tf.reshape(phase_pred, [-1, self.T, phase_pred.get_shape().dims[-1].value])
+								task_label_pred = None
+								temporal_num_filters = network_config.get('1d_num_filters_phase', [32, 32, 32])
+								if network_config.get('temporal_conv_2_head_ee', False) and '1d_num_filters_pick_ee' in network_config:
+									n_conv_layers += len(network_config.get('1d_num_filters_pick_ee', [32, 32, 32]))
+								for j in xrange(len(temporal_num_filters)):
+									if j != len(temporal_num_filters) - 1:
+										phase_pred = norm(conv1d(img=phase_pred, w=weights['w_1d_conv_2_head_phase_%d' % j], b=weights['b_1d_conv_2_head_phase_%d' % j]), \
+														norm_type=self.norm_type, scale=self.norm_scale, id=n_conv_layers+j, is_training=is_training, activation_fn=self.activation_fn)
+									else:
+										if 'num_learned_loss' in self._hyperparams and loss_idx is None:
+											task_label_pred = conv1d(img=phase_pred, w=weights['w_1d_conv_2_head_tasklabel_%d' % j], b=weights['b_1d_conv_2_head_tasklabel_%d' % j])
+										phase_pred = conv1d(img=phase_pred, w=weights['w_1d_conv_2_head_phase_%d' % j], b=weights['b_1d_conv_2_head_phase_%d' % j])
+								phase_pred = tf.reshape(phase_pred, [-1, len(phase_range)])
+							else:
+								n_layers_phase_2_head = self._hyperparams.get('n_layers_phase_2_head', 1)
+								for j in xrange(n_layers_phase_2_head):
+									phase_pred = tf.matmul(phase_pred, weights['w_phase_two_heads_%d' % j]) + weights['b_phase_two_heads_%d' % j]
+									if j != n_layers_phase_2_head - 1:
+										phase_pred = self.activation_fn(phase_pred)
+						else:
+							phase_pred = tf.matmul(phase_pred, weights['w_phase_%d' % i]) + weights['b_phase_%d' % i]
+			else:
+				phase_pred = None
 		else:
 			fc_input = image_input
-			final_eept_pred, pick_eept_pred = None, None
+			final_eept_pred, pick_eept_pred, phase_pred = None, None, None
 		if self._hyperparams.get('use_state_context', False):
 			fc_input = tf.concat(axis=1, values=[fc_input, context])
 		if 'num_learned_loss' in self._hyperparams and not meta_testing:
@@ -1143,6 +1340,8 @@ class PolicyCloningMAML(PolicyOptTf):
 					aux_out = (final_eept_pred, pick_eept_pred, task_label_pred, loss_idx_out)
 				else:
 					aux_out = (final_eept_pred, pick_eept_pred, loss_idx_out)
+			elif self._hyperparams.get('pred_phase', False):
+				aux_out = (final_eept_pred, pick_eept_pred, phase_pred)
 			else:
 				aux_out = (final_eept_pred, pick_eept_pred)
 		else:
@@ -1172,11 +1371,15 @@ class PolicyCloningMAML(PolicyOptTf):
 				context = state_input[:, :context_dim]
 				state_input = state_input[:, context_dim:]
 				fc_output = tf.concat(axis=1, values=[fc_output, context])
+		if network_config.get('use_causal_conv', False):
+			fc_output = tf.reshape(fc_output, [-1, self.T, self.conv_out_size_final])
+			causal_temporal_num_filters = network_config.get('causal_1d_num_filters', [32, 32, 32])
+			n_layers = len(causal_temporal_num_filters)
 		for i in xrange(n_layers):
 			if i > 0 and self._hyperparams.get('bt_all_fc', False) and not (i == n_layers-1 and network_config.get('predict_feature', False)):
 				context = tf.transpose(tf.gather(tf.transpose(tf.zeros_like(fc_output)), range(self._hyperparams.get('context_dim', 10))))
 				context += weights['context_%d' % i]
-				fc_output = tf.concat(axis=1, values=[fc_output, context])
+				fc_output = tf.concat(axis=-1, values=[fc_output, context])
 			if (i == n_layers - 1 or (i == 0 and self._hyperparams.get('zero_state', False) and not self._hyperparams.get('sep_state', False))) and \
 				self._hyperparams.get('two_heads', False) and not meta_testing:
 				if i == 0:
@@ -1187,6 +1390,8 @@ class PolicyCloningMAML(PolicyOptTf):
 						fc_output = self.rnn_actions_forward(fc_output, init_actions, weights['w_%d_two_heads' % i],
 															weights['b_%d_two_heads' % i], in_shape=self.conv_out_size_final,
 															dim_out=dim_hidden[i], T=self.T, num_actions=num_actions)
+					elif network_config.get('use_causal_conv', False):
+						fc_output = causal_conv1d(fc_output, weights['w_causal_%d_two_heads' % i], weights['b_%d_two_heads' % i])
 					else:
 						fc_output = tf.matmul(fc_output, weights['w_%d_two_heads' % i]) + weights['b_%d_two_heads' % i]
 				else:
@@ -1210,10 +1415,14 @@ class PolicyCloningMAML(PolicyOptTf):
 							if self._hyperparams.get('stop_signal', False):
 								fc_output_action = tf.concat(axis=1, values=[fc_output_action, stop_signal])
 						else:
-							fc_output_action = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
-						fc_output = tf.concat(axis=1, values=[fc_output, fc_output_action])
+							if network_config.get('use_causal_conv', False):
+								fc_output_action = causal_conv1d(fc_output, weights['w_causal_%d' % i], weights['b_%d' % i])
+							else:
+								fc_output_action = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
+						fc_output = tf.concat(axis=-1, values=[fc_output, fc_output_action])
 					if network_config.get('temporal_conv_2_head', False):
-						fc_output = tf.reshape(fc_output, [-1, self.T, fc_output.get_shape().dims[-1].value])
+						if len(list(fc_output.get_shape())) < 3:
+							fc_output = tf.reshape(fc_output, [-1, self.T, fc_output.get_shape().dims[-1].value])
 						strides = network_config.get('strides', [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1]])
 						temporal_num_filters = network_config.get('1d_num_filters', [32, 32, 32])
 						n_conv_layers = len(strides)
@@ -1221,6 +1430,8 @@ class PolicyCloningMAML(PolicyOptTf):
 							n_conv_layers += len(network_config.get('1d_num_filters_ee', [32, 32, 32]))
 							if self._hyperparams.get('pred_pick_eept', False):
 								n_conv_layers += len(network_config.get('1d_num_filters_pick_ee', [32, 32, 32]))
+						if self._hyperparams.get('pred_phase', False) and network_config.get('temporal_conv_2_head_phase', False):
+							n_conv_layers += len(network_config.get('1d_num_filters_phase', [32, 32, 32]))
 						if 'num_learned_loss' in self._hyperparams:
 							# def learned_loss(inp, idx=0):
 							#     for j in xrange(len(temporal_num_filters)):
@@ -1241,7 +1452,7 @@ class PolicyCloningMAML(PolicyOptTf):
 								for j in xrange(len(temporal_num_filters)):
 									if j != len(temporal_num_filters) - 1:
 										inp = norm(conv1d(img=inp, w=weights['w_1d_conv_2_head_loss%d_%d' % (idx, j)], b=weights['b_1d_conv_2_head_loss%d_%d' % (idx, j)]), \
-														norm_type=self.norm_type, id=j, is_training=is_training, activation_fn=self.activation_fn, prefix='learned_loss%d_' % idx)
+														norm_type=self.norm_type, scale=self.norm_scale, id=j, is_training=is_training, activation_fn=self.activation_fn, prefix='learned_loss%d_' % idx)
 									else:
 										inp = conv1d(img=inp, w=weights['w_1d_conv_2_head_loss%d_%d' % (idx, j)], b=weights['b_1d_conv_2_head_loss%d_%d' % (idx, j)])
 								learned_loss = euclidean_loss_layer(inp, 0.0, None, multiplier=self._hyperparams.get('loss_multiplier', 100.0), behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
@@ -1252,7 +1463,7 @@ class PolicyCloningMAML(PolicyOptTf):
 							for j in xrange(len(temporal_num_filters)):
 								if j != len(temporal_num_filters) - 1:
 									fc_output = norm(conv1d(img=fc_output, w=weights['w_1d_conv_2_head_%d' % j], b=weights['b_1d_conv_2_head_%d' % j]), \
-													norm_type=self.norm_type, id=n_conv_layers+j, is_training=is_training, activation_fn=self.activation_fn)
+													norm_type=self.norm_type, scale=self.norm_scale, id=n_conv_layers+j, is_training=is_training, activation_fn=self.activation_fn)
 								else:
 									fc_output = conv1d(img=fc_output, w=weights['w_1d_conv_2_head_%d' % j], b=weights['b_1d_conv_2_head_%d' % j])
 					else:
@@ -1268,7 +1479,7 @@ class PolicyCloningMAML(PolicyOptTf):
 						for j in xrange(n_layers_2_head):
 							fc_output = tf.matmul(fc_output, weights['w_%d_two_heads' % (i+j)]) + weights['b_%d_two_heads' % (i+j)]
 							if j != n_layers_2_head - 1:
-								fc_output = tf.nn.relu(fc_output)
+								fc_output = self.activation_fn(fc_output)
 							else:
 								if network_config.get('predict_feature', False):
 									fc_output = fc_output - next_features
@@ -1311,19 +1522,26 @@ class PolicyCloningMAML(PolicyOptTf):
 														dim_out=dim_hidden[i], T=self.T, num_actions=num_actions)
 				elif i == n_layers - 1 and self._hyperparams.get('lstm_for_control', False):
 					fc_output = self.lstm_forward(fc_output, weights, network_config=network_config, two_head=True)
+				elif network_config.get('use_causal_conv', False):
+					fc_output = causal_conv1d(fc_output, weights['w_causal_%d' % i], weights['b_%d' % i])
 				else:
 					fc_output = tf.matmul(fc_output, weights['w_%d' % i]) + weights['b_%d' % i]
 			if i != n_layers - 1:
 				if use_selu:
 					fc_output = selu(fc_output)
 				elif use_ln:
-					fc_output = norm(fc_output, norm_type='layer_norm', id=i, is_training=is_training, prefix='fc_')
+					if i == 0 and self._hyperparams.get('zero_state', False) and not self._hyperparams.get('sep_state', False):
+						fc_output = norm(fc_output, norm_type='layer_norm', scale=self.norm_scale, id=i, is_training=is_training, activation_fn=self.activation_fn, prefix='fc_two_head_')
+					else:
+						fc_output = norm(fc_output, norm_type='layer_norm', scale=self.norm_scale, id=i, is_training=is_training, activation_fn=self.activation_fn, prefix='fc_')
 				else:
 					fc_output = self.activation_fn(fc_output)
 				# only use dropout for post-update
 				if use_dropout:# and meta_testing:
 					fc_output = dropout(fc_output, keep_prob=prob, is_training=is_training, name='dropout_fc_%d' % i, selu=use_selu)
 			if i == n_layers - 1:
+				if network_config.get('use_causal_conv', False):
+					fc_output = tf.reshape(fc_output, [-1, fc_output.get_shape().dims[-1].value])
 				if self._hyperparams.get('non_linearity_out', False):
 					fc_output = self.activation_fn(fc_output)
 				elif self._hyperparams.get('mixture_density', False) and meta_testing: # just for postupdate for now
@@ -1370,7 +1588,7 @@ class PolicyCloningMAML(PolicyOptTf):
 			inp = tf.concat(axis=1, values=[rnn_input[:, t, :], state])
 			rnn_output = tf.matmul(inp, weights['rnn_weight']) + weights['rnn_bias']
 			if self._hyperparams.get('ln_for_rnn', False):
-				rnn_output = norm(rnn_output, norm_type='layer_norm', id=t, is_training=is_training, prefix='rnn_')
+				rnn_output = norm(rnn_output, norm_type='layer_norm', scale=self.norm_scale, id=t, is_training=is_training, prefix='rnn_')
 			else:
 				rnn_output = self.activation_fn(rnn_output)
 			rnn_outputs.append(rnn_output)
@@ -1386,7 +1604,7 @@ class PolicyCloningMAML(PolicyOptTf):
 			inp = rnn_input[:, t, :]
 			actions = tf.stop_gradient(tf.reshape(tf.stack(list(past_actions)), [-1, num_actions*dim_out]))
 			inp = tf.concat(axis=1, values=[inp, actions])
-			out = tf.nn.relu(tf.matmul(inp, weight) + bias)
+			out = self.activation_fn(tf.matmul(inp, weight) + bias)
 			if t < num_actions:
 				past_actions[t] = out
 			else:
@@ -1415,13 +1633,13 @@ class PolicyCloningMAML(PolicyOptTf):
 			lstm_matrix = tf.matmul(cell_inputs, weights['lstm_weight']) + weights['lstm_bias']
 			i, j, f, o = tf.split(axis=1, num_or_size_splits=4, value=lstm_matrix)
 			if use_norm:
-				i = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_i_')
-				j = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_j_')
-				f = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_f_')
-				o = norm(i, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_o_')
+				i = norm(i, norm_type='layer_norm', scale=self.norm_scale, id=t, is_training=is_training, activation_fn=None, prefix='lstm_i_')
+				j = norm(i, norm_type='layer_norm', scale=self.norm_scale, id=t, is_training=is_training, activation_fn=None, prefix='lstm_j_')
+				f = norm(i, norm_type='layer_norm', scale=self.norm_scale, id=t, is_training=is_training, activation_fn=None, prefix='lstm_f_')
+				o = norm(i, norm_type='layer_norm', scale=self.norm_scale, id=t, is_training=is_training, activation_fn=None, prefix='lstm_o_')
 			c = (tf.sigmoid(f + forget_bias) * c_prev + tf.sigmoid(i) * activation(j))
 			if use_norm:
-				c = norm(c, norm_type='layer_norm', id=t, is_training=is_training, activation_fn=None, prefix='lstm_c_')
+				c = norm(c, norm_type='layer_norm', scale=self.norm_scale, id=t, is_training=is_training, activation_fn=None, prefix='lstm_c_')
 			m = tf.sigmoid(o) * activation(c)
 			state = tf.concat(axis=1, values=[c, m])
 			lstm_outputs.append(m)
@@ -1549,6 +1767,9 @@ class PolicyCloningMAML(PolicyOptTf):
 					if 'pick_eept_range' in self._hyperparams:
 						pick_eept_range = self._hyperparams['pick_eept_range']
 						dim_output_new -= len(pick_eept_range)
+					if 'phase_range' in self._hyperparams:
+						phase_range = self._hyperparams['phase_range']
+						dim_output_new -= len(phase_range)
 					# if 'num_learned_loss' in self._hyperparams:
 					#     dim_output_new -= self._hyperparams['num_learned_loss']
 					self.weights = weights = self.construct_weights(dim_input, dim_output_new, network_config=network_config)
@@ -1570,6 +1791,7 @@ class PolicyCloningMAML(PolicyOptTf):
 			loss_multiplier = self._hyperparams.get('loss_multiplier', 100.0)
 			final_eept_loss_eps = self._hyperparams.get('final_eept_loss_eps', 0.01)
 			pick_eept_loss_eps = self._hyperparams.get('pick_eept_loss_eps', 0.01)
+			phase_loss_eps = self._hyperparams.get('phase_loss_eps', 1.0)
 			act_loss_eps = self._hyperparams.get('act_loss_eps', 1.0)
 			hinge_loss_eps = self._hyperparams.get('hinge_loss_eps', 1.0)
 			use_whole_traj = self._hyperparams.get('learn_final_eept_whole_traj', False)
@@ -1578,6 +1800,10 @@ class PolicyCloningMAML(PolicyOptTf):
 			acosine_loss_eps = self._hyperparams.get('acosine_loss_eps', 0.5)
 			task_label_loss_eps = self._hyperparams.get('task_label_loss_eps', 0.5)
 			use_depth = self._hyperparams.get('use_depth', False)
+			if self._hyperparams.get('random_concat', False):
+				random_concat_init_idxes = self._hyperparams['random_concat_init_idxes']
+				segment_lens = [random_concat_init_idxes[j+1] - random_concat_init_idxes[j] for j in xrange(len(random_concat_init_idxes)-1)]
+				segment_lens.append(self.T - random_concat_init_idxes[-1])
 			if self._hyperparams.get('use_context', False):
 				# self.color_hints = tf.maximum(tf.minimum(safe_get('color_hints', initializer=0.5*tf.ones([3], dtype=tf.float32)), 0.0), 1.0)
 				self.context_var = safe_get('context_variable', initializer=tf.zeros([self._hyperparams.get('context_dim', 10)], dtype=tf.float32))
@@ -1646,6 +1872,21 @@ class PolicyCloningMAML(PolicyOptTf):
 				#     task_label = tf.reshape(task_label, [-1, num_learned_loss])[0, :]
 				#     actiona = actiona[:, :-num_learned_loss]
 				#     actionb = actionb[:, :-num_learned_loss]
+				
+				if 'phase_range' in self._hyperparams:
+					phase_range = self._hyperparams['phase_range']
+					# assumes update_batch_size == 1
+					# final_eepta = tf.reshape(tf.tile(actiona[-1, phase_range[0]:], [self.update_batch_size*self.T]), [-1, len(phase_range)])
+					# final_eeptb = tf.reshape(tf.tile(actionb[-1, phase_range[0]:], [self.update_batch_size*self.T]), [-1, len(phase_range)])
+					# if not self._hyperparams.get('sawyer', False):
+					if self._hyperparams.get('pred_phase', False):
+						phasea = actiona[:, phase_range[0]:phase_range[-1]+1]
+						phaseb = actionb[:, phase_range[0]:phase_range[-1]+1]
+					# import pdb; pdb.set_trace()
+					actiona = actiona[:, :phase_range[0]]
+					actionb = actionb[:, :phase_range[0]]
+					if self._hyperparams.get('no_phase', False):
+						phasea = tf.zeros_like(phasea)
 				
 				if 'pick_eept_range' in self._hyperparams:
 					pick_eept_range = self._hyperparams['pick_eept_range']
@@ -1717,6 +1958,18 @@ class PolicyCloningMAML(PolicyOptTf):
 						if not self._hyperparams.get('no_action', False):
 							actiona = tf.concat(axis=1, values=[actiona, stopa])
 						actionb = tf.concat(axis=1, values=[actionb, stopb])
+				if self._hyperparams.get('pred_phase', False) and self._hyperparams.get('use_discretization_phase', False):
+					phase_min = tf.constant(0.)
+					avg_bin_phase = np.linspace(0., 1., self.n_bins_phase + 1)
+					avg_bin_phase = (avg_bin_phase[1:] + avg_bin_phase[:-1]) / 2
+					avg_bin_phase = tf.convert_to_tensor(avg_bin_phase, np.float32)
+					bin_size = tf.convert_to_tensor(1. / self.n_bins_phase, np.float32)
+					if not self._hyperparams.get('no_phase', False):
+						phase_bina = tf.floor_div((phasea - phase_min), bin_size)
+					phase_binb = tf.floor_div((phaseb - phase_min), bin_size)
+					if not self._hyperparams.get('no_phase', False):
+						phasea = tf.reshape(tf.one_hot(tf.cast(phase_bina, tf.int32), depth=self.n_bins_phase), [-1, self.n_bins_phase])
+					phaseb = tf.reshape(tf.one_hot(tf.cast(phase_binb, tf.int32), depth=self.n_bins_phase), [-1, self.n_bins_phase])
 					
 				if self._hyperparams.get('no_action', False):
 					actiona = tf.zeros_like(actiona)
@@ -1774,10 +2027,14 @@ class PolicyCloningMAML(PolicyOptTf):
 				task_label_loss = tf.constant(0.0) # for learning multiple learned losses
 				loss_idx = tf.constant(0.0) # for learning multiple learned losses
 				if self._hyperparams.get('learn_final_eept', False):
+					phase_lossa = tf.constant(0.0)
 					if self._hyperparams.get('pred_pick_eept', False):
 						if 'num_learned_loss' in self._hyperparams:
 							final_eept_preda, pick_eept_preda, task_label_pred, loss_idx = final_eept_preda
 							task_label_loss = tf.losses.softmax_cross_entropy(task_labels, task_label_pred)
+						elif self._hyperparams.get('pred_phase', False):
+							final_eept_preda, pick_eept_preda, phase_preda = final_eept_preda
+							phase_lossa = euclidean_loss_layer(phase_preda, phasea, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 						else:
 							final_eept_preda, pick_eept_preda = final_eept_preda
 						pick_eept_lossa = pick_labels * euclidean_loss_layer(pick_eept_preda, pick_eepta, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
@@ -1816,6 +2073,8 @@ class PolicyCloningMAML(PolicyOptTf):
 					local_lossa += final_eept_loss_eps * final_eept_lossa
 					if self._hyperparams.get('pred_pick_eept', False):
 						local_lossa += pick_eept_loss_eps * pick_eept_lossa
+						if self._hyperparams.get('pred_phase', False):
+							local_lossa += phase_loss_eps * phase_lossa
 				acosine_lossa = 0.
 				if self._hyperparams.get('use_acosine_loss', False) and not self._hyperparams.get('no_action', False):
 					acosine_lossa = acosine_loss(outputa, actiona)
@@ -1940,11 +2199,31 @@ class PolicyCloningMAML(PolicyOptTf):
 					local_outputbs.append(outputb_sample)
 				if self._hyperparams.get('learn_final_eept', False):
 					if self._hyperparams.get('pred_pick_eept', False):
-						final_eept_predb, pick_eept_predb = final_eept_predb
-						pick_eept_lossb = pick_labels * euclidean_loss_layer(pick_eept_predb, pick_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+						if self._hyperparams.get('pred_phase', False):
+							final_eept_predb, pick_eept_predb, phase_predb = final_eept_predb
+							if self._hyperparams.get('use_discretization_phase', False):
+								phase_lossb = tf.reduce_mean(tf.losses.softmax_cross_entropy(phaseb, phase_predb))
+							else:
+								phase_lossb = euclidean_loss_layer(phase_predb, phaseb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+						else:
+							final_eept_predb, pick_eept_predb = final_eept_predb
+							phase_lossb = tf.constant(0.0)
+						if self._hyperparams.get('random_concat', False) and not testing:
+							pick_eept_predb = tf.reshape(pick_eept_predb, [-1, self.T, len(pick_eept_range)])
+							pick_eeptb = tf.reshape(pick_eeptb, [-1, self.T, len(pick_eept_range)])
+							pick_eept_lossb = tf.reduce_mean([pick_labels * euclidean_loss_layer(pick_eept_predb[:, random_concat_init_idxes[i], :], pick_eeptb[:, random_concat_init_idxes[i], :], 
+												None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) for i in xrange(len(random_concat_init_idxes))])
+						else:
+							pick_eept_lossb = pick_labels * euclidean_loss_layer(pick_eept_predb, pick_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 					else:
 						pick_eept_lossb = tf.constant(0.0)
-					final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+					if self._hyperparams.get('random_concat', False) and not testing:
+						final_eept_predb = tf.reshape(final_eept_predb, [-1, self.T, len(final_eept_range)])
+						final_eeptb = tf.reshape(final_eeptb, [-1, self.T, len(final_eept_range)])
+						final_eept_lossb = tf.reduce_mean([euclidean_loss_layer(final_eept_predb[:, random_concat_init_idxes[i], :], pick_eeptb[:, random_concat_init_idxes[i], :], 
+											None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) for i in xrange(len(random_concat_init_idxes))])
+					else:
+						final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 				else:
 					final_eept_lossb = tf.constant(0.0)
 				discrete_loss = 0.0
@@ -1977,6 +2256,10 @@ class PolicyCloningMAML(PolicyOptTf):
 					actionb_ = tf.reshape(actionb_, [-1, self.n_actions, self.n_bins])
 					outputb_ = tf.reshape(outputb_, [-1, self.n_actions, self.n_bins])
 					local_lossb = act_loss_eps * tf.reduce_mean([tf.losses.softmax_cross_entropy(actionb_[:, i, :], outputb_[:, i, :]) for i in xrange(self.n_actions)]) + discrete_loss
+					if self._hyperparams.get('pred_time_left', False):
+						time_lossb = tf.losses.softmax_cross_entropy(actionb_[:, -1, :], outputb_[:, -1, :])
+					else:
+						time_lossb = tf.constant(0.)
 				else:
 					local_lossb = act_loss_eps * euclidean_loss_layer(outputb_, actionb_, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) + discrete_loss
 				control_lossb = tf.identity(local_lossb)
@@ -1997,11 +2280,13 @@ class PolicyCloningMAML(PolicyOptTf):
 					local_lossb += final_eept_loss_eps * final_eept_lossb
 					if self._hyperparams.get('pred_pick_eept', False):
 						local_lossb += pick_eept_loss_eps * pick_eept_lossb
+						if self._hyperparams.get('pred_phase', False):
+							local_lossb += phase_loss_eps * phase_lossb
 				acosine_lossb = 0.
 				if self._hyperparams.get('use_acosine_loss', False):
 					acosine_lossb = acosine_loss(outputb, actionb)
 					local_lossb += acosine_loss_eps * acosine_lossb
-				if use_whole_traj:
+				if use_whole_traj and not self._hyperparams.get('random_concat', False):
 					# assume tbs == 1
 					final_eept_lossb = euclidean_loss_layer(final_eept_predb[0], final_eeptb[0], None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 				final_eept_lossesb.append(final_eept_lossb)
@@ -2035,8 +2320,12 @@ class PolicyCloningMAML(PolicyOptTf):
 					outputa, final_eept_preda = self.forward(inputas[j+1], state_inputa_new, fast_weights, loss_idx=loss_idx, pick_labels=pick_labels, network_config=network_config)
 					if self._hyperparams.get('learn_final_eept', False):
 						if self._hyperparams.get('pred_pick_eept', False):
+							phase_lossa = tf.constant(0.)
 							if 'num_learned_loss' in self._hyperparams:
 								final_eept_preda, pick_eept_preda, _ = final_eept_preda
+							elif self._hyperparams.get('pred_phase', False):
+								final_eept_preda, pick_eept_preda, phase_preda = final_eept_preda
+								phase_lossa = euclidean_loss_layer(phase_preda, phasea, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 							else:
 								final_eept_preda, pick_eept_preda = final_eept_preda
 							pick_eept_lossa = pick_labels * euclidean_loss_layer(pick_eept_preda, pick_eepta, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
@@ -2056,6 +2345,8 @@ class PolicyCloningMAML(PolicyOptTf):
 						loss += final_eept_loss_eps * final_eept_lossa
 						if self._hyperparams.get('pred_pick_eept', False):
 							loss += pick_eept_loss_eps * pick_eept_lossa
+							if self._hyperparams.get('pred_phase', False):
+								loss += phase_loss_eps * phase_lossa
 					if self._hyperparams.get('use_acosine_loss', False) and not self._hyperparams.get('no_action', False):
 						acosine_lossa = acosine_loss(outputa, actiona)
 						loss += acosine_loss_eps * acosine_lossa
@@ -2187,11 +2478,34 @@ class PolicyCloningMAML(PolicyOptTf):
 						local_outputbs.append(output_sample)
 					if self._hyperparams.get('learn_final_eept', False):
 						if self._hyperparams.get('pred_pick_eept', False):
-							final_eept_predb, pick_eept_predb = final_eept_predb
-							pick_eept_lossb = pick_labels * euclidean_loss_layer(pick_eept_predb, pick_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+							if self._hyperparams.get('pred_phase', False):
+								final_eept_predb, pick_eept_predb, phase_predb = final_eept_predb
+								if self._hyperparams.get('use_discretization_phase', False):
+									phase_lossb = tf.reduce_mean(tf.losses.softmax_cross_entropy(phaseb, phase_predb))
+									phase_out = tf.nn.softmax(phase_predb, dim=1)
+									phase_out = tf.reduce_sum(tf.one_hot(tf.argmax(phase_out, axis=1), depth=self.n_bins_phase) * avg_bin_phase, axis=1)
+								else:
+									phase_lossb = euclidean_loss_layer(phase_predb, phaseb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+									phase_out = phase_predb
+							else:
+								final_eept_predb, pick_eept_predb = final_eept_predb
+								phase_lossb = tf.constant(0.)
+							if self._hyperparams.get('random_concat', False) and not testing:
+								pick_eept_predb = tf.reshape(pick_eept_predb, [-1, self.T, len(pick_eept_range)])
+								pick_eeptb = tf.reshape(pick_eeptb, [-1, self.T, len(pick_eept_range)])
+								pick_eept_lossb = tf.reduce_mean([pick_labels * euclidean_loss_layer(pick_eept_predb[:, random_concat_init_idxes[i], :], pick_eeptb[:, random_concat_init_idxes[i], :], 
+													None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) for i in xrange(len(random_concat_init_idxes))])
+							else:
+								pick_eept_lossb = pick_labels * euclidean_loss_layer(pick_eept_predb, pick_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 						else:
 							pick_eept_lossb = tf.constant(0.0)
-						final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
+						if self._hyperparams.get('random_concat', False) and not testing:
+							final_eept_predb = tf.reshape(final_eept_predb, [-1, self.T, len(final_eept_range)])
+							final_eeptb = tf.reshape(final_eeptb, [-1, self.T, len(final_eept_range)])
+							final_eept_lossb = tf.reduce_mean([euclidean_loss_layer(final_eept_predb[:, random_concat_init_idxes[i], :], final_eeptb[:, random_concat_init_idxes[i], :], 
+												None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) for i in xrange(len(random_concat_init_idxes))])
+						else:
+							final_eept_lossb = euclidean_loss_layer(final_eept_predb, final_eeptb, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 					else:
 						final_eept_lossb = tf.constant(0.0)
 					# fast_weights_reg = tf.reduce_sum([self.weight_decay*tf.nn.l2_loss(var) for var in fast_weights.values()]) / tf.to_float(self.T)
@@ -2225,6 +2539,11 @@ class PolicyCloningMAML(PolicyOptTf):
 						actionb_ = tf.reshape(actionb_, [-1, self.n_actions, self.n_bins])
 						output_ = tf.reshape(output_, [-1, self.n_actions, self.n_bins])
 						lossb = act_loss_eps * tf.reduce_mean([tf.losses.softmax_cross_entropy(actionb_[:, i, :], output_[:, i, :]) for i in xrange(self.n_actions)]) + discrete_loss
+						if not self._hyperparams.get('pred_phase', False):
+							if self._hyperparams.get('pred_time_left', False):
+								phase_lossb = tf.losses.softmax_cross_entropy(actionb_[:, -1, :], outputb_[:, -1, :])
+							else:
+								phase_lossb = tf.constant(0.)
 					else:
 						lossb = act_loss_eps * euclidean_loss_layer(output_, actionb_, None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False)) + discrete_loss
 					control_lossb = tf.identity(lossb)
@@ -2243,10 +2562,12 @@ class PolicyCloningMAML(PolicyOptTf):
 						lossb += final_eept_loss_eps * final_eept_lossb
 						if self._hyperparams.get('pred_pick_eept', False):
 							lossb += pick_eept_loss_eps * pick_eept_lossb
+							if self._hyperparams.get('pred_phase', False):
+								lossb += phase_loss_eps * phase_lossb
 					if self._hyperparams.get('use_acosine_loss', False):
 						acosine_lossb = acosine_loss(output, actionb)
 						local_lossb += acosine_loss_eps * acosine_lossb
-					if use_whole_traj:
+					if use_whole_traj and not self._hyperparams.get('random_concat', False):
 						# assume tbs == 1
 						final_eept_lossb = euclidean_loss_layer(final_eept_predb[0], final_eeptb[0], None, multiplier=loss_multiplier, behavior_clone=True, use_l1=self._hyperparams.get('use_l1', False))
 					final_eept_lossesb.append(final_eept_lossb)
@@ -2268,13 +2589,15 @@ class PolicyCloningMAML(PolicyOptTf):
 									final_eept_lossesb, control_lossesb, flat_img_inputa, 
 									flat_img_inputb, final_eept_predb[0], fast_weights_values, 
 									gradients_summ, acosine_lossb, pick_eept_lossa, 
-									pick_eept_lossb, task_label_loss, loss_idx]
+									pick_eept_lossb, phase_lossb, task_label_loss, loss_idx]
 				if self._hyperparams.get('stop_signal', False):
 					local_fn_output.append(tf.reduce_mean(stop_lossb))
 				if self._hyperparams.get('gripper_command_signal', False):
 					local_fn_output.append(tf.reduce_mean(gripper_lossb))
 				if self._hyperparams.get('pred_pick_eept', False):
 					local_fn_output.append(pick_eept_predb[0])
+				if self._hyperparams.get('pred_phase', False):
+					local_fn_output.append(phase_out)
 				return local_fn_output
 
 		if self.norm_type:
@@ -2310,12 +2633,15 @@ class PolicyCloningMAML(PolicyOptTf):
 					tf.float32, tf.float32, tf.float32, 
 					[tf.float32]*len(self.weights.keys()), 
 					[[tf.float32]*len(self.weights.keys())]*num_updates, 
-					tf.float32, tf.float32, tf.float32, tf.float32, tf.float32]
+					tf.float32, tf.float32, tf.float32, tf.float32, tf.float32,
+					tf.float32]
 		if self._hyperparams.get('stop_signal', False):
 			out_dtype.append(tf.float32)
 		if self._hyperparams.get('gripper_command_signal', False):
 			out_dtype.append(tf.float32)
 		if self._hyperparams.get('pred_pick_eept', False):
+			out_dtype.append(tf.float32)
+		if self._hyperparams.get('pred_phase', False):
 			out_dtype.append(tf.float32)
 		if self._hyperparams.get('aggressive_light_aug', False) and 'Testing' not in prefix:
 			if self._hyperparams.get('pred_pick_eept', False):
@@ -2370,6 +2696,7 @@ class PolicyCloningMAML(PolicyOptTf):
 			print("Start discretization")
 			self.n_actions = self._hyperparams.get('num_actions', 6)
 			self.n_bins = self._hyperparams.get('num_bins', 50)
+			self.n_bins_phase = self._hyperparams.get('num_bins_phase', 50)
 			self.U_min = np.amin(np.array([np.amin(demos[key]['demoU'][:,:,:self.n_actions], axis=(0,1)) for key in demos.keys()]), axis=0)
 			self.U_max = np.amax(np.array([np.amax(demos[key]['demoU'][:,:,:self.n_actions], axis=(0,1)) for key in demos.keys()]), axis=0)
 			self.bin_size = (self.U_max - self.U_min) / self.n_bins
@@ -2471,6 +2798,8 @@ class PolicyCloningMAML(PolicyOptTf):
 				self.push_train_list = self._hyperparams['push_train_list']
 			else:
 				self.push_train_list = self._hyperparams['push_train_list_depth']
+		if 'push_val_list' in self._hyperparams:
+			self.push_val_list = self._hyperparams['push_val_list']
 		
 		if 'train_pick_idxes' in self._hyperparams:
 			self.train_pick_idxes = self._hyperparams['train_pick_idxes']
@@ -2594,6 +2923,31 @@ class PolicyCloningMAML(PolicyOptTf):
 				# hack to fix number of samples of certain tasks
 				if not self._hyperparams.get('pred_pick_eept', False) and self.train_pick_batch_size == 0:
 					sampled_train_idx = random.sample(self.train_idx, self.meta_batch_size)
+				elif self._hyperparams.get('sample_batch_two_steps', False) and self._hyperparams.get('pred_pick_eept_all', False):
+					if itr % 2 == 0:
+						train_pick_batch_size = self._hyperparams['train_pick_batch_size_even']
+					else:
+						train_pick_batch_size = self._hyperparams['train_pick_batch_size_odd']
+					sampled_train_pick_idx = random.sample(self.train_pick_idxes, train_pick_batch_size)
+					if hasattr(self, 'push_train_list'):
+						if itr % 2 == 0 :
+							train_push_batch_size = self._hyperparams['train_push_batch_size_even']
+						else:
+							train_push_batch_size = self._hyperparams['train_push_batch_size_odd']
+						sampled_train_push_idx = random.sample(self.push_train_list, train_push_batch_size)
+						if 'transition_train_list_depth' in self._hyperparams:
+							if itr % 2 == 0 :
+								train_transition_batch_size = self._hyperparams['train_transition_batch_size_even']
+							else:
+								train_transition_batch_size = self._hyperparams['train_transition_batch_size_odd']
+							sampled_transition_idx = random.sample(self._hyperparams['transition_train_list_depth'], train_transition_batch_size)
+							sampled_train_push_idx += sampled_transition_idx
+						sampled_train_other_idx = random.sample(self.train_other_idxes, self.meta_batch_size - train_push_batch_size - train_pick_batch_size - train_transition_batch_size)
+						sampled_train_other_idx = sampled_train_other_idx + sampled_train_push_idx
+					else:
+						sampled_train_other_idx = random.sample(self.train_other_idxes, self.meta_batch_size-train_pick_batch_size)
+					sampled_train_idx = sampled_train_pick_idx + sampled_train_other_idx
+					random.shuffle(sampled_train_idx)
 				else:
 					sampled_train_pick_idx = random.sample(self.train_pick_idxes, self.train_pick_batch_size)
 					if hasattr(self, 'push_train_list'):
@@ -2701,9 +3055,42 @@ class PolicyCloningMAML(PolicyOptTf):
 				if itr != 0 and itr % TEST_PRINT_INTERVAL == 0:
 					if not self._hyperparams.get('pred_pick_eept', False):
 						sampled_val_idx = random.sample(self.val_idx, self.meta_batch_size)
+					# elif self._hyperparams.get('sample_batch_two_steps', False) and self._hyperparams.get('pred_pick_eept_all', False):
+					# 	if itr % 2 == 0:
+					# 		val_pick_batch_size = self._hyperparams['val_pick_batch_size_even']
+					# 	else:
+					# 		val_pick_batch_size = self._hyperparams['val_pick_batch_size_odd']
+					# 	sampled_val_pick_idx = random.sample(self.val_pick_idxes, val_pick_batch_size)
+					# 	if hasattr(self, 'push_val_list'):
+					# 		if itr % 2 == 0 :
+					# 			val_push_batch_size = self._hyperparams['val_push_batch_size_even']
+					# 		else:
+					# 			val_push_batch_size = self._hyperparams['val_push_batch_size_odd']
+					# 		sampled_val_push_idx = random.sample(self.push_val_list, val_push_batch_size)
+					# 		if 'transition_val_list' in self._hyperparams:
+					# 			if itr % 2 == 0 :
+					# 				val_transition_batch_size = self._hyperparams['val_transition_batch_size_even']
+					# 			else:
+					# 				val_transition_batch_size = self._hyperparams['val_transition_batch_size_odd']
+					# 			sampled_transition_idx = random.sample(self._hyperparams['transition_val_list'], val_transition_batch_size)
+					# 			sampled_val_push_idx += sampled_transition_idx
+					# 		sampled_val_other_idx = random.sample(self.val_other_idxes, self.meta_batch_size - val_push_batch_size - val_pick_batch_size - val_transition_batch_size)
+					# 		sampled_val_other_idx = sampled_val_other_idx + sampled_val_push_idx
+					# 	else:
+					# 		sampled_val_other_idx = random.sample(self.val_other_idxes, self.meta_batch_size-val_pick_batch_size)
+					# 	sampled_val_idx = sampled_val_pick_idx + sampled_val_other_idx
+					# 	random.shuffle(sampled_val_idx)
 					else:
 						sampled_val_pick_idx = random.sample(self.val_pick_idxes, self.val_pick_batch_size)
-						sampled_val_other_idx = random.sample(self.val_other_idxes, self.meta_batch_size-self.val_pick_batch_size)
+						if hasattr(self, 'push_val_list'):
+							val_push_batch_size = self._hyperparams['val_push_batch_size']
+							sampled_val_other_idx = random.sample(self.push_val_list, val_push_batch_size)
+							if 'transition_val_list' in self._hyperparams:
+								val_transition_batch_size = self._hyperparams['val_transition_batch_size']
+								sampled_transition_idx = random.sample(self._hyperparams['transition_val_list'], val_transition_batch_size)
+								sampled_val_other_idx += sampled_transition_idx
+						else:
+							sampled_val_other_idx = random.sample(self.val_other_idxes, self.meta_batch_size-self.val_pick_batch_size)
 						sampled_val_idx = sampled_val_pick_idx + sampled_val_other_idx
 						random.shuffle(sampled_val_idx)
 					for idx in sampled_val_idx:
@@ -2834,7 +3221,7 @@ class PolicyCloningMAML(PolicyOptTf):
 		image = tf.transpose(image, perm=[0, 3, 2, 1]) # transpose to mujoco setting for images
 		image = tf.reshape(image, [self.T, -1])
 		num_preprocess_threads = 1 # TODO - enable this to be set to >1
-		min_queue_examples = 128 #256
+		min_queue_examples = 256
 		print 'Batching images'
 		images = tf.train.batch(
 				[image],
@@ -3055,8 +3442,26 @@ class PolicyCloningMAML(PolicyOptTf):
 					input_tensors.append(self.train_act_op)
 					# input_tensors.append(self.task_label_pred)
 					input_tensors.extend([self.train_summ_op, self.total_loss1, self.total_losses2[self.num_updates-1]])
-				result = self.run(input_tensors, feed_dict=feed_dict)
-	
+				kwargs = {}
+				if self._hyperparams.get('add_profiling', False):
+					run_metadata = tf.RunMetadata()
+					kwargs.update({
+						'options': tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+            			'run_metadata': run_metadata
+					})
+				result = self.run(input_tensors, feed_dict=feed_dict, **kwargs)
+				if self._hyperparams.get('add_profiling', False):
+					# Print to stdout an analysis of the memory usage and the timing information
+					# broken down by operation types.
+					ProfileOptionBuilder = tf.profiler.ProfileOptionBuilder
+					opts = ProfileOptionBuilder(ProfileOptionBuilder.time_and_memory(min_micros=5000)
+					    ).with_step(0).with_timeline_output('/tmp/mil_timeline_itr_%d.json' % itr).build()
+					tf.profiler.profile(
+					    self.graph,
+					    run_meta=run_metadata,
+					    cmd='graph',
+					    options=opts)
+
 				if itr != 0 and itr % SUMMARY_INTERVAL == 0:
 					prelosses.append(result[-2])
 					train_writer.add_summary(result[-3], itr)
